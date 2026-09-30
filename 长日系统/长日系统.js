@@ -11064,6 +11064,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     const FORMAT_TEMPLATES = {
         "心动信": "发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）",
         "短信":   `短信 收信人 内容\n例：短信 张三 你好！\n\n也可以竖着写：\n【短信】\n对象：张三\n内容：你好！\n署名：神秘人（选填）\n\n${RECALL_FORMAT_HINT}`,
+        "点歌":   "点歌 歌名 [给 对方 寄语]\n例：点歌 晴天\n例：点歌 晴天 周杰伦 给 张三 生日快乐\n例：点歌 QQ 晴天 给大家 今天也要开心\n\n一律匿名，公告和网页只写「有人点给 …」；不写平台先搜网易云，搜不到再搜 QQ 音乐。每人每天有上限，网页和群里一起算。",
         "漂流瓶": "漂流瓶 内容\n例：漂流瓶 有人能听到我说话吗\n\n回信（对方捡到后会得到编号）：漂流瓶 编号 内容\n例：漂流瓶 1 我听到啦，你还好吗\n\n也可以竖着写：\n【漂流瓶】\n编号：1（回信才填）\n内容：我听到啦",
         "前置电话": "前置电话 编号\n例：前置电话 1\n（编号对应谁只有管理员知道，可以多次选不同编号）",
         "信件":   "发送信件\n【收件人】小明\n【内容】亲爱的小明，今天天气真好...\n【日期】2026年4月28日（选填）\n【附件】随信附上一份礼物（选填）\n【署名】小红（选填）",
@@ -11117,6 +11118,10 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     }
     if (raw.startsWith("格式") && FORMAT_TEMPLATES[raw.slice(2).trim()]) {
         return seal.replyToSender(ctx, msg, FORMAT_TEMPLATES[raw.slice(2).trim()]);
+    }
+
+    if (raw === "点歌" || raw.startsWith("点歌 ") || /^点歌(qq|QQ|网易)/.test(raw)) {
+        return handleSongRequest(ctx, msg, platform, raw.slice(2).trim());
     }
 
     const smsTriggers = ["短信", ...getSmsAliases().map(a => a.trigger).filter(Boolean)];
@@ -12570,13 +12575,17 @@ async function phoneWebSync() {
         }
 
         const after = parseInt(cachedGet("phone_web_cursor") || "0") || 0;
+        const songsDone = kvGet("phone_songs_done", []);
         const resp = await fetch(base + "/api/phone/sync", {
             method: "POST",
             headers: { "Content-Type": "application/json", "X-Archive-Token": token },
-            body: JSON.stringify({ after, snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, counts, last } })
+            body: JSON.stringify({ after, songs_done: songsDone, snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, counts, last } })
         });
         if (!resp.ok) return;
         const data = await resp.json();
+        // 存档站已经收到这批回报，清掉；再把这次给的待播点歌发到公告群
+        if (songsDone.length) kvSet("phone_songs_done", []);
+        phoneAnnounceSongs(platform, data.songs || []);
         kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
 
         const events = data.events || [];
@@ -12619,6 +12628,67 @@ async function phoneWebSync() {
         console.warn(`[网页手机同步] 失败：${e.message || e}`);
     } finally {
         _phoneSyncBusy = false;
+    }
+}
+
+// 点歌播报：存档站同步回包里 announced=0 的点歌（网页点的和群里点的都在这），发到公告群。
+// 一律匿名只写「有人」；先发音乐卡片再发文字（卡片在有的 OneBot 实现上发不出去，文字里带链接兜底）。
+// 发过的 id 记进 phone_songs_done，下次同步报给存档站标成已播；phone_songs_seen 防同一首因回报丢失被发两次。
+function phoneAnnounceSongs(platform, songs) {
+    if (!songs.length) return;
+    const gid = kvGet("adminAnnounceGroupId", null);
+    const seen = kvGet("phone_songs_seen", []);
+    const done = kvGet("phone_songs_done", []);
+    for (const sg of songs) {
+        done.push(sg.id);
+        if (seen.includes(sg.id) || !gid) continue;   // 没配公告群：只在网页播报，照样回报
+        seen.push(sg.id);
+        const pf = sg.platform === "qq" ? "qq" : "163";
+        const link = pf === "qq" ? `https://y.qq.com/n/ryqq/songDetail/${sg.mid}` : `https://music.163.com/song?id=${sg.song_id}`;
+        const to = sg.to ? `给「${sg.to}」` : "给大家";
+        sendTextToGroup(platform, gid, `[CQ:music,type=${pf},id=${sg.song_id}]`);
+        sendTextToGroup(platform, gid, `🎵 有人点了一首《${sg.name}》- ${sg.artists} ${to}` +
+            (sg.message ? `\n寄语：「${sg.message}」` : "") + `\n🔗 ${link}`);
+    }
+    kvSet("phone_songs_seen", seen.slice(-300));
+    kvSet("phone_songs_done", done.slice(-300));
+}
+
+// 群里「点歌」：交给存档站搜歌、校验、入库（一律匿名），这里只回复结果；公告群那份等下一次同步统一发。
+// 格式：点歌 [QQ/网易] 歌名 [给 对方|给大家 寄语]；不写平台先搜网易云、搜不到再搜 QQ 音乐
+async function handleSongRequest(ctx, msg, platform, rest) {
+    const help = "🎵 点歌格式：点歌 歌名 [给 对方 寄语]\n例：点歌 晴天\n例：点歌 晴天 周杰伦 给 张三 生日快乐\n例：点歌 QQ 晴天 给大家\n点歌一律匿名，公告里只写「有人」。";
+    if (!rest) return seal.replyToSender(ctx, msg, help);
+    const me = getRoleName(ctx, msg);
+    if (!me) return seal.replyToSender(ctx, msg, "❌ 请先创建新角色再点歌");
+    const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    if (!isArchiveEnabled() || !base) return seal.replyToSender(ctx, msg, "❌ 点歌需要连上存档站，请联系管理员");
+    let tokens = rest.split(/\s+/).filter(Boolean), pf = null;
+    if (/^(qq|qq音乐)$/i.test(tokens[0])) { pf = "qq"; tokens = tokens.slice(1); }
+    else if (/^(网易|网易云|网易云音乐)$/.test(tokens[0])) { pf = "163"; tokens = tokens.slice(1); }
+    let to = "", message = "", i = tokens.findIndex(t => t === "给" || t === "给大家");
+    if (i >= 0) {
+        if (tokens[i] === "给大家") { message = tokens.slice(i + 1).join(" "); }
+        else { to = tokens[i + 1] || ""; message = tokens.slice(i + 2).join(" "); }
+        tokens = tokens.slice(0, i);
+    }
+    const keyword = tokens.join(" ");
+    if (!keyword) return seal.replyToSender(ctx, msg, help);
+    // 简称 → 本名（存档站只认本名）
+    if (to && to !== "大家") {
+        const toUid = getUidByRoleName(platform, to);
+        if (toUid) to = kvGet("a_private_group", {})[platform]?.[toUid]?.[0] || to;
+    }
+    try {
+        const resp = await fetch(base + "/api/song/request", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Archive-Token": seal.ext.getStringConfig(ext, "RP存档Token") || "" },
+            body: JSON.stringify({ from_role: me, to_role: to, keyword, message, platform: pf })
+        });
+        const data = await resp.json().catch(() => ({}));
+        return seal.replyToSender(ctx, msg, data.msg || "❌ 点歌失败，稍后再试");
+    } catch (e) {
+        return seal.replyToSender(ctx, msg, "❌ 连不上存档站，稍后再试");
     }
 }
 

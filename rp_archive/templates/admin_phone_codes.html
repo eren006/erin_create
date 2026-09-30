@@ -58,6 +58,34 @@
       {% if zone != 'main' %}<br>现在不在主档期内，玩家暂时发不了。{% endif %}
     </div>
   </div>
+  <div class="pc-add">
+    <label>点歌（一律匿名；这里能看到是谁点的）</label>
+    <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;">
+      <input type="hidden" name="action" value="song_daily">
+      每人每天最多点 <input type="number" name="n" min="0" max="50" value="{{ song_daily }}" style="width:70px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font:inherit;"> 首
+      <button class="pc-btn ghost sm" type="submit">保存</button>
+      <span style="font-size:12px;color:var(--muted);">填 0 恢复默认（{{ song_default }} 首）</span>
+    </form>
+    {% if songs %}
+    <table class="pc-table" style="margin-top:6px;">
+      <thead><tr><th>时间</th><th>点歌人</th><th>给</th><th>歌</th><th>寄语</th><th></th></tr></thead>
+      <tbody>
+      {% for sg in songs %}
+        <tr>
+          <td style="white-space:nowrap;font-size:12px;">{{ sg.time }}</td>
+          <td>{{ sg.from_role }}</td>
+          <td>{{ sg.to_role or '大家' }}</td>
+          <td>{{ sg.song_name }}<span style="color:var(--muted);font-size:12px;"> - {{ sg.artists }} · {{ '网易云' if sg.platform == '163' else 'QQ音乐' }}{% if not sg.announced %} · 待播{% endif %}</span></td>
+          <td style="font-size:12px;">{{ sg.message }}</td>
+          <td><form method="post" onsubmit="return confirm('删除这条点歌？网页上的播报也会一起消失（已经发到公告群的撤不回来）。')">
+            <input type="hidden" name="action" value="delete_song"><input type="hidden" name="id" value="{{ sg.id }}">
+            <button class="pc-btn ghost sm" type="submit">删除</button></form></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div style="font-size:12px;color:var(--muted);">本季还没有人点歌。</div>{% endif %}
+  </div>
   <form method="post" class="pc-add">
     <input type="hidden" name="action" value="stickers">
     <label>表情面板（网页发送时输入框旁的 ☺，一行一个 emoji 或颜文字，每个不超过 20 字，最多 60 个；留空 = 用默认那套）</label>

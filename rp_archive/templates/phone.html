@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'thread' %}{{ other }} · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% endif %}短信</title>
+<title>{% if mode == 'thread' %}{{ other }} · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -247,6 +247,38 @@ a { color: var(--link); text-decoration: none; }
 .appearance-preview .preview-reply { align-self: flex-start; background: var(--theirs); color: var(--theirs-text); }
 .local-hint { font-size: 11px; color: var(--muted); margin-top: 16px; }
 :focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
+/* 点歌 */
+.song-card { display: flex; gap: 10px; align-items: center; margin-top: 8px; padding: 8px; border-radius: 12px; background: var(--theirs); color: var(--text); flex-wrap: wrap; }
+.sc-cover { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+.sc-nocover { display: flex; align-items: center; justify-content: center; font-size: 24px; background: var(--line); }
+.sc-info { flex: 1; min-width: 0; }
+.sc-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-artist { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-vip { color: #b7791f; font-weight: 600; }
+.sc-actions { display: flex; gap: 12px; align-items: center; margin-top: 4px; font-size: 12px; }
+.sc-actions a { color: var(--muted); text-decoration: underline; }
+.sc-play { border: none; border-radius: 12px; padding: 3px 10px; font: inherit; font-size: 12px; background: var(--mine); color: var(--mine-text); cursor: pointer; }
+.sc-player { flex-basis: 100%; width: 100%; height: 86px; border: 0; border-radius: 8px; }
+.song-msg { max-width: 290px; }
+.song-msg .sm-title { font-size: 13px; color: var(--muted); }
+.msg .song-msg .song-card { background: var(--bg); border: 1px solid var(--line); }
+.song-tabs { display: flex; gap: 6px; padding: 10px 16px 0; }
+.song-tabs button { flex: 1; border: 1px solid var(--line); border-radius: 10px; padding: 7px; font: inherit; font-size: 13px; background: var(--bg); color: var(--text); cursor: pointer; }
+.song-tabs button[aria-pressed="true"] { border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); font-weight: 600; }
+.song-search { display: flex; gap: 6px; padding: 10px 16px; }
+.song-search input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 8px 12px; border-radius: 18px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.song-search button, .song-submit { border: none; border-radius: 18px; padding: 0 16px; font: inherit; font-size: 14px; background: var(--mine); color: var(--mine-text); cursor: pointer; }
+.song-results { padding: 0 16px; }
+.song-result { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; padding: 8px 4px; border: none; border-bottom: .5px solid var(--line); background: none; font: inherit; color: var(--text); cursor: pointer; }
+.song-result img, .song-result .sc-nocover { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+.song-result[aria-pressed="true"] { background: var(--theirs); }
+.song-form { padding: 12px 16px 28px; display: flex; flex-direction: column; gap: 10px; }
+.song-form label { font-size: 12px; color: var(--muted); }
+.song-form select, .song-form textarea { font: inherit; font-size: 16px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.song-form textarea { min-height: 70px; resize: vertical; }
+.song-submit { padding: 11px; font-weight: 600; }
+.song-submit:disabled { opacity: .45; }
+.song-note { padding: 8px 16px; font-size: 12px; color: var(--muted); }
 .notice-body p { font-size: 14px; line-height: 1.75; margin-bottom: 10px; }
 .notice-body b { color: var(--tag); }
 .notice-ok { width: 100%; margin-top: 6px; padding: 11px; border: none; border-radius: 12px; font: inherit; font-weight: 600; background: var(--mine); color: var(--mine-text); cursor: pointer; }
@@ -313,6 +345,19 @@ a { color: var(--link); text-decoration: none; }
 </style>
 </head>
 <body>
+{% macro song_card(sg) %}
+<div class="song-card">
+  {% if sg.cover %}<img class="sc-cover" src="{{ sg.cover }}{{ '?param=120y120' if sg.platform == '163' else '' }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<div class="sc-cover sc-nocover">🎵</div>{% endif %}
+  <div class="sc-info">
+    <div class="sc-name">{{ sg.name }}</div>
+    <div class="sc-artist">{{ sg.artists }} · {{ sg.platform_name }}{% if sg.vip %} · <span class="sc-vip">VIP</span>{% endif %}</div>
+    <div class="sc-actions">
+      {% if sg.embed and not sg.vip %}<button type="button" class="sc-play" data-song="{{ sg.id }}">▶ 播放</button>{% endif %}
+      <a href="{{ sg.link }}" target="_blank" rel="noopener noreferrer">在{{ sg.platform_name }}打开</a>
+    </div>
+  </div>
+</div>
+{% endmacro %}
 <div class="phone">
 
 {% if mode == 'entry' %}
@@ -365,18 +410,26 @@ a { color: var(--link); text-decoration: none; }
     {% endfor %}
   </div>
 
+{% elif mode in ('library', 'profile') %}
+  {% include '_phone_library.html' %}
+
 {% elif mode == 'public' %}
   <header class="bar">
     <a class="back" href="{{ url_for('player_phone_inbox') }}">信息</a>
     <div class="title">公开播报</div>
-    <div class="right"></div>
+    <div class="right"><a class="quiet-button" href="{{ url_for('player_song') }}">🎵 点歌</a></div>
   </header>
   <div class="scroll" id="scroll">
     <div class="chat public-feed" data-received-ts="{{ items[-1].ts if items else 0 }}">
       {% for it in items %}
         {% if it.day_break %}<div class="stamp"><b>{{ it.day_break }}</b></div>{% endif %}
         <div class="broadcast">
+          {% if it.kind == 'song' %}
+          <div class="bc-head">🎵 有人点给 {{ it.to }}<span class="bc-time">{{ it.time }}</span></div>
+          {{ song_card(it.song) }}
+          {% else %}
           <div class="bc-head">{{ '🎁' if it.kind == 'gift' else '💌' }} {{ it.from }} → {{ it.to }}<span class="bc-time">{{ it.time }}</span></div>
+          {% endif %}
           {% if it.kind == 'gift' %}<div class="bc-gift">{{ it.gift_name }}</div>{% endif %}
           {% if it.text %}<div class="bc-text">{{ it.text }}</div>{% endif %}
         </div>
@@ -586,6 +639,95 @@ a { color: var(--link); text-decoration: none; }
   })();
   </script>
 
+{% elif mode == 'song' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_phone_public') }}">公开播报</a>
+    <div class="title">点歌<small>匿名 · 今日 {{ used }}/{{ cap }}</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll">
+    {% if why %}<div class="song-note">{{ why }}</div>{% endif %}
+    <div class="song-tabs" role="group" aria-label="选择平台">
+      <button type="button" data-pf="163" aria-pressed="true">网易云</button>
+      <button type="button" data-pf="qq" aria-pressed="false">QQ音乐</button>
+    </div>
+    <form class="song-search" id="songSearch">
+      <input id="songQ" maxlength="40" placeholder="歌名，可以加上歌手" autocomplete="off" enterkeyhint="search">
+      <button type="submit">搜索</button>
+    </form>
+    <div class="song-note" id="songTip">点歌不会显示你的名字：公告和大家的手机里只会写「有人点给 …」。</div>
+    <div class="song-results" id="songResults"></div>
+    <form class="song-form" id="songForm" hidden>
+      <div id="songPicked"></div>
+      <label for="songTo">送给</label>
+      <select id="songTo" name="to">
+        <option value="">大家</option>
+        {% for n in contacts %}<option value="{{ n }}"{% if n == preset_to %} selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select>
+      <label for="songMsg">寄语（可以不写，{{ max_msg }} 字内）</label>
+      <textarea id="songMsg" name="message" maxlength="{{ max_msg }}" placeholder="想对 ta 说的话"></textarea>
+      <button type="submit" class="song-submit" id="songSubmit"{% if why %} disabled{% endif %}>匿名点歌</button>
+    </form>
+  </div>
+  <script>
+  (function () {
+    var CSRF = {{ csrf|tojson }}, pf = '163', picked = null;
+    var q = document.getElementById('songQ'), list = document.getElementById('songResults'), tip = document.getElementById('songTip'),
+        form = document.getElementById('songForm'), pickedBox = document.getElementById('songPicked'), submit = document.getElementById('songSubmit');
+    function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+    function cover(sg, cls) {
+      return sg.cover ? '<img class="' + (cls || '') + '" src="' + esc(sg.cover + (sg.platform === '163' ? '?param=100y100' : '')) + '" alt="" loading="lazy" referrerpolicy="no-referrer">'
+                      : '<div class="sc-nocover ' + (cls || '') + '">🎵</div>';
+    }
+    document.querySelectorAll('.song-tabs button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        pf = b.dataset.pf;
+        document.querySelectorAll('.song-tabs button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        list.innerHTML = ''; form.hidden = true; picked = null;
+        if (q.value.trim()) search();
+      });
+    });
+    async function search() {
+      var kw = q.value.trim(); if (!kw) return;
+      tip.textContent = '搜索中…'; list.innerHTML = '';
+      try {
+        var r = await fetch('/p/me/song/search?platform=' + pf + '&q=' + encodeURIComponent(kw), {cache: 'no-store'});
+        var d = await r.json();
+        if (!d.ok) { tip.textContent = d.msg || '暂时搜不到'; return; }
+        if (!d.songs.length) { tip.textContent = '没搜到，换个关键词或者换个平台试试'; return; }
+        tip.textContent = pf === 'qq' ? 'QQ 音乐只能搜到最相关的几首；点一首选中它。' : '点一首选中它。';
+        d.songs.forEach(function (sg) {
+          var b = document.createElement('button'); b.type = 'button'; b.className = 'song-result'; b.setAttribute('aria-pressed', 'false');
+          b.innerHTML = cover(sg) + '<div class="sc-info"><div class="sc-name">' + esc(sg.name) + '</div><div class="sc-artist">' +
+                        esc(sg.artists) + (sg.album ? ' · ' + esc(sg.album) : '') + (sg.vip ? ' · <span class="sc-vip">VIP</span>' : '') + '</div></div>';
+          b.addEventListener('click', function () {
+            picked = sg;
+            list.querySelectorAll('.song-result').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+            pickedBox.innerHTML = '<div class="song-card">' + cover(sg, 'sc-cover') + '<div class="sc-info"><div class="sc-name">' + esc(sg.name) +
+                                  '</div><div class="sc-artist">' + esc(sg.artists) + '</div></div></div>';
+            form.hidden = false;
+            form.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+          });
+          list.appendChild(b);
+        });
+      } catch (_) { tip.textContent = '网络出错了，稍后再试'; }
+    }
+    document.getElementById('songSearch').addEventListener('submit', function (e) { e.preventDefault(); search(); });
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      if (!picked) return;
+      var fd = new FormData(form);
+      fd.append('platform', picked.platform);
+      fd.append('song_id', picked.platform === 'qq' ? picked.mid : picked.id);
+      submit.disabled = true; submit.textContent = '点歌中…';
+      var r = await fetch('/p/me/song', {method: 'POST', headers: {'X-CSRF': CSRF}, body: fd})
+        .then(function (x) { return x.json(); }).catch(function () { return {ok: false, msg: '出错了，稍后再试'}; });
+      if (r.ok) { alert(r.msg); location.href = {{ url_for('player_phone_public')|tojson }}; return; }
+      alert(r.msg); submit.disabled = false; submit.textContent = '匿名点歌';
+    });
+  })();
+  </script>
+
 {% elif mode == 'new' %}
   <header class="bar">
     <a class="back" href="{{ url_for('player_phone_inbox') }}">取消</a>
@@ -614,9 +756,15 @@ a { color: var(--link); text-decoration: none; }
     <div class="chat" data-received-ts="{{ msgs|rejectattr('mine')|map(attribute='ts')|max|default(0) }}">
       {% for m in msgs %}
         {% if m.show_time %}<div class="stamp">{% if m.day_break %}<b>{{ m.day_break }}</b> {% endif %}{{ m.time }}</div>{% endif %}
-        <div class="msg {{ 'mine' if m.mine else 'theirs' }}">
+        <div class="msg {{ 'mine' if m.mine else 'theirs' }}" id="message-{{ [sid, owner, m.id]|phone_message_key }}">
           {% if m.sig_above %}<div class="sig">{{ m.sig_above }}</div>{% endif %}
-          {% if m.kind == 'gift' %}
+          {% if m.kind == 'song' %}
+          <div class="song-msg">
+            <div class="sm-title">{% if m.mine %}你匿名点给 {{ m.to or '大家' }}{% else %}有人为你点了一首歌{% endif %}</div>
+            {{ song_card(m.song) }}
+            {% if m.text %}<div class="gnote">{{ m.text }}</div>{% endif %}
+          </div>
+          {% elif m.kind == 'gift' %}
           <div class="gift">
             <div class="gname">{{ m.gift_name }}</div>
             {% if m.text %}<div class="gnote">{{ m.text }}</div>{% endif %}
@@ -624,6 +772,7 @@ a { color: var(--link); text-decoration: none; }
           {% else %}
           <div class="bubble">{{ m.text }}</div>
           {% endif %}
+          {% if m.kind in ('sms', 'gift') %}<button type="button" class="save-message" data-save-key="{{ [sid, owner, m.id]|phone_message_key }}" aria-pressed="false" aria-label="收藏这条{{ '礼物' if m.kind == 'gift' else '短信' }}">☆ 收藏</button>{% endif %}
           {% if m.public %}<div class="tag">📢 被公开播报过</div>{% endif %}
         </div>
       {% else %}
@@ -720,6 +869,8 @@ a { color: var(--link); text-decoration: none; }
       place(); grow(); saveDraft();
     })();
   </script>
+  {% elif other == '点歌台' %}
+  <div class="compose-note"><a href="{{ url_for('player_song') }}">🎵 我也去点一首</a></div>
   {% elif status.can and not can_reply and other == '未知号码' %}
   <div class="compose-note">无法回复未知号码</div>
   {% elif status.why %}
@@ -761,7 +912,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song') %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -810,8 +961,18 @@ a { color: var(--link); text-decoration: none; }
   };
   applyAvatars();
   document.addEventListener('phone:updated', applyAvatars);
+  // 点歌卡片「播放」：换成网易云官方外链播放器（本站不转发任何音频）
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.sc-play');
+    if (!b) return;
+    var f = document.createElement('iframe');
+    f.className = 'sc-player'; f.allow = 'autoplay'; f.title = '播放器';
+    f.src = 'https://music.163.com/outchain/player?type=2&id=' + encodeURIComponent(b.dataset.song) + '&auto=1&height=66';
+    b.closest('.song-card').appendChild(f);
+    b.remove();
+  });
 </script>
-{% if mode in ('inbox', 'thread', 'public', 'moments') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'song') %}
 <script>
 (function () {
   var scope = {{ ([sid, owner]|tojson) }};
@@ -1007,12 +1168,13 @@ a { color: var(--link); text-decoration: none; }
       // 网络恢复后下一轮再试。
     } finally { busy = false; }
   }
-  {% if mode != 'moments' %}
+  {% if mode not in ('moments', 'song') %}
   setInterval(poll, 15000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
   {% endif %}
 })();
 </script>
 {% endif %}
+{% if mode != 'entry' %}{% include '_phone_tools.html' %}{% endif %}
 </body>
 </html>

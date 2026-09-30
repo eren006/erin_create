@@ -1556,6 +1556,34 @@ def _migrate(conn):
         )
     """)
 
+    # ── 20. 点歌：一律匿名（公告/网页只写「有人」，管理员复盘能看到是谁）；announced=机器人已发到公告群 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS song_requests (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            show_id    INTEGER NOT NULL,
+            from_role  TEXT    NOT NULL,
+            to_role    TEXT    NOT NULL DEFAULT '',
+            platform   TEXT    NOT NULL DEFAULT '163',
+            song_id    INTEGER NOT NULL,
+            song_mid   TEXT    NOT NULL DEFAULT '',
+            song_name  TEXT    NOT NULL,
+            artists    TEXT    NOT NULL DEFAULT '',
+            album      TEXT    NOT NULL DEFAULT '',
+            cover      TEXT    NOT NULL DEFAULT '',
+            fee        INTEGER NOT NULL DEFAULT 0,
+            message    TEXT    NOT NULL DEFAULT '',
+            source     TEXT    NOT NULL DEFAULT 'web',
+            game_day   TEXT    NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            announced  INTEGER NOT NULL DEFAULT 0,
+            deleted    INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_song_requests_show ON song_requests(show_id, deleted, id)")
+    if "song_daily" not in _col_names(conn, "phone_settings"):
+        conn.execute("ALTER TABLE phone_settings ADD COLUMN song_daily INTEGER NOT NULL DEFAULT 0")  # 0 = 默认次数
+
     # ── 长日将尽许愿墙：独立的小功能，不挂在 tenant/superadmin 体系下 ──────────
     conn.execute("""
         CREATE TABLE IF NOT EXISTS changri_wishes (
@@ -4750,6 +4778,11 @@ def _phone_events(db, show_id):
         events.append({"id": -r["id"], "type": "sms", "from_role": r["from_role"], "to_role": "",
                        "content": r["content"], "extra_info": {"intended_to": r["to_role"]},
                        "timestamp": r["timestamp"], "game_day": r["game_day"]})
+    # 点歌：被点的人和点歌的人在「点歌台」对话里各看到一条（点给大家的只进公开播报）
+    for sg in _song_rows(db, show_id):
+        events.append({"id": -1_000_000 - sg["id"], "type": "song", "from_role": sg["from_role"], "to_role": sg["to_role"],
+                       "content": sg["message"], "extra_info": {"song": sg}, "timestamp": sg["created_at"],
+                       "game_day": sg["game_day"]})
     events.sort(key=lambda e: (e["timestamp"] or 0, e["id"]))
     return events
 
@@ -4788,12 +4821,24 @@ def _phone_view_of(e, owner):
         # 网页送的礼物记了原本想送给谁，送礼人这边照「想送的人」显示（丢了、送错了都看不出来）
         m.update(other=info.get("intended_to") or to, mine=True)
         return m
+    if e["type"] == "song":
+        sg = info["song"]
+        m.update(kind="song", text=e["content"] or "", to=to, song=_song_view(sg))
+        if to and to == owner:
+            m.update(other="点歌台", mine=False)
+            return m
+        if frm == owner:
+            m.update(other="点歌台", mine=True)
+            return m
+        return None
     if to == owner and not info.get("isLost"):
         m.update(other=info.get("from_custom_name") or frm, mine=False)
         return m
     return None
 
 def _phone_preview(m):
+    if m["kind"] == "song":
+        return f"🎵 {m['song']['name']}" + (f"（点给 {m['to']}）" if m["mine"] and m.get("to") else "")
     if m["kind"] == "gift":
         return f"🎁 {m['gift_name']}" + (f"：{m['text']}" if m["text"] else "")
     return m["text"].replace("\n", " ")
@@ -4943,6 +4988,43 @@ def phone_code_entry():
         return redirect(url_for("player_phone_inbox"))
     return render_template("phone.html", mode="entry", error=None)
 
+# ── 玩家消息检索：只从已经翻译好的个人视角构建结果 ──
+@app.template_filter("phone_message_key")
+def _phone_message_key(parts):
+    payload = json.dumps(list(parts), ensure_ascii=False, separators=(",", ":"))
+    return hmac.new(str(app.secret_key).encode(), ("phone-message:" + payload).encode(), hashlib.sha256).hexdigest()[:32]
+
+@app.route("/p/me/library")
+def player_phone_library():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    view = request.args.get("view", "search")
+    if view not in ("search", "saved", "profile"):
+        view = "search"
+    return render_template("phone.html", mode="profile" if view == "profile" else "library",
+                           library_view=view, sid=sid, owner=owner, csrf=_phone_csrf())
+
+@app.route("/p/me/library/data")
+def player_phone_library_data():
+    who = _phone_current()
+    if not who:
+        return jsonify(error="手机登录已失效"), 401
+    sid, owner = who
+    records = []
+    for m in _phone_views(get_db(), sid, owner):
+        if m["kind"] not in ("sms", "gift"):
+            continue
+        key = _phone_message_key([sid, owner, m["id"]])
+        records.append({
+            "key": key, "other": m["other"], "mine": m["mine"], "kind": m["kind"],
+            "text": m["text"], "gift_name": m.get("gift_name", ""),
+            "signature": m.get("signature", ""), "day": m["game_day"], "time": _phone_time(m["ts"]),
+            "ts": m["ts"], "url": url_for("player_phone_thread", other=m["other"]) + "#message-" + key,
+        })
+    return jsonify(records=records)
+
 @app.route("/p/me")
 def player_phone_inbox():
     who = _phone_current()
@@ -5086,6 +5168,11 @@ def _phone_public_items(db, sid):
         else:
             item.update(gift_name=info.get("giftName") or "礼物", text=e["content"] or "")
         items.append(item)
+    for sg in _song_rows(db, sid):
+        items.append({"kind": "song", "from": "有人", "to": sg["to_role"] or "大家", "text": sg["message"],
+                      "ts": sg["created_at"], "time": _phone_time(sg["created_at"]), "game_day": sg["game_day"],
+                      "song": _song_view(sg)})
+    items.sort(key=lambda it: it["ts"])
     prev_day = None
     for it in items:
         it["day_break"] = it["game_day"] if it["game_day"] != prev_day else None
@@ -5098,7 +5185,10 @@ def _phone_public_summary(db, sid):
     if not items:
         return None
     last = items[-1]
-    preview = f"{last['from']} → {last['to']}：" + (f"🎁 {last['gift_name']}" if last["kind"] == "gift" else last["text"].replace("\n", " "))
+    if last["kind"] == "song":
+        preview = f"有人点给 {last['to']}：🎵 {last['song']['name']}"
+    else:
+        preview = f"{last['from']} → {last['to']}：" + (f"🎁 {last['gift_name']}" if last["kind"] == "gift" else last["text"].replace("\n", " "))
     return {"count": len(items), "preview": preview, "time": last["time"], "game_day": last["game_day"], "ts": last["ts"]}
 
 # ── 违禁词：网页手机里玩家写的字（短信、礼物、朋友圈、评论）──────────────────────
@@ -5469,7 +5559,8 @@ def api_phone_sync():
         events.append({"id": r["id"], "type": r["type"], "from_role": r["from_role"], "to_role": r["to_role"],
                        "timestamp": r["timestamp"], "day_key": info.get("day_key", ""),
                        "lost": bool(info.get("isLost"))})
-    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "events": events})
+    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "events": events,
+                    "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done"))})
 
 @app.route("/p/<code>")
 def player_phone_enter(code):
@@ -5926,6 +6017,273 @@ def admin_avatar_image(show_id, role):
         abort(404)
     return send_file(os.path.join(MOMENT_IMAGE_DIR, row["file"]), mimetype="image/jpeg")
 
+# ── 点歌 ──────────────────────────────────────────────────────────────────────
+# 网页手机和群里（「点歌 歌名 给 某人 寄语」）都能点，一律匿名：公告群和网页「公开播报」只写「有人点给 X」，
+# 被点的人手机里「点歌台」对话也会收到一条；管理员后台能看到是谁点的。
+# 可以从网易云或 QQ 音乐里选。搜歌都走各自网页版的老接口（网易 search/get/web + song/detail；
+# QQ smartbox 联想 + fcg_play_single_song 单曲详情），都不是官方开放接口，对方一改就可能失效——
+# 失效时搜索会报「暂时搜不到」，已经点过的歌照常显示。QQ 的联想接口只给最相关的几首。
+# 不转发任何音频：网易云在网页里用官方外链播放器，QQ 音乐没有可嵌入的播放器、只给「在 QQ 音乐打开」链接；
+# 群里由机器人发 [CQ:music,type=163/qq] 卡片 + 文字链接。VIP/付费歌标出来（外链多半放不了）。
+# 公告群那份由机器人在每 30 秒同步时取走（announced=0 的），发完回报；机器人挂了超过 2 小时的就不补发了。
+_SONG_DEFAULT_DAILY  = 3
+_SONG_MAX_MSG        = 100
+_SONG_ANNOUNCE_TTL   = 2 * 3600 * 1000
+_song_cache          = {}           # 关键词 → (时间, 结果)
+_song_rate           = {}           # 角色 → 上次搜索时间
+_NETEASE_HEADERS     = {"Referer": "https://music.163.com/", "User-Agent": "Mozilla/5.0 (changri-archive)"}
+
+def _netease_get(path, params):
+    url = "https://music.163.com" + path + "?" + urllib.parse.urlencode(params)
+    req = urllib.request.Request(url, headers=_NETEASE_HEADERS)
+    with urllib.request.urlopen(req, timeout=6) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+SONG_PLATFORMS = {"163": "网易云", "qq": "QQ音乐"}
+
+def _qq_get(url, params):
+    req = urllib.request.Request(url + "?" + urllib.parse.urlencode(params),
+                                 headers={"Referer": "https://y.qq.com/", "User-Agent": "Mozilla/5.0 (changri-archive)"})
+    with urllib.request.urlopen(req, timeout=6) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+def _qq_detail(mid):
+    """QQ 音乐 songmid → 歌曲信息；查不到返回 None"""
+    data = _qq_get("https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg", {"songmid": mid, "format": "json"})
+    items = data.get("data") or []
+    if not items:
+        return None
+    sg = items[0]
+    al = sg.get("album") or {}
+    pay = sg.get("pay") or {}
+    return {"platform": "qq", "id": int(sg.get("id") or 0), "mid": sg.get("mid") or mid,
+            "name": sg.get("name") or sg.get("title") or "",
+            "artists": " / ".join(a.get("name", "") for a in sg.get("singer") or [] if a.get("name")),
+            "album": al.get("name") or "",
+            "cover": f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{al['mid']}.jpg" if al.get("mid") else "",
+            "vip": bool(pay.get("pay_play"))}
+
+def _qq_search(q):
+    data = _qq_get("https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg",
+                   {"key": q, "format": "json", "inCharset": "utf-8", "outCharset": "utf-8"})
+    mids = [it["mid"] for it in (((data.get("data") or {}).get("song") or {}).get("itemlist") or []) if it.get("mid")]
+    return [d for d in (_qq_detail(m) for m in mids[:6]) if d and d["id"]]
+
+def _song_lookup(platform, song_id):
+    """提交时按平台重新查一遍（不信任前端传来的歌名）；网易云用数字 id，QQ 用 songmid"""
+    if platform == "qq":
+        return _qq_detail(str(song_id)) if song_id else None
+    try:
+        sid_int = int(song_id)
+    except (TypeError, ValueError):
+        return None
+    return _song_details([sid_int]).get(sid_int)
+
+def _song_details(ids):
+    """网易云歌曲 id 列表 → {id: 歌曲信息}；拿不到返回空 dict"""
+    if not ids:
+        return {}
+    data = _netease_get("/api/song/detail/", {"ids": json.dumps(ids)})
+    out = {}
+    for sg in data.get("songs") or []:
+        al = sg.get("album") or {}
+        out[sg["id"]] = {
+            "platform": "163", "id": sg["id"], "mid": "", "name": sg.get("name") or "",
+            "artists": " / ".join(a.get("name", "") for a in sg.get("artists") or [] if a.get("name")),
+            "album": al.get("name") or "", "cover": (al.get("picUrl") or "").replace("http://", "https://"),
+            "vip": int(sg.get("fee") or 0) in (1, 4),  # 1=VIP 4=付费专辑，外链播放器放不了
+        }
+    return out
+
+def _song_search(q, platform="163"):
+    """关键词 → 歌曲列表（网易云最多 10 首，QQ 只有最相关的几首）；接口出错抛 RuntimeError"""
+    q = q.strip()[:40]
+    platform = "qq" if platform == "qq" else "163"
+    now = time.time()
+    key = (platform, q)
+    hit = _song_cache.get(key)
+    if hit and now - hit[0] < 600:
+        return hit[1]
+    try:
+        if platform == "qq":
+            songs = _qq_search(q)
+        else:
+            data = _netease_get("/api/search/get/web", {"s": q, "type": 1, "limit": 10, "offset": 0})
+            ids = [sg["id"] for sg in ((data.get("result") or {}).get("songs") or [])]
+            details = _song_details(ids)
+            songs = [details[i] for i in ids if i in details]
+    except Exception:
+        raise RuntimeError(f"暂时搜不到歌，{SONG_PLATFORMS[platform]}那边可能出问题了，稍后再试")
+    if len(_song_cache) > 300:
+        _song_cache.clear()
+    _song_cache[key] = (now, songs)
+    return songs
+
+def _song_daily_cap(db, sid):
+    row = db.execute("SELECT song_daily FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
+    return row["song_daily"] if row and row["song_daily"] else _SONG_DEFAULT_DAILY
+
+def _song_used_today(db, sid, role):
+    day_start = int(datetime.now(TZ_BEIJING).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    return db.execute("SELECT COUNT(*) FROM song_requests WHERE show_id=? AND from_role=? AND created_at>=? AND deleted=0",
+                      (sid, role, day_start)).fetchone()[0]
+
+def _song_roster(db, sid):
+    """能被点歌的人：插件上报的角色名单；没同步过就用激活码名单兜底"""
+    names = _phone_roster(_phone_sync_row(db, sid))
+    if not names:
+        names = [r["role_name"] for r in db.execute("SELECT role_name FROM phone_codes WHERE show_id=?", (sid,))]
+    return names
+
+def _song_create(db, sid, tid, from_role, to_role, song, message, source):
+    """网页和群里共用的点歌入口：返回 (ok, 提示, 行 id)"""
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    if not show or _schedule_zone(dict(show)) != "main":
+        return False, "❌ 不在档期内，暂时不能点歌", None
+    to_role = (to_role or "").strip()
+    if to_role in ("大家", "所有人"):
+        to_role = ""
+    if to_role and to_role not in _song_roster(db, sid):
+        return False, f"❌ 找不到「{to_role}」", None
+    if to_role == from_role:
+        return False, "❌ 不能点给自己", None
+    message = (message or "").strip()
+    if len(message) > _SONG_MAX_MSG:
+        return False, f"❌ 寄语最多 {_SONG_MAX_MSG} 字", None
+    if _blocked_hit(sid, from_role, "点歌寄语", message):
+        return False, BLOCKED_MSG, None
+    cap = _song_daily_cap(db, sid)
+    used = _song_used_today(db, sid, from_role)
+    if used >= cap:
+        return False, f"🎵 今天已经点了 {cap} 首，明天再来", None
+    sync = _phone_sync_row(db, sid)
+    game_day = (sync["snap"].get("game_day") or "") if sync else ""
+    cur = db.execute("""INSERT INTO song_requests (tenant_id, show_id, from_role, to_role, platform, song_id, song_mid, song_name,
+                        artists, album, cover, fee, message, source, game_day, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                     (tid, sid, from_role, to_role, song["platform"], song["id"], song.get("mid") or "", song["name"],
+                      song["artists"], song["album"], song["cover"], 1 if song.get("vip") else 0, message, source,
+                      game_day, int(time.time() * 1000)))
+    db.commit()
+    target = f"给 {to_role}" if to_role else "给大家"
+    return True, (f"🎵 已匿名点歌《{song['name']}》- {song['artists']} {target}，稍后在公告里播出。"
+                  f"今日第 {used + 1}/{cap} 首"), cur.lastrowid
+
+def _song_view(sg):
+    """页面显示用：平台、封面、能不能嵌播放器、跳转链接"""
+    qq = sg["platform"] == "qq"
+    return {"platform": sg["platform"], "platform_name": SONG_PLATFORMS.get(sg["platform"], ""),
+            "id": sg["song_id"], "name": sg["song_name"], "artists": sg["artists"], "cover": sg["cover"],
+            "vip": bool(sg["fee"]), "embed": (not qq),
+            "link": (f"https://y.qq.com/n/ryqq/songDetail/{sg['song_mid']}" if qq
+                     else f"https://music.163.com/song?id={sg['song_id']}")}
+
+def _song_rows(db, sid):
+    return [dict(r) for r in db.execute(
+        "SELECT * FROM song_requests WHERE show_id=? AND deleted=0 ORDER BY created_at, id", (sid,))]
+
+@app.route("/p/me/song")
+def player_song():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    why = None if _schedule_zone(dict(show)) == "main" else "不在档期内，暂时不能点歌"
+    return render_template("phone.html", mode="song", owner=owner, sid=sid, csrf=_phone_csrf(), why=why,
+                           contacts=sorted(n for n in _song_roster(db, sid) if n != owner),
+                           preset_to=request.args.get("to", ""), cap=_song_daily_cap(db, sid),
+                           used=_song_used_today(db, sid, owner), max_msg=_SONG_MAX_MSG)
+
+@app.route("/p/me/song/search")
+def player_song_search():
+    who = _phone_current()
+    if not who:
+        return jsonify(ok=False, msg="手机登录已失效"), 401
+    q = (request.args.get("q") or "").strip()
+    platform = "qq" if request.args.get("platform") == "qq" else "163"
+    if not q:
+        return jsonify(ok=True, songs=[])
+    now = time.time()
+    if now - _song_rate.get(who, 0) < 1:
+        return jsonify(ok=False, msg="搜得太快了，稍等一下"), 429
+    _song_rate[who] = now
+    if len(_song_rate) > 5000:
+        _song_rate.clear()
+    try:
+        return jsonify(ok=True, songs=_song_search(q, platform))
+    except RuntimeError as e:
+        return jsonify(ok=False, msg=str(e)), 502
+
+@app.route("/p/me/song", methods=["POST"])
+def player_song_post():
+    ok_, err = _moment_guard()
+    if err:
+        return err
+    sid, owner, tid = ok_
+    db = get_db()
+    platform = "qq" if request.form.get("platform") == "qq" else "163"
+    song_key = (request.form.get("song_id") or "").strip()[:40]
+    if not song_key:
+        return _moment_json(False, "先选一首歌")
+    try:
+        song = _song_lookup(platform, song_key)
+    except Exception:
+        song = None
+    if not song:
+        return _moment_json(False, "这首歌暂时查不到，换一首试试")
+    with _phone_send_lock:
+        ok, msg, _ = _song_create(db, sid, tid, owner, request.form.get("to", ""), song,
+                                  request.form.get("message", ""), "web")
+    return _moment_json(ok, msg)
+
+@app.route("/api/song/request", methods=["POST"])
+def api_song_request():
+    """群里「点歌」：插件把关键词和寄语交过来，这里搜第一首、校验、入库；公告群那份等下一次同步由插件发"""
+    tid  = get_tenant_from_token()
+    show = get_current_show_for_tenant(tid)
+    if not show:
+        return jsonify(ok=False, msg="❌ 还没有进行中的季度"), 503
+    data = request.json or {}
+    from_role = str(data.get("from_role") or "").strip()
+    keyword   = str(data.get("keyword") or "").strip()
+    if not from_role or not keyword:
+        return jsonify(ok=False, msg="❌ 点歌格式：点歌 歌名 [给 对方 寄语]")
+    platform = data.get("platform") if data.get("platform") in ("qq", "163") else None
+    songs, last_err = [], None
+    for pf in ([platform] if platform else ["163", "qq"]):
+        try:
+            songs = _song_search(keyword, pf)
+        except RuntimeError as e:
+            last_err = e
+            continue
+        if songs:
+            break
+    if not songs and last_err:
+        return jsonify(ok=False, msg="❌ " + str(last_err))
+    if not songs:
+        return jsonify(ok=False, msg=f"❌ 没搜到「{keyword}」，换个关键词试试（可以加上歌手名）")
+    db = get_db()
+    with _phone_send_lock:
+        ok, msg, _ = _song_create(db, show["id"], tid, from_role, data.get("to_role", ""), songs[0],
+                                  data.get("message", ""), "group")
+    return jsonify(ok=ok, msg=msg)
+
+def _song_pending_for_bot(db, sid, done_ids):
+    """同步用：先把插件回报已发的标掉；再给出还没发到公告群的（超过 2 小时的不补发，直接标掉）"""
+    now = int(time.time() * 1000)
+    ids = [int(i) for i in (done_ids or []) if str(i).isdigit()][:200]
+    if ids:
+        db.execute(f"UPDATE song_requests SET announced=1 WHERE show_id=? AND id IN ({','.join('?' * len(ids))})",
+                   [sid] + ids)
+    db.execute("UPDATE song_requests SET announced=1 WHERE show_id=? AND announced=0 AND created_at<?",
+               (sid, now - _SONG_ANNOUNCE_TTL))
+    db.commit()
+    return [{"id": r["id"], "platform": r["platform"], "song_id": r["song_id"], "mid": r["song_mid"],
+             "name": r["song_name"], "artists": r["artists"], "to": r["to_role"], "message": r["message"]}
+            for r in db.execute("SELECT * FROM song_requests WHERE show_id=? AND announced=0 AND deleted=0 ORDER BY id LIMIT 20",
+                                (sid,))]
+
 # ── 后台：朋友圈管理（空间/额度/删帖删图） ──
 
 def _moment_storage_warning():
@@ -6038,6 +6396,15 @@ def admin_phone_codes():
             db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, ?) "
                        "ON CONFLICT(show_id) DO UPDATE SET web_send=excluded.web_send",
                        (sid, 1 if request.form.get("on") == "1" else 0))
+        elif action == "song_daily":
+            try:
+                n = max(0, min(50, int(request.form.get("n") or 0)))
+            except ValueError:
+                n = 0
+            db.execute("INSERT INTO phone_settings (show_id, song_daily) VALUES (?, ?) "
+                       "ON CONFLICT(show_id) DO UPDATE SET song_daily=excluded.song_daily", (sid, n))
+        elif action == "delete_song":
+            db.execute("UPDATE song_requests SET deleted=1 WHERE id=? AND show_id=?", (request.form.get("id", type=int), sid))
         elif action == "stickers":
             text = "\n".join(_phone_parse_stickers(request.form.get("stickers", "")))
             db.execute("INSERT INTO phone_settings (show_id, stickers) VALUES (?, ?) "
@@ -6079,6 +6446,9 @@ def admin_phone_codes():
     return render_template("admin_phone_codes.html", rows=rows, show=show,
                            base_url=_phone_base_url(),
                            web_send=_phone_web_send_on(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
+                           song_daily=_song_daily_cap(db, sid), song_default=_SONG_DEFAULT_DAILY,
+                           songs=[dict(r, time=ts_to_str(r["created_at"])) for r in db.execute(
+                               "SELECT * FROM song_requests WHERE show_id=? AND deleted=0 ORDER BY id DESC LIMIT 50", (sid,))],
                            stickers_custom="\n".join(_phone_parse_stickers((db.execute(
                                "SELECT stickers FROM phone_settings WHERE show_id=?", (sid,)).fetchone() or {"stickers": ""})["stickers"])),
                            stickers_default="\n".join(_PHONE_DEFAULT_STICKERS),
