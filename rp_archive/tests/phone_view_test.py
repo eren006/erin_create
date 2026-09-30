@@ -97,4 +97,26 @@ assert secure.get("/p", base_url="http://127.0.0.1").status_code == 200
 assert secure.post("/api/phone/sync", base_url="http://archive.changri.work", json={}).status_code != 301
 with app.test_request_context("/", base_url="http://archive.changri.work"):
     assert A._phone_base_url() == "https://archive.changri.work"
+# 手机的记住登录不把整站 session 变成长效 cookie
+remember = app.test_client()
+with remember.session_transaction() as sess:
+    sess["tenant_id"] = 1
+r = remember.get("/p/" + codes["林晚"])
+cookies = r.headers.getlist("Set-Cookie")
+assert any("phone_auth=" in h and "Max-Age=2592000" in h and "HttpOnly" in h and "SameSite=Lax" in h for h in cookies)
+assert all("Expires=" not in h and "Max-Age=" not in h for h in cookies if h.startswith("session="))
+with remember.session_transaction() as sess:
+    assert sess["tenant_id"] == 1 and not sess.permanent and "phone_code" not in sess
+fresh = app.test_client()
+fresh.set_cookie(A._PHONE_COOKIE, remember.get_cookie(A._PHONE_COOKIE, path="/p").value, path="/p")
+assert fresh.get("/p/me").status_code == 200
+fresh.set_cookie(A._PHONE_COOKIE, "tampered", path="/p")
+assert fresh.get("/p/me").status_code == 302
+from unittest.mock import patch
+with patch("itsdangerous.timed.time.time", return_value=1):
+    expired = A._phone_signer().dumps(codes["林晚"])
+fresh.set_cookie(A._PHONE_COOKIE, expired, path="/p")
+assert fresh.get("/p/me").status_code == 302
+r = app.test_client().get("/p/" + codes["林晚"], base_url="https://archive.changri.work")
+assert "Secure" in r.headers["Set-Cookie"]
 print("ALL OK")

@@ -8,6 +8,7 @@ TZ_BEIJING = timezone(timedelta(hours=8))
 from flask import (Flask, render_template, request, redirect,
                    url_for, session, jsonify, abort, send_file, g)
 from werkzeug.security import generate_password_hash, check_password_hash
+from itsdangerous import URLSafeTimedSerializer, BadSignature
 import sqlite3
 
 app = Flask(__name__)
@@ -4766,7 +4767,7 @@ def _phone_msgs(db, sid, owner, other):
 # ── 玩家手机激活码：后台给每个角色生成一个码，玩家凭码只看自己的手机 ─────────────────────
 # 安全设计：
 #   · 码 10 位、32 个字符（约 50 bit），同一 IP 15 分钟内输错 10 次就锁 15 分钟，猜不出来；
-#   · 码只在进门时出现一次：/p/<码> 校验后记进会话，立刻跳到 /p/me，地址栏里不留码，
+#   · 码只在进门时出现一次：/p/<码> 校验后记进独立签名 cookie，立刻跳到 /p/me，地址栏里不留码，
 #     玩家截图发群也不会把码带出去；
 #   · 每次打开都重新查库校验：后台「重置」或季度结束（is_current=0）后，已经打开的页面刷新就进不去了；
 #   · /p 下的页面不缓存、不带 Referer、不许被 iframe 嵌、不让搜索引擎收录。
@@ -4812,23 +4813,31 @@ def _phone_code_owner(db, code):
     return (row["show_id"], row["role_name"]) if row else None
 
 def _phone_try_enter(code):
-    """校验码并记进会话；成功返回跳转，失败返回带错误的输码页"""
+    """校验码并写入独立 cookie；不改变团账号或后台会话的期限"""
     if _phone_ip_locked():
         return render_template("phone.html", mode="entry", error="输错太多次了，15 分钟后再试"), 429
     code = (code or "").strip().upper()
     if not _phone_code_owner(get_db(), code):
         _phone_note_fail()
         return render_template("phone.html", mode="entry", error=_PHONE_BAD_CODE), 404
-    session["phone_code"] = code
-    session.permanent = True
-    return redirect(url_for("player_phone_inbox"))
+    resp = redirect(url_for("player_phone_inbox"))
+    resp.set_cookie(_PHONE_COOKIE, _phone_signer().dumps(code), max_age=_PHONE_COOKIE_AGE,
+                    httponly=True, samesite="Lax", secure=not _phone_local(), path="/p")
+    return resp
+
+_PHONE_COOKIE = "phone_auth"
+_PHONE_COOKIE_AGE = 30 * 24 * 60 * 60
+
+def _phone_signer():
+    return URLSafeTimedSerializer(app.secret_key, salt="player-phone-auth")
 
 def _phone_current():
-    """会话里的码还有效就返回 (show_id, role_name)，否则清掉它返回 None"""
-    who = _phone_code_owner(get_db(), session.get("phone_code"))
-    if not who:
-        session.pop("phone_code", None)
-    return who
+    """独立 cookie 验签后每次查库，重置激活码和季度结束立即失效。"""
+    try:
+        code = _phone_signer().loads(request.cookies.get(_PHONE_COOKIE, ""), max_age=_PHONE_COOKIE_AGE)
+    except BadSignature:
+        return None
+    return _phone_code_owner(get_db(), code) if isinstance(code, str) else None
 
 def _phone_local():
     return urlparse(request.host_url).hostname in ("localhost", "127.0.0.1")
@@ -4885,8 +4894,9 @@ def player_phone_thread(other):
 
 @app.route("/p/logout", methods=["POST"])
 def player_phone_logout():
-    session.pop("phone_code", None)
-    return redirect(url_for("phone_code_entry"))
+    resp = redirect(url_for("phone_code_entry"))
+    resp.delete_cookie(_PHONE_COOKIE, path="/p", httponly=True, samesite="Lax", secure=not _phone_local())
+    return resp
 
 # ── 网页发送：机器人挂掉时的备用通道 ─────────────────────────────────────────────
 # 玩家在网页上发的短信/礼物直接写进存档（extra_info.source="web"），收件人在自己的网页手机里看到，
