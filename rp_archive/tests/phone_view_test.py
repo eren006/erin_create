@@ -86,7 +86,7 @@ got=dict(c.execute("SELECT role_name, code FROM phone_codes").fetchall())
 assert "新人甲" in got and "新人乙" in got and got["林晚"]==codes["林晚"], got
 pg=adm.get("/admin/phone_codes").get_data(as_text=True); assert "新人甲" in pg and got["新人甲"] in pg
 nc=app.test_client(); assert nc.get("/p/"+got["新人甲"]).status_code==302
-assert "还没有短信和礼物" in nc.get("/p/me").get_data(as_text=True)
+assert "开季后，群里的短信往来和收到的礼物会留在这里" in nc.get("/p/me").get_data(as_text=True)
 adm.post("/admin/phone_codes", data={"action":"delete","role":"新人乙"})
 assert "新人乙" not in adm.get("/admin/phone_codes").get_data(as_text=True)
 # 只有玩家入口强制 HTTPS，保留路径和查询串；本地仍可 HTTP

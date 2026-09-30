@@ -212,7 +212,7 @@ a { color: var(--link); text-decoration: none; }
       </div>
     </a>
     {% else %}
-    <div class="empty">还没有短信和礼物</div>
+    <div class="empty">这里还很安静。开季后，群里的短信往来和收到的礼物会留在这里。{% if status.can %}<br>也可以点右上角 ✎ 写一条新信息。{% endif %}</div>
     {% endfor %}
   </div>
 
