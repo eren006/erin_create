@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.8.1
+// @version      1.8.2
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.8.1");
+    ext = seal.ext.new("changri", "长日将尽", "1.8.2");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -1410,14 +1410,8 @@ function processProfileFieldLine(platform, roleName, line) {
     if (line.startsWith("修改皮相")) {
         const val = line.slice(4).trim();
         if (!val) return "❌ 请输入明星名，例：修改皮相 刘亦菲";
-        const prof = getCharProfile(platform, roleName);
-        const now = Date.now();
-        const cooldown = 2 * 3600 * 1000;
-        if (prof.lookUpdatedAt && now - prof.lookUpdatedAt < cooldown) {
-            const remain = Math.ceil((cooldown - (now - prof.lookUpdatedAt)) / 60000);
-            return `⏳ 皮相修改冷却中，还需等待 ${remain} 分钟`;
-        }
-        setCharProfile(platform, roleName, { look: val, lookUpdatedAt: now });
+        // lookUpdatedAt 不再用于冷却，但默认皮相判断要靠它区分"自己改过"
+        setCharProfile(platform, roleName, { look: val, lookUpdatedAt: Date.now() });
         refreshLookWall(platform);
         return `✅ 皮相已更新为：${val}`;
     }
