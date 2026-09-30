@@ -903,12 +903,14 @@ a { color: var(--link); text-decoration: none; }
       {% endif %}
       <a class="row" href="{{ url_for('phone_guide') }}"><div class="avatar tile">📱</div><span class="name">使用指南</span><span class="chev" aria-hidden="true">›</span></a>
     </div>
+    <div class="disc-mark">长日将尽 · 小手机</div>
   </div>
   <style>
   .daily-card { margin: var(--gap, 12px) var(--gutter, 18px); padding: 14px 16px; border-radius: 14px; background: var(--theirs); cursor: pointer; min-height: 84px; box-sizing: border-box; }
   .daily-card .q { font-size: 16px; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .list .disc-group { flex: none; margin: 14px var(--gutter, 18px) 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
   .list .daily-card { flex: none; }
+  .disc-mark { flex: none; margin: 28px 0 20px; text-align: center; font-size: 11px; letter-spacing: 2px; color: var(--muted); opacity: .7; }
   .list .disc-group a.row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; border: 0; border-bottom: .5px solid var(--line); margin: 0; color: var(--text); text-decoration: none; }
   .list .disc-group a.row:last-child { border-bottom: 0; }
   .list .disc-group a.row .avatar.tile { position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-width: 32px; border-radius: 9px; font-size: 18px; margin: 0; }
