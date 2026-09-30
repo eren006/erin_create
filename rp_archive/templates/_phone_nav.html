@@ -11,9 +11,6 @@
   </nav>
 </div>
 {% elif mode == 'thread' %}
-{% if not (can_reply and (status.sms or status.gift)) %}
-<nav class="thread-tools" aria-label="对话操作"><button type="button" id="threadMenuOpen" aria-haspopup="dialog">更多操作</button></nav>
-{% endif %}
 <dialog class="appearance action-sheet" id="threadMenu" aria-labelledby="threadMenuTitle">
   <div class="heading"><h2 id="threadMenuTitle">{{ group.name if group else other }}</h2><button class="quiet-button" id="threadMenuClose" type="button">完成</button></div>
   {% if group %}
@@ -31,6 +28,12 @@
   {% endif %}
   {% endif %}
   {% else %}
+  {% if not alias_thread and not phone_admin %}
+  <form method="post" action="{{ url_for('player_remark') }}" class="group-manage">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="target" value="{{ other }}">
+    <input name="remark" maxlength="12" value="{{ (my_remarks or {}).get(other, '') }}" placeholder="给 TA 写个备注（只有你看得到）" aria-label="备注" autocomplete="off"><button type="submit" class="quiet-button">保存</button>
+  </form>
+  {% endif %}
   <a class="profile-item" href="{{ url_for('player_phone_library', other=other) }}">检索此对话 <span>›</span></a>
   {% endif %}
   <button type="button" class="profile-item" id="pinContact" aria-pressed="false">置顶</button>

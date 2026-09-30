@@ -1511,6 +1511,17 @@ def _migrate(conn):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_game_scores_rank ON game_scores(game, score DESC, updated_at)")
+    # 给对方的备注：只有自己看得到，显示成「备注（真名）」，优先于对方设的微信名
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_remarks (
+            show_id    INTEGER NOT NULL,
+            owner      TEXT    NOT NULL,
+            target     TEXT    NOT NULL,
+            remark     TEXT    NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (show_id, owner, target)
+        )
+    """)
     # 每日一句缓存：一言 / 今日诗词各一条，按天缓存，外部接口挂了就退回最近一条
     conn.execute("""
         CREATE TABLE IF NOT EXISTS daily_quotes (
@@ -6866,13 +6877,61 @@ def inject_phone_avatars():
         # 底部导航「心动信」的未读点：收到的最新一封心动信的存档 id（进过信箱就记成已读）
         last = db.execute("SELECT MAX(id) FROM extra_events WHERE show_id=? AND type='lovemail' AND to_role=?", who).fetchone()[0]
         nicks = _nick_map(db, who[0])
+        remarks = _remark_map(db, who[0], who[1])
         def disp(name):
-            """名字的显示写法：设了微信名就是「微信名（真名）」，没设就是真名"""
-            nick = nicks.get(name)
+            """名字的显示写法：自己给 TA 写了备注就是「备注（真名）」，否则 TA 设了微信名就是「微信名（真名）」，都没有就是真名"""
+            nick = remarks.get(name) or nicks.get(name)
             return f"{nick}（{name}）" if nick else name
-        return {"phone_avatars": {r["role_name"]: r["updated_at"] for r in rows}, "lovemail_last": last or 0, "disp": disp}
+        return {"phone_avatars": {r["role_name"]: r["updated_at"] for r in rows}, "lovemail_last": last or 0, "disp": disp,
+                "my_remarks": remarks}
     except Exception:
         return {}
+
+# ── 给对方的备注 ─────────────────────────────────────────────────────────────────
+_REMARK_MAX = 12
+
+def _remark_map(db, sid, owner):
+    if owner == PHONE_ADMIN:
+        return {}
+    return {r["target"]: r["remark"] for r in db.execute(
+        "SELECT target, remark FROM phone_remarks WHERE show_id=? AND owner=?", (sid, owner))}
+
+@app.route("/p/me/remark", methods=["POST"])
+def player_remark():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    f = request.form
+    target = (f.get("target") or "").strip()
+    back = url_for("player_phone_thread", other=target) if target else url_for("player_phone_inbox")
+    if owner == PHONE_ADMIN or not hmac.compare_digest(f.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+        return redirect(back)
+    db = get_db()
+    roster = _phone_roster(_phone_sync_row(db, sid))
+    if target == owner or target not in roster:
+        session["phone_flash"] = "❌ 只能给名单里的人写备注"
+        return redirect(back)
+    remark = (f.get("remark") or "").strip()
+    if not remark or remark == target:
+        db.execute("DELETE FROM phone_remarks WHERE show_id=? AND owner=? AND target=?", (sid, owner, target))
+        db.commit()
+        session["phone_flash"] = "已清除备注"
+        return redirect(back)
+    if len(remark) > _REMARK_MAX:
+        session["phone_flash"] = f"❌ 备注最多 {_REMARK_MAX} 个字（现在 {len(remark)} 个）"
+    elif re.search(r"[()（）\[\]【】＠@\n\r]", remark) or _CQ_CODE.search(remark):
+        session["phone_flash"] = "❌ 备注里不能有括号、@ 或特殊符号"
+    elif _blocked_hit(sid, owner, "备注", remark):
+        session["phone_flash"] = BLOCKED_MSG
+    else:
+        db.execute("""INSERT INTO phone_remarks (show_id, owner, target, remark, updated_at) VALUES (?,?,?,?,?)
+                      ON CONFLICT(show_id, owner, target) DO UPDATE SET remark=excluded.remark, updated_at=excluded.updated_at""",
+                   (sid, owner, target, remark, int(time.time() * 1000)))
+        db.commit()
+        session["phone_flash"] = f"✅ 备注已保存，只有你自己看得到"
+    return redirect(back)
 
 # ── 微信名 ──────────────────────────────────────────────────────────────────────
 # 在「我的」里自己设，别人在消息列表和对话标题里看到「微信名（真名）」；真名永远跟在括号里，所以冒充不了别人。

@@ -466,7 +466,7 @@ a { color: var(--link); text-decoration: none; }
   padding: calc(env(safe-area-inset-top) + 10px) var(--gutter, 18px) 10px; min-height: calc(env(safe-area-inset-top) + 104px); box-sizing: border-box;
 }
 .bar:not(.big):not(.tab-bar) > :first-child { grid-row: 1; grid-column: 1; height: 44px; justify-self: start; padding: 0; margin-left: 0; }
-.bar:not(.big):not(.tab-bar) > .right { grid-row: 1; grid-column: 2; height: 44px; justify-self: end; }
+.bar:not(.big):not(.tab-bar) > .right { grid-row: 1; grid-column: 2; height: 44px; justify-self: end; gap: 8px; }
 .bar:not(.big):not(.tab-bar) .title { grid-row: 2; grid-column: 1 / -1; align-self: start; max-width: none; text-align: left; font-size: 32px; line-height: 40px; font-weight: 700; letter-spacing: -.5px; padding: 0; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .bar:not(.big):not(.tab-bar) .title:has(.avatar.head) { padding-top: 0; }
 .bar .title small { display: none; }
@@ -1346,7 +1346,9 @@ a { color: var(--link); text-decoration: none; }
     {% elif alias_thread == 'out' %}<div class="title">{% set _w = other.partition('＠')[0] %}<div class="avatar head" data-name="{{ _w }}">{{ _w[:1] }}</div>{{ disp(_w) if disp else _w }}<small>你的化名：{{ other.partition('＠')[2] }}</small></div>
     {% elif alias_thread == 'back' %}<div class="title"><div class="avatar head public-avatar">?</div>{{ other }}<small>匿名</small></div>
     {% else %}<div class="title"><div class="avatar head" data-name="{{ other }}">{{ other[:1] }}</div>{{ disp(other) if disp else other }}{{ npc(other) }}{% if admin_as %}<small>管理 · 以 {{ owner }} 的视角</small>{% endif %}</div>{% endif %}
-    <div class="right">{% if alias_state and alias_state.party and not alias_state.blocked and not phone_admin %}
+    <div class="right">
+      <button class="icon-btn" type="button" id="threadMenuOpen" aria-haspopup="dialog" aria-label="更多对话操作" title="更多"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg></button>
+      {% if alias_state and alias_state.party and not alias_state.blocked and not phone_admin %}
       <form method="post" action="{{ url_for('player_alias_block') }}" onsubmit="return confirm('拉黑后这段匿名对话立刻结束，双方都不能再发；满 2 小时后你才能解除。确定？')">
         <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="key" value="{{ other }}">
         <button class="quiet-button alias-block" type="submit">拉黑并结束</button></form>{% endif %}</div>
@@ -1422,7 +1424,6 @@ a { color: var(--link); text-decoration: none; }
       <button type="button" class="preset-clear" id="presetClear" hidden aria-label="改成自己写礼物">×</button>
     </div>
     {% endif %}
-    {% if not phone_admin %}<button class="icon sticker-toggle" type="button" id="threadMenuOpen" aria-haspopup="dialog" aria-label="更多对话操作">⋯</button>{% endif %}
     <textarea name="text" id="text" rows="1" maxlength="500" placeholder="短信">{{ draft }}</textarea>
     <span class="remaining" id="remaining" aria-live="polite" hidden></span>
     <button class="icon send" type="submit" id="sendBtn" aria-label="发送">↑</button>
