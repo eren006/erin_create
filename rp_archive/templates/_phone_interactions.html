@@ -8,16 +8,15 @@
 .interaction-summary span { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
 .interactions h2 { display: flex; align-items: baseline; justify-content: space-between; margin: 0 2px 6px; font-size: 14px; }
 .interactions h2 small { font-size: 12px; color: var(--muted); font-weight: 400; }
-.interaction-head, .interaction-row { display: grid; grid-template-columns: minmax(0,1.3fr) repeat(3, minmax(0,1fr)); align-items: center; column-gap: 6px; padding: 0 14px; }
-.interaction-head { font-size: 12px; color: var(--muted); padding-bottom: 4px; }
-.interaction-head span + span, .interaction-row > span { text-align: center; }
 .interaction-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
-.interaction-row { min-height: 48px; border-top: .5px solid var(--line); font-variant-numeric: tabular-nums; font-size: 14px; }
+.interaction-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-top: .5px solid var(--line); min-width: 0; }
 .interaction-row:first-child { border-top: 0; }
-.interaction-row .who { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 15px; font-weight: 600; }
-.interaction-row .who i { font-style: normal; width: 26px; height: 26px; border-radius: 8px; background: var(--theirs); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.interaction-row .who em { font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.interaction-row .dim { color: var(--muted); }
+.interaction-row .avatar { width: 36px; height: 36px; font-size: 15px; }
+.interaction-body { min-width: 0; flex: 1; }
+.interaction-name { font-size: 15px; font-weight: 600; line-height: 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.interaction-detail { display: flex; flex-wrap: wrap; gap: 0 12px; margin-top: 1px; font-size: 13px; line-height: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.interaction-detail b { color: var(--text); font-weight: 600; }
+.interaction-detail .is-zero, .interaction-detail .is-zero b { color: color-mix(in srgb, var(--muted) 65%, transparent); font-weight: 400; }
 .interaction-privacy { margin: 10px 2px 0; font-size: 12px; color: var(--muted); line-height: 1.7; }
 .interaction-privacy strong { color: var(--text); font-weight: 500; }
 .interaction-empty { padding: 28px 8px; text-align: center; font-size: 14px; color: var(--muted); }
@@ -30,14 +29,18 @@
   </div>
   <h2>往来记录 <small>{{ inter|length }} 位联系人</small></h2>
   {% if inter %}
-  <div class="interaction-head" aria-hidden="true"><span></span><span>短信 发/收</span><span>礼物 送/收</span><span>心动信 寄</span></div>
   <ol class="interaction-list">
   {% for r in inter %}
     <li class="interaction-row" aria-label="与{{ r.name }}的往来">
-      <span class="who"><i aria-hidden="true">{{ r.name[:1] }}</i><em>{{ r.name }}</em></span>
-      <span>{{ r.sms_sent }}<span class="dim"> / </span>{{ r.sms_recv }}</span>
-      <span>{{ r.gift_sent }}<span class="dim"> / </span>{{ r.gift_recv }}</span>
-      <span>{{ r.lm_sent }}</span>
+      <span class="avatar" data-name="{{ r.name }}" aria-hidden="true">{{ r.name[:1] }}</span>
+      <div class="interaction-body">
+        <div class="interaction-name">{{ r.name }}</div>
+        <div class="interaction-detail">
+          <span{% if not (r.sms_sent or r.sms_recv) %} class="is-zero"{% endif %}>短信 发<b>{{ r.sms_sent }}</b> 收<b>{{ r.sms_recv }}</b></span>
+          <span{% if not (r.gift_sent or r.gift_recv) %} class="is-zero"{% endif %}>礼物 送<b>{{ r.gift_sent }}</b> 收<b>{{ r.gift_recv }}</b></span>
+          <span{% if not r.lm_sent %} class="is-zero"{% endif %}>心动信 寄<b>{{ r.lm_sent }}</b></span>
+        </div>
+      </div>
     </li>
   {% endfor %}
   </ol>

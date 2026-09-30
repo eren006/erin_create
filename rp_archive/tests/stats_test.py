@@ -85,12 +85,12 @@ def cells(html, who):
     row = re.search(r'aria-label="与' + who + r'的往来">(.*?)</li>', html, re.S).group(1)
     return re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", row))
 row = cells(i, "周屿")
-ok(row == "周周屿1/10/11", row)   # 短信 发1/收1，礼物 送0/收1，心动信 寄1
+ok(row == "周周屿短信发1收1礼物送0收1心动信寄1", row)
 ok('aria-label="与沈知意的往来"' not in i and "收到 1 封心动信" in i, "lovemail sender not revealed")
 zi = page(zy, "interact")
 ok('aria-label="与林晚的往来"' in zi and "收到 1 封心动信" in zi, "zy interact")
 zrow = cells(zi, "林晚")
-ok(zrow == "林林晚1/10/00", "zy: 短信 发1/收1；群里送出的礼物只进收件人手机，发件人这边 0/0；心动信寄 0 → " + zrow)
+ok(zrow == "林林晚短信发1收1礼物送0收0心动信寄0", "zy: 短信 发1/收1；群里送出的礼物只进收件人手机，发件人这边 0/0；心动信寄 0 → " + zrow)
 
 # 他人与他人之间的往来不能进入我的统计；URL 参数不能切换统计身份。
 before = page(lin, "interact")
