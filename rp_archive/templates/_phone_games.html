@@ -59,12 +59,11 @@
       {% for key, g in games.items() %}
       <a class="gm-card" href="{{ url_for('player_games', game=key) }}">
         <div class="ic">{{ g.icon }}</div>
-        <div class="tx"><b>{{ g.name }}</b><span>{{ g.desc }}</span></div>
-        <div class="bs">{% if summary[key].best is not none %}最高 {{ summary[key].best }}{{ g.unit }}<br>第 {{ summary[key].rank }} 名{% else %}还没玩过{% endif %}</div>
+        <div class="tx"><b>{{ g.name }}</b></div>
+        <div class="bs">{% if summary[key].best is not none %}最高 {{ summary[key].best }}{{ g.unit }}<br>第 {{ summary[key].rank }} 名{% else %}—{% endif %}</div>
       </a>
       {% endfor %}
     </div>
-    <div class="gm-note">纯消遣，不影响剧情和任何道具。每个游戏有一张全服排行榜，名字和最高分会永久留在榜上，季度结束也不会消失。{% if phone_admin %}（管理身份只能看榜，不能提交分数。）{% endif %}</div>
   </div>
 {% else %}
   {% set g = games[game] %}
@@ -86,7 +85,6 @@
       {% if game == 'snake' %}
       <div class="gm-pad" aria-label="方向键"><button class="u" data-d="u" aria-label="上">▲</button><button class="l" data-d="l" aria-label="左">◀</button><button class="d" data-d="d" aria-label="下">▼</button><button class="r" data-d="r" aria-label="右">▶</button></div>
       {% endif %}
-      <div class="gm-note" style="padding:10px 0 0;text-align:center">{% if game == '2048' %}在方块上滑动（或方向键）合并相同数字。{% elif game == 'snake' %}滑动屏幕或点方向键控制，吃到 🍎 +10 分。{% else %}点击地鼠，30 秒内敲得越多越好。{% endif %}</div>
     </div>
     <div class="gm-rank">
       <h3>全服排行榜 · {{ g.name }}</h3>
