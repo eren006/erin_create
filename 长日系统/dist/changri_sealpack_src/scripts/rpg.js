@@ -4743,9 +4743,15 @@ cmd_battle_history.solve = (ctx, msg, cmdArgs) => {
 
 let cmd_quick_init = seal.ext.newCmdItemInfo();
 cmd_quick_init.name = "一键初始化";
-cmd_quick_init.help = "【管理员】一键初始化攻防系统 - 注册属性和回血药\n一键初始化\n  将自动创建：\n  · 5个RPG属性（HP、MP、ATK、DEF、AGI）\n  · 4种回血药（小、中、大、满）\n  · 启用攻防系统";
+cmd_quick_init.help = "【已停用】战斗属性和回血药请在网页端「资料库」添加，攻防用「。设置 DLC」打开";
 cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+    // 1.8.0 起停用：它往机器人本地写属性/回血药/攻防开关，但这些现在都以网页端为准，
+    // 下次网页端有任何改动、自动拉取就会整份覆盖掉，注册了也留不住。改成引导去网页端（同「注册装备」等指令）
+    return seal.replyToSender(ctx, msg,
+        movedToWeb("战斗属性（HP/MP/ATK/DEF/AGI）和回血药", "资料库 → 属性 · 加点 / 物品 · 装备 · 货币") +
+        "\n攻防玩法本身用「。设置 DLC」打开。");
+    // 以下为旧的群内一键初始化实现，已停用（保留供参考）
 
     const main = getMainExt();
     if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
@@ -4940,9 +4946,8 @@ cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
     reply += `· 配置攻防：攻防 设置 参数 值\n`;
     reply += `· 创建池子：注册池子 回血药池 fixed`;
 
-    // 注册池子开启/关闭命令
-    registerPoolToggleCmds();
-    reply += `\n· 已启用池子控制命令：开启池子、关闭池子`;
+    // （以前这里调用 registerPoolToggleCmds() 并提示「已启用开启池子/关闭池子」——那个函数和这两条指令从来没实现过，
+    //  调用直接 ReferenceError，导致上面拼好的回复发不出去，管理员看起来像「一键初始化」没反应。池子开关在网页端「抽取池」里做）
 
     seal.replyToSender(ctx, msg, reply);
     return seal.ext.newCmdExecuteResult(true);
