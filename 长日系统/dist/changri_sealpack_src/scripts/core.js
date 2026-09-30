@@ -7452,7 +7452,9 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
                 torn_second_half:   torn ? torn.secondHalf : undefined,
                 is_chaos:           isMisdelivered || isContentChaos || isSignatureChaos || !!torn,
                 isPublic:           isPublicSms,
-                hide_receiver:      isPublicSms && hideReceiverOnDrop
+                hide_receiver:      isPublicSms && hideReceiverOnDrop,
+                // 网页「公开播报」照这个决定显示原文还是篡改后的内容，跟群里那条一致
+                public_show_effect: !!chaosConfig.publicShowEffect
             },
             game_day:   gameDay,
             session_id: "",
@@ -7469,7 +7471,7 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
     const smsReceiptText = `🕊️ 信件已由鸽子衔往 ${toname} 处。今日已发 ${userRec.count}/${chaosConfig.dailyLimit}。\n${RECALL_RECEIPT_HINT}`;
     seal.replyToSender(ctx, msg, smsReceiptText);
 
-    // 公开逻辑
+    // 公开逻辑（存档里标了 isPublic，网页手机的「公开播报」也会有一份）
     if (isPublicSms) {
         const pMsg = seal.newMessage();
         pMsg.messageType = "group";
@@ -12529,7 +12531,12 @@ async function phoneWebSync() {
             gift_cooldown_min: getStorageInt("giftCooldown", 30),
             gift_daily_limit: getStorageInt("giftDailyLimit", 100),
             gift_mode: getStorageInt("giftMode", 0),
-            gift_window: giftWin ? { start: giftWin.start, end: giftWin.end } : null
+            gift_window: giftWin ? { start: giftWin.start, end: giftWin.end } : null,
+            // 公开播报：网页发送时照同样的开关和概率决定是否公开（网页发的只进网页「公开播报」，不发群）
+            sms_public: !!kvGet("letter_public_send", false),
+            gift_public: !!kvGet("gift_public_send", false),
+            gift_public_chance: getStorageInt("giftPublicChance", 50),
+            hide_receiver: cachedGet("drop_hide_receiver") === "true"
         };
 
         const featureOff = {};

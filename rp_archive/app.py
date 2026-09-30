@@ -4880,6 +4880,7 @@ def player_phone_inbox():
     db = get_db()
     return render_template("phone.html", mode="inbox", owner=owner, sid=sid,
                            threads=_phone_threads(db, sid, owner), status=_phone_status(db, sid, owner),
+                           public=_phone_public_summary(db, sid),
                            revision=_phone_revision(_phone_views(db, sid, owner)))
 
 def _phone_views(db, sid, owner):
@@ -4905,6 +4906,17 @@ def player_phone_poll():
             incoming[m["other"]] = max(incoming.get(m["other"], 0), m["ts"])
     return jsonify(latest=max((m["ts"] for m in views), default=0),
                    revision=revision, incoming=incoming)
+
+@app.route("/p/me/public")
+def player_phone_public():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    return render_template("phone.html", mode="public", owner=owner, sid=sid,
+                           items=_phone_public_items(db, sid),
+                           revision=_phone_revision(_phone_views(db, sid, owner)))
 
 @app.route("/p/me/<other>")
 def player_phone_thread(other):
@@ -4970,6 +4982,47 @@ def _phone_stickers(db, sid):
     row = db.execute("SELECT stickers FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
     custom = _phone_parse_stickers(row["stickers"]) if row else []
     return custom or _PHONE_DEFAULT_STICKERS
+
+# ── 公开播报：公告群播过的短信/礼物，网页手机里一直有一份（不管有没有开网页发送）──
+# 网页上发的短信/礼物被抽中公开时，只有网页这一份（网页发送不进 QQ 群）。
+# 显示规则跟插件往公告群发的那条一模一样，不能多透露：
+#   · 发件人用署名（from_custom_name，没有就是本名），不是落款——落款混乱不影响播报；
+#   · 收件人是「原本想发/送给的人」（intended_to），隐藏收件人时显示「某人」——误送了播报也看不出来；
+#   · 短信内容看插件当时的 publicShowEffect：开了显示送达的（被篡改过的）内容，没开显示原文；
+#   · 丢失的礼物插件不播报，这里也不会有（isPublic 本来就是 false）。
+# 旧版插件存的礼物没有 intended_to，只能退回 to_role（那时误送+公开同时发生的会不一致，概率很低）。
+def _phone_public_items(db, sid):
+    rows = db.execute(
+        "SELECT * FROM extra_events WHERE show_id=? AND type IN ('sms','gift') "
+        "AND json_extract(extra_info, '$.isPublic') IN (1, 'true') ORDER BY timestamp, id", (sid,)
+    ).fetchall()
+    items = []
+    for e in _parse_events(rows):
+        info = e["extra_info"] or {}
+        if e["type"] == "gift" and info.get("isLost"):
+            continue
+        item = {"kind": e["type"], "from": info.get("from_custom_name") or e["from_role"],
+                "to": "某人" if info.get("hide_receiver") else (info.get("intended_to") or e["to_role"]),
+                "ts": e["timestamp"] or 0, "time": _phone_time(e["timestamp"]), "game_day": e["game_day"] or ""}
+        if e["type"] == "sms":
+            item["text"] = (info.get("delivered") or e["content"]) if info.get("public_show_effect") else e["content"]
+        else:
+            item.update(gift_name=info.get("giftName") or "礼物", text=e["content"] or "")
+        items.append(item)
+    prev_day = None
+    for it in items:
+        it["day_break"] = it["game_day"] if it["game_day"] != prev_day else None
+        prev_day = it["game_day"]
+    return items
+
+def _phone_public_summary(db, sid):
+    """消息列表顶部「公开播报」那一行用：没有任何播报时返回 None（不显示这一行）"""
+    items = _phone_public_items(db, sid)
+    if not items:
+        return None
+    last = items[-1]
+    preview = f"{last['from']} → {last['to']}：" + (f"🎁 {last['gift_name']}" if last["kind"] == "gift" else last["text"].replace("\n", " "))
+    return {"count": len(items), "preview": preview, "time": last["time"], "game_day": last["game_day"], "ts": last["ts"]}
 
 def _phone_web_send_on(db, sid):
     row = db.execute("SELECT web_send FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
@@ -5154,8 +5207,11 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text):
             "is_signature_chaos": signature != f"落款：{owner}", "is_torn": bool(torn),
             "torn_holder": torn["holder"] if torn else None,
             "torn_second_half": torn["second"] if torn else None,
-            "isPublic": False,
         }
+        # 公开播报：跟群里一样的开关和概率；网页发的只进网页「公开播报」，不发公告群
+        info["isPublic"] = bool(rules.get("sms_public")) and rnd.randint(1, 100) <= int(chaos.get("publicChance", 50))
+        info["hide_receiver"] = info["isPublic"] and bool(rules.get("hide_receiver"))
+        info["public_show_effect"] = bool(chaos.get("publicShowEffect"))
         info["is_chaos"] = info["is_misdelivered"] or info["is_content_chaos"] or info["is_signature_chaos"] or bool(torn)
         _phone_insert_event(db, sid, tid, "sms", owner, true_to, text, info, now, game_day)
         return True, receipt
@@ -5192,8 +5248,9 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text):
         return False, f"❌ {true_to} 已拒绝你的联络。"
     if blk:
         lost = True  # 静默拉黑复用「礼物丢失」：不投递，发件人看到的跟成功一样
+    is_public = (not lost) and bool(rules.get("gift_public")) and rnd.randint(1, 100) <= int(rules.get("gift_public_chance", 50))
     info = {"source": "web", "day_key": day_key, "giftName": "一份特别的礼物", "intended_to": to_name,
-            "isLost": lost, "isPublic": False, "hide_receiver": False}
+            "isLost": lost, "isPublic": is_public, "hide_receiver": is_public and bool(rules.get("hide_receiver"))}
     _phone_insert_event(db, sid, tid, "gift", owner, true_to, text, info, now, game_day)
     return True, f"🎁 已成功将 一份特别的礼物 送往「{to_name}」的房间。\n(今日第 {used + 1}份)"
 

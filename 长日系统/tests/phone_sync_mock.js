@@ -47,6 +47,7 @@ eval(fnSrc + "\n;globalThis.phoneWebSync = phoneWebSync; globalThis.phoneWebSend
   assert.equal(CACHE.phone_web_cursor, "43");
   assert.deepEqual(stats, [["QQ","林晚","周屿","sms"],["QQ","林晚","周屿","gift",true],["QQ","周屿","林晚","sms"]]);
   assert.equal(KV.phone_web_send.on, true);
+  assert.equal(snap.rules.sms_public, false); assert.equal(snap.rules.gift_public_chance, 50); assert.equal(snap.rules.hide_receiver, false);
   assert.ok(phoneWebSendNotice("短信").includes("https://archive.x/p"));
   KV.phone_web_send.at = Date.now() - 11 * 60 * 1000; assert.equal(phoneWebSendNotice("短信"), null);  // 过期当关闭
   await phoneWebSync(); assert.equal(sent.body.after, 43);

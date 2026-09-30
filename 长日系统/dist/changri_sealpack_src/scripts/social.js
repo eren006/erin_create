@@ -1704,7 +1704,8 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
             to_role:         actualToname,
             to_qq:           actualToUid,
             content:         giftContent || "",
-            extra_info:      { giftName: giftDisplayName, isLost: isLost, isPublic: isPublicDrop, hide_receiver: isPublicDrop && hideReceiverOnDrop },
+            // intended_to：误送时 to_role 是实际收件人，网页「公开播报」要照群里那样显示原本想送的人，不然等于泄露误送
+            extra_info:      { giftName: giftDisplayName, intended_to: toname, isLost: isLost, isPublic: isPublicDrop, hide_receiver: isPublicDrop && hideReceiverOnDrop },
             game_day:        cachedGet("global_days") || "D?",
             session_id:      "",
             timestamp:       giftArchiveTs

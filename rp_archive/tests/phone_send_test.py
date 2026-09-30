@@ -175,4 +175,39 @@ ok("(｡･ω･｡)" in lin.get("/p/me/周屿").get_data(as_text=True), "reset 
 ok('id="stickers"' not in lin.get("/p/me/未知号码").get_data(as_text=True), "no stickers when cannot reply")
 adm.post("/admin/phone_codes", data={"action": "web_send", "on": "0"})
 ok('id="stickers"' not in lin.get("/p/me/周屿").get_data(as_text=True), "no stickers when web send off")
+# 公开播报：显示跟公告群那条一致——署名、原本想发的人、隐藏收件人、原文/篡改内容看 public_show_effect；丢失礼物不播报
+adm.post("/admin/phone_codes", data={"action": "web_send", "on": "1"})
+def ev(t, f, to, content, info):
+    c.execute("INSERT INTO extra_events (show_id,tenant_id,session_id,type,from_role,to_role,content,extra_info,timestamp,game_day) "
+              "VALUES (?,?,'',?,?,?,?,?,?,?)", (SID, TID, t, f, to, content, json.dumps(info, ensure_ascii=False), int(time.time()*1000), "D5"))
+    c.commit()
+ev("sms", "周屿", "沈知意", "原文A", {"isPublic": True, "delivered": "改过A", "intended_to": "林晚", "public_show_effect": False})
+ev("sms", "周屿", "林晚", "原文B", {"isPublic": True, "delivered": "改过B", "public_show_effect": True, "hide_receiver": True, "from_custom_name": "神秘人"})
+ev("gift", "林晚", "沈知意", "寄语C", {"isPublic": True, "giftName": "一份特别的礼物", "intended_to": "周屿"})
+ev("gift", "林晚", "周屿", "不该出现", {"isPublic": True, "giftName": "x", "isLost": True})
+ev("sms", "林晚", "周屿", "私下的", {"isPublic": False})
+db = sqlite3.connect(A.DB_PATH); db.row_factory = sqlite3.Row
+with app.app_context():
+    items = [it for it in A._phone_public_items(db, SID) if it["game_day"] == "D5"]
+    summary = A._phone_public_summary(db, SID)
+ok([(it["from"], it["to"], it.get("text")) for it in items] == [("周屿", "林晚", "原文A"), ("神秘人", "某人", "改过B"), ("林晚", "周屿", "寄语C")], items)
+ok(summary and "周屿" in summary["preview"] and "🎁" in summary["preview"], summary)
+ok(lin.get("/p/me/public").status_code == 200, "public route")
+ok(app.test_client().get("/p/me/public").status_code == 302, "public needs code")
+# 网页发送也按概率公开（100% 时一定公开，收件人照想发的人、隐藏收件人生效）
+sync(after=10**9, chaos={"publicChance": 100, "misdelivery": 100}, rules_extra={"sms_public": True, "hide_receiver": False})
+A._PHONE_MIN_GAP_MS = 0
+send(lin, "周屿", "公开的网页短信")
+row = c.execute("SELECT to_role, extra_info FROM extra_events ORDER BY id DESC LIMIT 1").fetchone(); info = json.loads(row["extra_info"])
+ok(info["isPublic"] and row["to_role"] != "周屿" and info["intended_to"] == "周屿", info)
+with app.app_context():
+    last = A._phone_public_items(db, SID)[-1]
+ok(last["to"] == "周屿" and last["text"] == "公开的网页短信", last)
+sync(after=10**9, chaos={"publicChance": 100}, rules_extra={"sms_public": False})
+send(lin, "沈知意", "不公开")
+ok(not json.loads(c.execute("SELECT extra_info FROM extra_events ORDER BY id DESC LIMIT 1").fetchone()[0])["isPublic"], "sms_public off")
+sync(after=10**9, rules_extra={"gift_public": True, "gift_public_chance": 100, "hide_receiver": True})
+send(lin, "沈知意", "公开礼物", kind="gift")
+gi = json.loads(c.execute("SELECT extra_info FROM extra_events ORDER BY id DESC LIMIT 1").fetchone()[0])
+ok(gi["isPublic"] and gi["hide_receiver"], gi)
 print("ALL OK")
