@@ -114,6 +114,9 @@ a { color: var(--link); text-decoration: none; }
 /* 聊天气泡 */
 .new-message-anchor { position: sticky; bottom: 160px; height: 0; z-index: 6; text-align: center; }
 .new-message { transform: translateY(-100%); padding: 8px 16px; border: 1px solid var(--line); border-radius: 24px; background: var(--bg); color: var(--text); box-shadow: 0 3px 14px #00000012; font: inherit; font-size: 13px; cursor: pointer; }
+#scroll { display: flex; flex-direction: column; }
+#scroll .chat { margin-top: auto; flex-shrink: 0; width: 100%; }
+@media (min-width: 600px) { #scroll { min-height: 0; } }
 .chat { padding: 8px 12px 24px; display: flex; flex-direction: column; }
 .stamp { text-align: center; color: var(--muted); font-size: 12px; margin: 16px 0 6px; }
 .stamp b { font-weight: 600; }
