@@ -873,18 +873,7 @@ a { color: var(--link); text-decoration: none; }
       {% endif %}
       <p class="song-note">待进群、待退群和群名要实时问 QQ，这里看不到，在群里发「我的待回」查看。心动信投递情况在底部「心动信」里。</p>
     {% else %}
-      <div class="song-note"><strong>{{ owner }} · 我的互动</strong><br>只统计我与他人的往来，不包含其他人之间的互动。</div>
-      {% if inter or lm_recv %}
-      <div class="stats-table-wrap"><table class="stats-table">
-        <thead><tr><th>往来对象</th><th>短信<br><small>我发 / 我收</small></th><th>礼物<br><small>我送 / 我收</small></th><th>心动信<br><small>我寄出</small></th></tr></thead>
-        <tbody>
-        {% for r in inter %}<tr><td>{{ r.name }}</td><td>{{ r.sms_sent }} / {{ r.sms_recv }}</td><td>{{ r.gift_sent }} / {{ r.gift_recv }}</td><td>{{ r.lm_sent }}</td></tr>{% endfor %}
-        </tbody>
-      </table></div>
-      <p class="song-note">本季我一共收到 {{ lm_recv }} 封心动信（来信是匿名的，不按人统计）。短信和礼物按你手机里看到的算。</p>
-      {% else %}
-      <div class="empty">本季还没有短信、礼物或心动信往来</div>
-      {% endif %}
+      {% include '_phone_interactions.html' %}
     {% endif %}
     {% if report and stale %}<p class="song-note">⚠️ 机器人有一阵子没同步了，上面可能不是最新的。</p>{% elif report and view != 'interact' %}<p class="song-note">机器人每 2 分钟更新一次，跟群里发同名指令看到的是同一份数据。</p>{% endif %}
   </div>

@@ -1,0 +1,45 @@
+<style>
+.interactions { padding: 22px 16px 12px; }
+.interactions h1 { margin: 0; font-size: 24px; letter-spacing: -.5px; }
+.interactions .scope { margin: 6px 0 20px; font-size: 13px; color: var(--muted); line-height: 1.6; }
+.interaction-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); background: var(--theirs); border-radius: 18px; padding: 18px 6px; margin-bottom: 26px; }
+.interaction-summary div { text-align: center; }
+.interaction-summary div + div { border-left: 1px solid var(--line); }
+.interaction-summary strong { display: block; font-size: 27px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.interaction-summary span { display: block; margin-top: 7px; font-size: 12px; color: var(--muted); }
+.interactions h2 { display: flex; align-items: baseline; justify-content: space-between; margin: 0 0 12px; font-size: 16px; }
+.interactions h2 small { font-size: 12px; color: var(--muted); font-weight: 400; }
+.interaction-card { padding: 16px; border: 1px solid var(--line); border-radius: 18px; margin-bottom: 12px; background: var(--bg); }
+.interaction-person { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.interaction-initial { width: 36px; height: 36px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--theirs); color: var(--text); font-size: 15px; }
+.interaction-person h3 { margin: 0; font-size: var(--reading-size,16px); font-weight: 600; overflow-wrap: anywhere; }
+.interaction-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.interaction-metric { min-width: 0; }
+.interaction-metric h4 { font-size: 12px; color: var(--muted); font-weight: 400; margin: 0 0 8px; }
+.interaction-metric p { margin: 3px 0 0; font-size: calc(var(--reading-size,16px) - 3px); color: var(--muted); }
+.interaction-metric b { color: var(--text); font-size: var(--reading-size,16px); font-weight: 600; font-variant-numeric: tabular-nums; margin-left: 4px; }
+.interaction-privacy { margin: 18px 2px 0; font-size: 12px; color: var(--muted); line-height: 1.8; }
+.interaction-privacy strong { color: var(--text); font-weight: 500; }
+.interaction-empty { padding: 28px 8px; text-align: center; font-size: 14px; color: var(--muted); }
+</style>
+<section class="interactions" aria-labelledby="interactions-title">
+  <h1 id="interactions-title">我的互动</h1>
+  <p class="scope">{{ owner }} · 本季与我的往来</p>
+  <div class="interaction-summary" aria-label="本季互动概览">
+    <div><strong>{{ (inter|sum(attribute='sms_sent')) + (inter|sum(attribute='sms_recv')) }}</strong><span>往来短信</span></div>
+    <div><strong>{{ (inter|sum(attribute='gift_sent')) + (inter|sum(attribute='gift_recv')) }}</strong><span>往来礼物</span></div>
+    <div><strong>{{ lm_recv }}</strong><span>匿名来信</span></div>
+  </div>
+  <h2>往来记录 <small>{{ inter|length }} 位联系人</small></h2>
+  {% for r in inter %}
+  <article class="interaction-card" aria-label="与{{ r.name }}的往来">
+    <div class="interaction-person"><span class="interaction-initial" aria-hidden="true">{{ r.name[:1] }}</span><h3>{{ r.name }}</h3></div>
+    <div class="interaction-metrics">
+      <div class="interaction-metric"><h4>短信</h4><p>我发 <b>{{ r.sms_sent }}</b></p><p>我收 <b>{{ r.sms_recv }}</b></p></div>
+      <div class="interaction-metric"><h4>礼物</h4><p>我送 <b>{{ r.gift_sent }}</b></p><p>我收 <b>{{ r.gift_recv }}</b></p></div>
+      <div class="interaction-metric"><h4>心动信</h4><p>我寄 <b>{{ r.lm_sent }}</b></p></div>
+    </div>
+  </article>
+  {% else %}<div class="interaction-empty">还没有可展示的联系人往来</div>{% endfor %}
+  <p class="interaction-privacy"><strong>本季我收到 {{ lm_recv }} 封心动信</strong>，来信匿名，不关联联系人。<br>这里只统计我手机里可见的往来。</p>
+</section>
