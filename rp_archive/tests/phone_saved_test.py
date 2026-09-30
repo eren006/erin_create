@@ -9,10 +9,11 @@ js=r"""
 const vm=require('node:vm'),assert=require('node:assert/strict');
 const source=SOURCE,id='a'.repeat(32),key='phone:saved:[901,"测试角色"]';
 function run(store={},blocked=false,full=false) {
- const button={dataset:{saveKey:id},attrs:{},setAttribute(k,v){this.attrs[k]=v;}},toast={};
+ const button={dataset:{saveKey:id},attrs:{},closest:()=>({}),setAttribute(k,v){this.attrs[k]=v;}},toast={};
  const events={},win={};
  const ctx={document:{
    getElementById:n=>n==='toolsToast'?toast:null,
+   querySelector:()=>null,
    querySelectorAll:()=>[button],
    addEventListener:(n,fn)=>events[n]=fn
  },window:{addEventListener:(n,fn)=>win[n]=fn},location:{hash:''},
