@@ -470,7 +470,6 @@ a { color: var(--link); text-decoration: none; }
 .icon-btn svg { width: 20px; height: 20px; }
 .song-tabs { padding: var(--gap) var(--gutter) 0; }
 .lm-letter { margin: 10px var(--gutter); }
-.stats-page .stats-tabs { padding: 10px calc(var(--gutter) - 6px); }
 .lm-sub small { font-size: 13px; }
 
 /* 首页：标题 → 搜索行 → 待回卡片，每层之间 14px 留白，不再叠一排按钮 */
@@ -487,6 +486,33 @@ a { color: var(--link); text-decoration: none; }
 .list a.row.public-row + a.row:not(.public-row) { margin-top: 12px; border-top: .5px solid var(--line); }
 .list a.row { padding: 16px var(--gutter); }
 .notice.inbox-flash { margin: var(--gap) var(--gutter) 0; }
+
+/* 首页全局搜索：输入框就是搜索条；有输入时列表换成分组结果 */
+.search-pill input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; font: inherit; font-size: 15px; color: var(--text); padding: 0; }
+.search-pill input::placeholder { color: var(--muted); }
+.search-pill input::-webkit-search-cancel-button { display: none; }
+.search-pill:focus-within { box-shadow: 0 0 0 2px var(--mine); }
+.search-clear { border: 0; background: none; padding: 0; width: 22px; height: 22px; color: var(--muted); cursor: pointer; display: inline-flex; flex-shrink: 0; }
+.search-clear svg { width: 22px; height: 22px; }
+.search-clear[hidden] { display: none; }
+#inbox.searching > :not(.find-row):not(.search-results) { display: none !important; }
+.search-results { padding-bottom: 24px; }
+.search-group { margin-top: 4px; }
+.search-group h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 14px var(--gutter) 4px; }
+.search-item { display: block; padding: 12px var(--gutter); color: var(--text); text-decoration: none; border-bottom: .5px solid var(--line); }
+.search-item:active { background: var(--theirs); }
+.search-item .si-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.search-item .si-title { font-weight: 600; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-item .si-meta { font-size: 12px; color: var(--muted); flex-shrink: 0; max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.search-item .si-body { font-size: 14px; color: var(--muted); margin-top: 3px; line-height: 1.5; word-break: break-word; }
+.search-item mark { background: color-mix(in srgb, var(--mine) 22%, transparent); color: var(--text); border-radius: 3px; padding: 0 1px; }
+.search-empty { text-align: center; color: var(--muted); font-size: 14px; padding: 48px var(--gutter); }
+
+/* 时间线与统计的标签：分段控件——整排坐在一条浅灰底槽里，当前项是浮起的白色块，其余项没有底 */
+.stats-page .stats-tabs { position: sticky; top: 0; z-index: 2; display: flex; gap: 2px; margin: 12px var(--gutter) 6px; padding: 3px; border: 0; border-radius: 12px; background: var(--theirs); backdrop-filter: none; }
+.stats-page .stats-tabs a { flex: 1; min-height: 34px; padding: 0 2px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 14px; box-shadow: none; }
+.stats-page .stats-tabs a[aria-current] { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.stats-page .stats-tabs a:not([aria-current]):active { background: color-mix(in srgb, var(--bg) 50%, transparent); }
 </style>
 </head>
 <body>
@@ -536,10 +562,10 @@ a { color: var(--link); text-decoration: none; }
   {% endif %}
   <div class="scroll list" id="inbox">
     {% if not admin_as %}<div class="find-row">
-      <a class="search-pill" href="{{ url_for('player_phone_library') }}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>检索短信和礼物</a>
+      <label class="search-pill" for="phoneSearch"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="phoneSearch" type="search" placeholder="搜索联系人、消息、心动信、朋友圈" autocomplete="off" enterkeyhint="search" maxlength="40" aria-label="搜索"><button type="button" class="search-clear" id="phoneSearchClear" aria-label="清除" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor" stroke="none" opacity=".35"/><path d="m9 9 6 6M15 9l-6 6" stroke="var(--bg)" stroke-width="2"/></svg></button></label>
       <a class="timeline-btn" href="{{ url_for('player_stats', view='timeline') }}" aria-label="时间线与统计" title="时间线与统计"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h3M13.5 14h3M7.5 17h3"/></svg>{% if timeline_n %}<b>{{ timeline_n }}</b>{% endif %}</a>
     </div>{% endif %}
-    {% if not admin_as %}{% include '_phone_pending_entry.html' %}{% endif %}
+    {% if not admin_as %}<div id="searchResults" class="search-results" hidden></div>{% include '_phone_pending_entry.html' %}{% endif %}
     {% if public %}
     <a class="row public-row" data-other="__public__" data-received-ts="{{ public.ts }}" href="{{ url_for('player_phone_public') }}">
       <div class="avatar public-avatar">📢</div>
@@ -909,7 +935,7 @@ a { color: var(--link); text-decoration: none; }
 
 {% elif mode == 'stats' %}
   <header class="bar">
-    <a class="back" href="{{ url_for('player_phone_library', view='profile') }}">我的</a>
+    <a class="back" href="{{ url_for('player_phone_inbox') }}">信息</a>
     <div class="title">时间线与统计<small>{% if report %}{{ report.day }} · {{ updated }} 更新{% else %}{{ owner }}{% endif %}</small></div>
     <div class="right"></div>
   </header>
@@ -1724,6 +1750,7 @@ a { color: var(--link); text-decoration: none; }
       }
       avatars();
       if (window.applyAvatars) applyAvatars();
+      if (window.phoneSearchRestore) phoneSearchRestore();
       document.dispatchEvent(new Event('phone:updated'));
       revision = data.revision;
     } catch (_) {
@@ -1734,6 +1761,65 @@ a { color: var(--link); text-decoration: none; }
   setInterval(poll, 15000);
   document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
   {% endif %}
+})();
+</script>
+{% endif %}
+{% if mode == 'inbox' and not admin_as %}
+<script>
+(function () {
+  // 首页全局搜索：输入即搜，结果按联系人/消息/心动信/朋友圈分组；清空或 Esc 恢复列表。
+  // 首页会被定时刷新整块替换（#inbox），所以状态记在这里，刷新后用 restore 重新挂回去。
+  var state = { q: '', html: '', timer: 0, seq: 0, focused: false };
+  function $(id) { return document.getElementById(id); }
+  function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  function paint() {
+    var box = $('searchResults'), list = $('inbox'), input = $('phoneSearch'), clear = $('phoneSearchClear');
+    if (!box || !list || !input) return;
+    if (input.value !== state.q) input.value = state.q;
+    clear.hidden = !state.q;
+    list.classList.toggle('searching', !!state.q);
+    box.hidden = !state.q;
+    box.innerHTML = state.html;
+    if (window.applyAvatars) applyAvatars();
+  }
+  function render(data) {
+    if (!data.groups.length) return '<div class="search-empty">没有找到「' + esc(state.q) + '」</div>';
+    return data.groups.map(function (g) {
+      return '<section class="search-group"><h2>' + esc(g.label) + '</h2>' + g.items.map(function (it) {
+        var body = (it.hit !== undefined) ? esc(it.pre) + '<mark>' + esc(it.hit) + '</mark>' + esc(it.post) : esc(it.sub || '');
+        var top = it.meta ? '<span class="si-meta">' + esc(it.meta) + '</span>' : '';
+        return '<a class="search-item" href="' + esc(it.url) + '"><div class="si-top"><span class="si-title">' + esc(it.title) + '</span>' + top + '</div><div class="si-body">' + body + '</div></a>';
+      }).join('') + '</section>';
+    }).join('');
+  }
+  async function run(q) {
+    var seq = ++state.seq;
+    try {
+      var r = await fetch('/p/me/search?q=' + encodeURIComponent(q), {cache: 'no-store'});
+      if (r.status === 401) { location.assign({{ url_for('phone_code_entry')|tojson }}); return; }
+      if (!r.ok || seq !== state.seq) return;
+      var data = await r.json();
+      if (seq !== state.seq || q !== state.q) return;
+      state.html = render(data); paint();
+    } catch (_) { if (seq === state.seq) { state.html = '<div class="search-empty">搜索暂时不可用，稍后再试</div>'; paint(); } }
+  }
+  function set(q) {
+    state.q = q.trim().slice(0, 40); clearTimeout(state.timer);
+    if (!state.q) { state.seq++; state.html = ''; paint(); return; }
+    state.html = '<div class="search-empty">搜索中…</div>'; paint();
+    state.timer = setTimeout(function () { run(state.q); }, 220);
+  }
+  document.addEventListener('input', function (e) { if (e.target && e.target.id === 'phoneSearch') set(e.target.value); });
+  document.addEventListener('focusin', function (e) { if (e.target && e.target.id === 'phoneSearch') state.focused = true; });
+  document.addEventListener('focusout', function (e) { if (e.target && e.target.id === 'phoneSearch') state.focused = false; });
+  document.addEventListener('click', function (e) {
+    if (e.target.closest && e.target.closest('#phoneSearchClear')) { e.preventDefault(); set(''); var i = $('phoneSearch'); if (i) { i.value = ''; i.focus(); } }
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && e.target && e.target.id === 'phoneSearch') { set(''); e.target.blur(); } });
+  // 定时刷新把首页整块换掉之后，把搜索词、结果和焦点放回去
+  window.phoneSearchRestore = function () { if (!state.q && !state.html) return; paint(); if (state.focused && $('phoneSearch')) { var i = $('phoneSearch'); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } };
+  // 从详情页点「返回」回到首页时浏览器会恢复上次的输入框内容，这里同步成列表状态
+  window.addEventListener('pageshow', function () { var i = $('phoneSearch'); if (i && i.value.trim() && i.value.trim() !== state.q) set(i.value); });
 })();
 </script>
 {% endif %}

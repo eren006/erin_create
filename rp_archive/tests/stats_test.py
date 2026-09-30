@@ -59,7 +59,7 @@ sync(REP)
 ok(sorted(r[0] for r in c.execute("SELECT role FROM phone_reports")) == sorted(["林晚", "周屿"]), "bad reports dropped")
 t = page(lin, "timeline")
 tb = t.split('aria-label="时间线与统计"')[1]
-ok(tb.index("<b>D1") < tb.index("<b>D2") < tb.index("<b>我的微信群") and "天台" in tb and "3v4" in tb and "12v10" in tb and "进行中 [⏳未回]" in tb, "timeline")
+ok(tb.index("<b>D1") < tb.index("<b>D2") < tb.index("<b>我的微信群") and "天台" in tb and "3v4" in tb and "12v10" in tb and "进行中 ⏳未回" in tb, "timeline")
 ok("D2 · " in t and "更新" in t, "updated time in header")
 ok("私约 1 次" in page(lin, "counts") and "周屿的数" not in page(lin, "counts"), "counts only mine")
 ok("本人总平均：12分钟" in page(lin, "arc"), "arc")

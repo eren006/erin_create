@@ -5208,6 +5208,101 @@ def player_phone_library():
     return render_template("phone.html", mode="profile" if view == "profile" else "library",
                            library_view=view, sid=sid, owner=owner, csrf=_phone_csrf())
 
+# ── 首页全局搜索 ─────────────────────────────────────────────────────────────────
+# 一个搜索框搜自己手机里能看到的一切：联系人/群聊、短信和礼物（含群聊消息）、心动信（收到的只有署名）、朋友圈。
+# 只看本人视角：短信礼物走 _phone_all_views（已经是玩家视角，误投/换落款照玩家看到的算），心动信用 _lm_history，
+# 朋友圈本季公开。结果数量有上限，按时间新的在前。
+_SEARCH_MAX = 40
+_SEARCH_PER_GROUP = 20
+
+def _snippet(text, q, radius=22):
+    """匹配处前后各取一段；返回 (前, 命中, 后)，前端给命中加高亮"""
+    text = (text or "").replace("\n", " ")
+    i = text.lower().find(q)
+    if i < 0:
+        return text[:radius * 2], "", ""
+    a, b = max(0, i - radius), min(len(text), i + len(q) + radius)
+    return ("…" if a else "") + text[a:i], text[i:i + len(q)], text[i + len(q):b] + ("…" if b < len(text) else "")
+
+@app.route("/p/me/search")
+def player_phone_search():
+    who = _phone_current()
+    if not who:
+        return jsonify(error="手机登录已失效"), 401
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return jsonify(groups=[])
+    q = (request.args.get("q") or "").strip().lower()[:_SEARCH_MAX]
+    if not q:
+        return jsonify(groups=[])
+    db = get_db()
+    sync = _phone_sync_row(db, sid)
+    groups = []
+
+    # 联系人 / 群聊：对话列表里名字命中的，加上名单里还没聊过的人（点进去就能开始对话）
+    people, seen = [], set()
+    for t in _phone_threads(db, sid, owner) + _group_threads(db, sid, owner):
+        name = t["group"]["name"] if t.get("group") else t["other"].partition("＠")[0]
+        if q in name.lower() or (t.get("group") is None and q in t["other"].lower()):
+            url = url_for("player_group_thread", gid=t["group"]["id"]) if t.get("group") else url_for("player_phone_thread", other=t["other"])
+            people.append({"title": name, "sub": ("群聊 · %d 人" % t["group"]["n"]) if t.get("group") else t["preview"],
+                           "url": url, "avatar": None if t.get("group") else name, "group": bool(t.get("group"))})
+        seen.add(t["other"].partition("＠")[0])
+    for n in _phone_roster(sync):
+        if n != owner and n not in seen and q in n.lower():
+            people.append({"title": n, "sub": "还没有往来，点击开始对话", "url": url_for("player_phone_thread", other=n), "avatar": n, "group": False})
+    if people:
+        groups.append({"key": "people", "label": "联系人", "items": people[:_SEARCH_PER_GROUP]})
+
+    # 短信 / 礼物 / 群聊消息
+    msgs = []
+    for m in sorted(_phone_all_views(db, sid, owner), key=lambda m: -m["ts"]):
+        if m["kind"] not in ("sms", "gift", "gsms"):
+            continue
+        hay = (m.get("text") or "") + " " + (m.get("gift_name") or "")
+        if q not in hay.lower():
+            continue
+        key = _phone_message_key([sid, owner, m["id"]])
+        if str(m["other"]).startswith("__group__"):
+            gid = int(str(m["other"])[len("__group__"):])
+            g = db.execute("SELECT name FROM phone_groups WHERE id=?", (gid,)).fetchone()
+            where, url = "群聊「%s」" % (g["name"] if g else ""), url_for("player_group_thread", gid=gid) + "#message-" + key
+        else:
+            where, url = m["other"].partition("＠")[0], url_for("player_phone_thread", other=m["other"]) + "#message-" + key
+        who_ = "我" if m["mine"] else (m.get("signature") or "").replace("落款：", "") or where
+        body = ("🎁 " + m["gift_name"] + " " if m["kind"] == "gift" and m.get("gift_name") else "") + (m.get("text") or "")
+        pre, hit, post = _snippet(body, q)
+        msgs.append({"title": where, "meta": "%s · %s %s" % (who_, m.get("game_day") or "", _phone_time(m["ts"])), "pre": pre, "hit": hit, "post": post, "url": url})
+        if len(msgs) >= _SEARCH_PER_GROUP:
+            break
+    if msgs:
+        groups.append({"key": "msgs", "label": "短信和礼物", "items": msgs})
+
+    # 心动信：收到的只显示署名，不显示寄信人
+    lms = []
+    recv, sent = _lm_history(db, sid, owner)
+    for it, kind in [(i, "recv") for i in recv] + [(i, "sent") for i in sent]:
+        if q in (it["content"] or "").lower():
+            pre, hit, post = _snippet(it["content"], q)
+            lms.append({"title": "收到的心动信" if kind == "recv" else "寄给 %s 的心动信" % it["to"],
+                        "meta": "署名：%s · %s" % (it["signature"], it["game_day"] or "往期"), "pre": pre, "hit": hit, "post": post,
+                        "url": url_for("player_lovemail", view="inbox" if kind == "recv" else "sent")})
+    if lms:
+        groups.append({"key": "lovemail", "label": "心动信", "items": lms[:_SEARCH_PER_GROUP]})
+
+    # 朋友圈（本季所有人都能看到的）
+    moms = []
+    for r in db.execute("SELECT role_name, content, game_day, created_at FROM moments WHERE show_id=? AND deleted=0 ORDER BY id DESC LIMIT 500", (sid,)):
+        if q in (r["content"] or "").lower():
+            pre, hit, post = _snippet(r["content"], q)
+            moms.append({"title": r["role_name"], "meta": "%s %s" % (r["game_day"] or "", _phone_time(r["created_at"])), "pre": pre, "hit": hit,
+                         "post": post, "url": url_for("player_moments")})
+            if len(moms) >= _SEARCH_PER_GROUP:
+                break
+    if moms:
+        groups.append({"key": "moments", "label": "朋友圈", "items": moms})
+    return jsonify(groups=groups, q=q)
+
 @app.route("/p/me/library/data")
 def player_phone_library_data():
     who = _phone_current()
