@@ -4,163 +4,141 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<title>网页手机指南</title>
+<meta name="theme-color" content="#f2f1f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<title>使用指南</title>
 <style>
 :root {
-  --page: #efeef3; --bg: #ffffff; --line: #e3e3e8; --text: #1c1c21; --muted: #75757d;
-  --accent: #6854bc; --soft: #f3f1fa; --warn: #b42318; --tip: #f6f4ec;
+  --page: #dcdbe2; --bg: #f2f1f6; --bar: rgba(242,241,246,.9); --line: #dedde4;
+  --text: #17161c; --muted: #7a7985; --mine: #6854bc; --mine-text: #fff;
+  --theirs: #ffffff; --chip: #ffffff; --warn: #b42318;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --page: #0b0b0e; --bg: #16161a; --line: #2a2a31; --text: #ededf2; --muted: #9a9aa4;
-          --accent: #a99cff; --soft: #1f1d2b; --warn: #f0936b; --tip: #25231c; }
+  :root { --page: #050507; --bg: #0c0c0f; --bar: rgba(22,22,26,.9); --line: #26262c;
+          --text: #f1f1f4; --muted: #8e8e98; --mine: #7a68d6; --theirs: #1d1d22; --chip: #1d1d22; --warn: #f0936b; }
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
 body { background: var(--page); color: var(--text); font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
-       font-size: 15px; line-height: 1.75; -webkit-text-size-adjust: 100%; }
-a { color: var(--accent); }
-.wrap { max-width: 680px; margin: 0 auto; padding: 0 16px 48px; }
-header.top { padding: calc(env(safe-area-inset-top) + 28px) 0 18px; }
-header.top h1 { font-size: 26px; letter-spacing: -.3px; }
-header.top p { color: var(--muted); font-size: 14px; margin-top: 4px; }
-.toc { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 20px; }
-.toc a { font-size: 13px; padding: 5px 12px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); text-decoration: none; color: var(--text); }
-.part { font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .08em; margin: 30px 4px 10px; }
-section { background: var(--bg); border: 1px solid var(--line); border-radius: 16px; padding: 18px 18px 14px; margin-bottom: 12px; scroll-margin-top: 12px; }
-section h2 { font-size: 17px; margin-bottom: 8px; }
-section p, section li { font-size: 14.5px; }
-section p + p { margin-top: 6px; }
-section ul { padding-left: 1.2em; margin: 4px 0; }
-section li + li { margin-top: 3px; }
-.tip { background: var(--tip); border-radius: 10px; padding: 8px 12px; margin-top: 10px; font-size: 13.5px; }
-.warn { color: var(--warn); font-weight: 600; }
-code { font-family: ui-monospace, Menlo, monospace; font-size: 13px; background: var(--soft); border-radius: 5px; padding: 1px 5px; }
-.back { display: inline-block; margin-top: 18px; font-size: 14px; }
+       font-size: 15px; line-height: 1.55; -webkit-text-size-adjust: 100%; }
+a { color: inherit; }
+.phone { max-width: 480px; margin: 0 auto; min-height: 100dvh; background: var(--bg); display: flex; flex-direction: column; }
+@media (min-width: 600px) {
+  body { padding: 28px 0; }
+  .phone { min-height: 0; height: calc(100vh - 56px); max-width: 400px; border-radius: 36px; overflow: hidden;
+           box-shadow: 0 0 0 10px #1c1c1f, 0 20px 60px rgba(0,0,0,.3); }
+}
+header { position: sticky; top: 0; z-index: 2; background: var(--bar); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+         border-bottom: .5px solid var(--line); padding: calc(env(safe-area-inset-top) + 10px) 14px 10px;
+         display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+header .back { font-size: 15px; text-decoration: none; color: var(--mine); }
+header .who { text-align: center; }
+header .who b { display: block; font-size: 16px; }
+header .who small { font-size: 11px; color: var(--muted); }
+.seg { justify-self: end; display: flex; background: var(--line); border-radius: 9px; padding: 2px; }
+.seg button { border: 0; background: none; font: inherit; font-size: 12px; padding: 4px 9px; border-radius: 7px; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--theirs); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+.log { flex: 1; overflow-y: auto; padding: 14px 12px 8px; display: flex; flex-direction: column; gap: 6px; }
+.b { max-width: 82%; padding: 9px 13px; border-radius: 19px; font-size: 15px; word-break: break-word; }
+.b.in { align-self: flex-start; background: var(--theirs); border-bottom-left-radius: 6px; }
+.b.out { align-self: flex-end; background: var(--mine); color: var(--mine-text); border-bottom-right-radius: 6px; }
+.b + .b.in, .b.out + .b.out { margin-top: 0; }
+.b.out + .b.in, .b.in + .b.out { margin-top: 8px; }
+.b a { font-weight: 600; color: var(--mine); text-decoration: none; white-space: nowrap; }
+.b a::after { content: " ›"; }
+.b code { font-family: inherit; background: var(--bg); border-radius: 6px; padding: 1px 6px; font-size: 14px; }
+.sys { align-self: center; max-width: 88%; text-align: center; font-size: 12px; color: var(--muted); margin: 6px 0; }
+.sys b { color: var(--warn); font-weight: 600; }
+.b.in.enter { animation: pop .22s ease-out; }
+@keyframes pop { from { transform: translateY(6px) scale(.97); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .b.in.enter { animation: none; } }
+
+.chips { border-top: .5px solid var(--line); background: var(--bar); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+         padding: 10px 12px calc(env(safe-area-inset-bottom) + 10px); display: flex; flex-wrap: wrap; gap: 7px; }
+.chips button { border: 1px solid var(--line); background: var(--chip); color: var(--text); font: inherit; font-size: 13.5px;
+                padding: 7px 12px; border-radius: 16px; cursor: pointer; }
+.chips button.asked { color: var(--muted); }
+.chips button:focus-visible, .seg button:focus-visible, header a:focus-visible { outline: 2px solid var(--mine); outline-offset: 2px; }
+.chips[hidden] { display: none; }
+noscript .b { display: block; margin-bottom: 6px; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header class="top">
-    <h1>📱 网页手机指南</h1>
-    <p>长日将尽的网页手机：看短信和礼物、刷朋友圈、点歌。本季用管理员发的激活码登录。</p>
+{% set P = url_for('phone_code_entry') %}
+{% set player = [
+  ("怎么进手机？", "点管理员私发给你的链接，或者在 <a href='" ~ P ~ "'>这里输入激活码</a>。一个码只对应你自己的角色，别外传；本季结束后自动失效。"),
+  ("消息怎么看？", "和你在群里收到的一模一样，按落款认人。大约 15 秒自动刷新；往上翻旧消息时不会被拉走，底下出现「有新信息」再点过去。"),
+  ("能在这里发短信吗？", "管理员打开「网页发送」时可以，通常是机器人暂停的时候。次数、冷却和群里一起算，开着时群里会提示你来这里发。"),
+  ("怎么送礼？", "在对话里点 🎁：上面写礼物，下面写留言，留言可以不写。"),
+  ("朋友圈怎么发？", "底部「朋友圈」→「＋ 发朋友圈」，最多 9 张图，会自动压缩。图片额度用满了，去「我的 → 我的朋友圈」删掉旧图，文字会留着。"),
+  ("怎么点歌？", "公开播报右上角「🎵 点歌」，网易云、QQ 音乐都能搜，一律匿名。群里也能点：<code>点歌 晴天 给 张三 生日快乐</code>"),
+  ("找旧消息、收藏", "消息页左上角「检索」，可以按关键词、联系人、游戏日找。对话里点 ☆ 收藏，只存在这台设备上。"),
+  ("换头像和主题", "「我的 → 外观与阅读字号」。头像大家都看得到；主题色、底色、字号只在这台设备上。"),
+  ("哪些不能发？", "只写和戏有关的内容。敏感、违法、色情、广告引流、他人隐私都不行；含违禁词的发不出去，违规会停用激活码。"),
+] %}
+{% set admin = [
+  ("怎么给玩家发码？", "存档后台「玩家与数据 → 短信激活码」，生成后复制链接私发。泄露了就点「重置」，旧码立刻失效。"),
+  ("机器人挂了怎么办？", "同一页「打开网页发送」（机器人要先同步过一次）。玩家改在网页上发，规则照最后一次同步的来。"),
+  ("管理员手机码是什么？", "同一页生成，只给自己用。用它进手机能以任何人的视角查看，看得到真实去向；能删短信、礼物、朋友圈、评论、点歌和头像，删前会再确认一次。"),
+  ("图片空间满了？", "「朋友圈管理」里看用量，删掉旧季度的图片。用到 90% 后台会有红字提醒，满了玩家就发不了图。"),
+  ("其它能调的", "每人每天点歌数、表情面板在「短信激活码」页；每人图片张数在「朋友圈管理」；违禁词在存档站的 <code>blocklist.txt</code>，改完立即生效。"),
+] %}
+<div class="phone">
+  <header>
+    <a class="back" href="{{ P }}">‹ 返回</a>
+    <div class="who"><b>小手机</b><small>使用指南</small></div>
+    <div class="seg" role="group" aria-label="问题分组">
+      <button type="button" data-set="player" aria-pressed="true">玩家</button>
+      <button type="button" data-set="admin" aria-pressed="false">管理员</button>
+    </div>
   </header>
-  <nav class="toc">
-    <a href="#enter">怎么进</a><a href="#msg">消息</a><a href="#send">发短信送礼</a><a href="#moments">朋友圈</a>
-    <a href="#song">点歌</a><a href="#me">头像与外观</a><a href="#rules">须知</a><a href="#admin">管理员篇</a>
+
+  <main class="log" id="log" aria-live="polite">
+    <div class="b in">你好，我是这部手机 👋</div>
+    <div class="b in">想知道什么，点下面的问题就好。</div>
+    <div class="sys">只写和戏有关的内容，<b>不要发送任何敏感、违法信息</b></div>
+    <noscript>
+      {% for q, a in player + admin %}<div class="b out">{{ q }}</div><div class="b in">{{ a|safe }}</div>{% endfor %}
+    </noscript>
+  </main>
+
+  <nav class="chips" id="chips-player" aria-label="玩家常见问题">
+    {% for q, a in player %}<button type="button" data-q="{{ q }}" data-a="{{ a }}">{{ q }}</button>{% endfor %}
   </nav>
-
-  <div class="part">玩家篇</div>
-
-  <section id="enter">
-    <h2>怎么进</h2>
-    <p>管理员会私发给你一个 10 位激活码或一条专属链接。点链接，或者打开 <a href="{{ url_for('phone_code_entry') }}">archive.changri.work/p</a> 输入激活码。</p>
-    <ul>
-      <li>一个码只对应你自己的角色，只能看你自己的手机。<span class="warn">别把码发给别人</span>，别人拿到就能看你的手机。</li>
-      <li>登录一次后这台设备会记住，下次直接打开。换设备要重新输码。</li>
-      <li>本季结束后码自动失效。码泄露了可以找管理员重置，旧码和已经登录的设备会立刻失效。</li>
-    </ul>
-  </section>
-
-  <section id="msg">
-    <h2>消息</h2>
-    <p>打开就是消息列表，一个联系人一行，点进去是你们的对话。开季期间会自动刷新，大约 15 秒一次。你在往上翻旧消息时，新消息不会把你拉回底部，底下会出现「有新信息」，点一下再跳过去。</p>
-    <ul>
-      <li>这里的内容和你在群里收到的<b>一模一样</b>：收到的短信按落款认人，落款写的是谁，就算在谁的名下。短信在路上发生了什么（有没有被改、被送错），手机上一样看不出来。</li>
-      <li>顶部的「公开播报」是公告群播过的短信、礼物和点歌，所有人都能看到。</li>
-      <li>「点歌台」里是别人为你点的歌，以及你点给别人的歌。</li>
-      <li>消息列表左上角「检索」：按关键词、联系人、游戏日找旧消息，点结果能跳回原文。对话里点 ☆ 收藏，收藏的都在底部「收藏」里；收藏只存在这台设备上，对方不会知道。</li>
-    </ul>
-  </section>
-
-  <section id="send">
-    <h2>发短信和送礼</h2>
-    <p>平时短信和礼物都在群里发。管理员打开「网页发送」时（一般是机器人出问题的时候），也可以直接在手机里发：</p>
-    <ul>
-      <li>在对话底部输入，点 ↑ 发送；消息列表底部「＋ 新信息」可以给新的人写。电脑上可以按 Ctrl/⌘ + Enter 发送。</li>
-      <li>点输入框左边的 🎁 切换成送礼：上面写「礼物」（比如一束玫瑰），下面写「留言」（可以不写）。</li>
-      <li>点 ☺ 打开表情面板，emoji 和颜文字点一下就插进去。</li>
-      <li>网页上发的规则和群里一样：每日上限、冷却时间、各种随机效果、拉黑都照常，次数和群里一起算。顶部小字会显示今天还剩几次。</li>
-      <li>网页发送打开期间，群里的短信和送礼会提示你去网页发；关掉后恢复在群里发。</li>
-    </ul>
-    <p class="tip">网页上发的短信收件人在网页手机里看到，不会发进 QQ 群。</p>
-  </section>
-
-  <section id="moments">
-    <h2>朋友圈</h2>
-    <ul>
-      <li>底部「朋友圈」，再点「＋ 发朋友圈」：文字加最多 9 张图，图片上传时会自动压缩。主档期内可以发。</li>
-      <li>本季所有拿到激活码的人都能看到。可以点赞、评论；点别人的评论就能回复 ta。</li>
-      <li>自己的朋友圈和评论可以删；你朋友圈下面别人的评论，你也可以删。</li>
-      <li>每人本季能发的图片有张数上限。用满了就去「我的 → 我的朋友圈」，删掉以前的图片腾出位置，那条朋友圈的文字会留着。</li>
-    </ul>
-  </section>
-
-  <section id="song">
-    <h2>点歌</h2>
-    <ul>
-      <li>在「公开播报」右上角点「🎵 点歌」，选网易云或 QQ 音乐，搜歌、点一首选中，写「送给」和寄语，点「匿名点歌」。</li>
-      <li>「送给」可以从名单里选，也可以写别的称呼；不写就是点给大家。写的是角色名的话，对方的「点歌台」会收到。</li>
-      <li><b>点歌一律匿名</b>：公告群和大家的手机里只会写「有人点给 …」。</li>
-      <li>在群里也能点：<code>点歌 歌名 给 对方 寄语</code>，比如 <code>点歌 晴天 周杰伦 给 张三 生日快乐</code>；想指定平台就写 <code>点歌 QQ 晴天</code>。</li>
-      <li>每人每天能点的首数有上限，网页和群里一起算。</li>
-      <li>网易云的歌可以直接点「播放」试听；VIP 歌和 QQ 音乐的歌请点「在网易云/QQ音乐打开」去 App 里听。</li>
-    </ul>
-  </section>
-
-  <section id="me">
-    <h2>头像与外观</h2>
-    <ul>
-      <li>「我的 → 外观与阅读字号」：上传头像（会自动裁成正方形，本季所有人都能看到；重新上传会替换旧的），换主题色、聊天底色、字号。</li>
-      <li>主题色、底色、字号、置顶的联系人、收藏都只存在这台设备上，换设备要重新设置。</li>
-    </ul>
-  </section>
-
-  <section id="rules">
-    <h2>使用须知</h2>
-    <p>这里的一切都是 RP 内容，请只写和戏有关的话。<span class="warn">不要发送任何敏感、违法信息</span>：违法犯罪、色情低俗、暴力血腥、政治敏感、赌博诈骗、广告引流，以及任何人的真实姓名、联系方式、住址等隐私。</p>
-    <p>含有不允许字词的内容会发不出去。所有内容都有记录，管理员可以删除，违规的激活码会被停用。</p>
-  </section>
-
-  <div class="part" id="admin">管理员篇</div>
-
-  <section>
-    <h2>给玩家发激活码</h2>
-    <ul>
-      <li>存档网页后台 →「玩家与数据 → 短信激活码」。点「为还没有码的角色生成」，或者在输入框里手动添加角色（一行一个本名；开季前机器人还没同步名单时用得上）。</li>
-      <li>用「复制链接」或「复制全部」私发给玩家。码泄露了点「重置」。角色名写错了点「删除」。</li>
-      <li>本季结束（「。结束季度」）后所有码自动失效。</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2>网页发送（机器人挂了时用）</h2>
-    <ul>
-      <li>同一页「打开网页发送」。要先等机器人同步过一次规则（页面上写着「机器人同步：正常」），否则按钮是灰的。</li>
-      <li>打开后玩家可以在网页里发短信、送礼，群里的短信和送礼会提示去网页发；关掉就恢复在群里发。</li>
-      <li>机器人挂着的时候网页照最后一次同步的规则继续工作，每日次数改按自然日算。</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2>管理员手机码（维护用）</h2>
-    <ul>
-      <li>同一页「生成管理员手机码」，只给管理员自己用，别发给玩家。</li>
-      <li>用它进网页手机是<b>管理身份</b>：能点任何角色，用 ta 的视角翻手机，每条短信和礼物下面有红色小字写着真实情况（实际发给了谁、有没有误送、原文是什么），公开播报里能看到点歌人。</li>
-      <li>能删短信、礼物、朋友圈、评论、图片、点歌、头像。点「管理删除」后会再弹一次确认框，写清楚删了会怎样，确认了才会删。每次删除都记进审核日志。</li>
-      <li>管理身份不能发短信、发朋友圈、点歌或传头像。</li>
-    </ul>
-  </section>
-
-  <section>
-    <h2>朋友圈、点歌和其它设置</h2>
-    <ul>
-      <li><b>朋友圈管理</b>（「玩家与数据 → 朋友圈管理」）：看图片空间用量；改每人每季的图片张数；删帖、删图、删评论、删头像；一键删掉某一季的全部图片。季度结束后图片会一直保留，直到你来删。空间用到 90% 后台顶部会出现红字提醒，满了玩家就不能再发图。</li>
-      <li><b>点歌</b>（「短信激活码」页）：改每人每天能点几首；看点歌记录，这里能看到是谁点的；可以删除。</li>
-      <li><b>表情面板</b>（「短信激活码」页）：一行一个，换成你们自己的一套；留空就用默认那套。</li>
-      <li><b>违禁词</b>：词表在存档站的 <code>blocklist.txt</code>，一行一个，改了不用重启就生效。命中的内容发不出去，并记进审核日志。</li>
-    </ul>
-  </section>
-
-  <a class="back" href="{{ url_for('phone_code_entry') }}">‹ 去输入激活码</a>
+  <nav class="chips" id="chips-admin" aria-label="管理员常见问题" hidden>
+    {% for q, a in admin %}<button type="button" data-q="{{ q }}" data-a="{{ a }}">{{ q }}</button>{% endfor %}
+  </nav>
 </div>
+<script>
+(function () {
+  var log = document.getElementById('log');
+  function add(cls, html) {
+    var d = document.createElement('div');
+    d.className = 'b ' + cls;
+    if (cls.indexOf('out') === 0) d.textContent = html; else d.innerHTML = html;
+    log.appendChild(d);
+    return d;
+  }
+  document.querySelectorAll('.chips button').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      add('out', btn.dataset.q);
+      add('in enter', btn.dataset.a);
+      btn.classList.add('asked');
+      log.scrollTo({top: log.scrollHeight, behavior: 'smooth'});
+      window.scrollTo({top: document.body.scrollHeight, behavior: 'smooth'});
+    });
+  });
+  function show(set) {
+    document.querySelectorAll('.seg button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.set === set)); });
+    document.getElementById('chips-player').hidden = set !== 'player';
+    document.getElementById('chips-admin').hidden = set !== 'admin';
+  }
+  document.querySelectorAll('.seg button').forEach(function (b) {
+    b.addEventListener('click', function () { show(b.dataset.set); });
+  });
+  if (location.hash === '#admin') show('admin');
+})();
+</script>
 </body>
 </html>
