@@ -80,13 +80,17 @@ event("gift", "周屿", "林晚", "花", {"giftName": "玫瑰"})
 event("lovemail", "沈知意", "林晚", "喜欢你", {"signature": "猫"})
 event("lovemail", "林晚", "周屿", "嗨", {"signature": "匿名"})
 i = page(lin, "interact")
-row = re.search(r'aria-label="与周屿的往来">(.*?)</article>', i, re.S).group(1)
-ok("我发 <b>1</b>" in row and "我送 <b>0</b>" in row and "我收 <b>1</b>" in row and "我寄 <b>1</b>" in row, row)
+def cells(html, who):
+    """某个人那一行去掉标签后的文字：头像字 + 名字 + 短信 发/收 + 礼物 送/收 + 心动信 寄，如 周周屿1/10/11"""
+    row = re.search(r'aria-label="与' + who + r'的往来">(.*?)</li>', html, re.S).group(1)
+    return re.sub(r"\s+", "", re.sub(r"<[^>]+>", "", row))
+row = cells(i, "周屿")
+ok(row == "周周屿1/10/11", row)   # 短信 发1/收1，礼物 送0/收1，心动信 寄1
 ok('aria-label="与沈知意的往来"' not in i and "收到 1 封心动信" in i, "lovemail sender not revealed")
 zi = page(zy, "interact")
 ok('aria-label="与林晚的往来"' in zi and "收到 1 封心动信" in zi, "zy interact")
-zrow = re.search(r'aria-label="与林晚的往来">(.*?)</article>', zi, re.S).group(1)
-ok("我寄 <b>0</b>" in zrow, "zy did not send lovemail: " + zrow)
+zrow = cells(zi, "林晚")
+ok(zrow == "林林晚1/10/00", "zy: 短信 发1/收1；群里送出的礼物只进收件人手机，发件人这边 0/0；心动信寄 0 → " + zrow)
 
 # 他人与他人之间的往来不能进入我的统计；URL 参数不能切换统计身份。
 before = page(lin, "interact")
@@ -97,7 +101,7 @@ after = page(lin, "interact")
 ok(before == after, "other peoples interactions must not change my page")
 spoof = lin.get("/p/me/stats?view=interact&owner=周屿&role=周屿").get_data(as_text=True)
 ok(spoof == after, "query parameters cannot switch interaction identity")
-ok("林晚 · 本季与我的往来" in after and "我发 <b>" in after, "personal scope is explicit")
+ok("本季我收到" in after and "这里只统计我手机里可见的往来" in after, "personal scope is explicit")
 
 # 数量仅输出本人一行，保留自定义类型和真实零值；格式异常不能伪装成零。
 ok(A._phone_personal_counts("👤 我今天：私约 1 次｜自定义约战 2 次|电话 0 次\n🌐 全员今天：私约 999 次") == [

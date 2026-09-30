@@ -1,29 +1,29 @@
 <style>
-.counts-page { padding: 22px 16px 12px; }
-.counts-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 22px; }
-.counts-heading h1 { margin: 0; font-size: 24px; letter-spacing: -.5px; }
-.counts-heading p { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
-.counts-day { padding: 8px 12px; border-radius: 12px; font-size: 13px; background: var(--theirs); white-space: nowrap; }
-.counts-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
-.count-tile { padding: 18px; border: 1px solid var(--line); border-radius: 18px; background: var(--bg); min-width: 0; }
-.count-tile h2 { margin: 0 0 16px; font-size: var(--reading-size,16px); font-weight: 500; overflow-wrap: anywhere; }
-.count-number { display: flex; align-items: baseline; gap: 6px; }
-.count-number strong { font-size: 34px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; overflow-wrap: anywhere; min-width: 0; }
-.count-number span { font-size: 12px; color: var(--muted); }
-.count-tile.is-zero strong { color: var(--muted); }
-.counts-note { margin: 18px 2px 0; font-size: 12px; color: var(--muted); line-height: 1.8; }
-.counts-unavailable { padding: 28px 20px; border: 1px solid var(--line); border-radius: 18px; font-size: 14px; line-height: 1.8; color: var(--muted); }
+/* 数量：一个分组列表，一项一行，数字靠右；不再是 2×3 的大方块 */
+.counts-page { padding: 12px var(--gutter) 16px; }
+.counts-head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 2px 6px; font-size: 14px; font-weight: 600; }
+.counts-head small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.counts-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
+.count-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 14px; border-top: .5px solid var(--line); min-width: 0; }
+.count-row:first-child { border-top: 0; }
+.count-row h2 { margin: 0; font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.count-row .count-number { display: flex; align-items: baseline; gap: 4px; flex-shrink: 0; }
+.count-row strong { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.count-row span { font-size: 12px; color: var(--muted); }
+.count-row.is-zero strong { color: var(--muted); font-weight: 500; }
+.counts-note { margin: 10px 2px 0; font-size: 12px; color: var(--muted); line-height: 1.7; }
+.counts-unavailable { padding: 20px 16px; border: 1px solid var(--line); border-radius: 14px; font-size: 14px; line-height: 1.8; color: var(--muted); }
 </style>
-<section class="counts-page" aria-labelledby="counts-title">
-  <div class="counts-heading"><div><h1 id="counts-title">今日数量</h1><p>{{ owner }} · 我的活动记录</p></div>{% if report.day %}<span class="counts-day">{{ report.day }}</span>{% endif %}</div>
+<section class="counts-page">
   {% if personal_counts %}
-  <div class="counts-grid">
+  <div class="counts-head"><span>我的活动</span><small>{{ report.day or '' }}</small></div>
+  <ul class="counts-list">
     {% for item in personal_counts %}
-    <article class="count-tile{% if item.count == 0 %} is-zero{% endif %}" aria-label="{{ item.label }} {{ item.count }} 次">
+    <li class="count-row{% if item.count == 0 %} is-zero{% endif %}" aria-label="{{ item.label }} {{ item.count }} 次">
       <h2>{{ item.label }}</h2><div class="count-number"><strong>{{ item.count }}</strong><span>次</span></div>
-    </article>
+    </li>
     {% endfor %}
-  </div>
+  </ul>
   <p class="counts-note">仅展示我在当前游戏日的数量。</p>
   {% else %}<div class="counts-unavailable">暂时无法整理这份数量报告。可在群里发送「我的数量」查看，或等待下一次同步。</div>{% endif %}
 </section>

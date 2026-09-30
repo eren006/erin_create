@@ -1,60 +1,53 @@
 <style>
-.arc-page { padding: 22px 16px 12px; }
-.arc-page h1 { margin: 0; font-size: 24px; letter-spacing: -.5px; }
-.arc-subtitle { margin: 6px 0 20px; color: var(--muted); font-size: 13px; }
-.arc-overview { padding: 22px; border-radius: 20px; background: var(--theirs); margin-bottom: 26px; }
-.arc-label { font-size: 13px; color: var(--muted); }
-.arc-number { display: flex; align-items: baseline; gap: 8px; margin: 10px 0; }
-.arc-number strong { font-size: 40px; line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; }
-.arc-number span { font-size: 13px; color: var(--muted); }
-.arc-sample { font-size: 12px; color: var(--muted); line-height: 1.7; }
-.arc-section { font-size: 16px; margin: 0 0 12px; }
-.arc-card { border: 1px solid var(--line); border-radius: 18px; padding: 16px; margin-bottom: 12px; overflow-wrap: anywhere; }
-.arc-card h3 { margin: 0; font-size: var(--reading-size,16px); font-weight: 600; }
-.arc-participants { color: var(--muted); font-size: calc(var(--reading-size,16px) - 3px); margin: 5px 0 16px; }
-.arc-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
-.arc-metrics strong { display: block; margin-top: 5px; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.arc-metrics strong small { font-size: 12px; font-weight: 400; }
-.arc-wait { margin: 16px 0 0; padding: 12px; border-radius: 12px; background: var(--theirs); font-size: calc(var(--reading-size,16px) - 2px); line-height: 1.8; white-space: pre-wrap; }
-.arc-wait.needs-reply { background: #fff0eb; color: #9b3520; border: 1px solid #e5a18e; border-left: 4px solid #c14a30; white-space: normal; }
-.arc-wait-title { display: flex; align-items: center; gap: 8px; font-size: var(--reading-size,16px); font-weight: 650; }
-.arc-wait-dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
-.arc-wait-duration { display: block; margin-top: 5px; font-size: 23px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.arc-wait-detail { margin-top: 8px; font-size: 13px; white-space: pre-wrap; }
-@media (prefers-color-scheme: dark) {
- .arc-wait.needs-reply { background: #351f20; color: #ffb4a0; border-color: #8e4b40; border-left-color: #ff947b; }
-}
-.arc-note { font-size: calc(var(--reading-size,16px) - 2px); line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); margin: 12px 2px; }
+/* 弧长：顶上一条概览，下面每个场次两行，放进同一个圆角分组，和时间线同一套尺寸 */
+.arc-page { padding: 12px var(--gutter) 16px; }
+.arc-overview { display: flex; align-items: baseline; gap: 8px; padding: 12px 14px; border-radius: 14px; background: var(--theirs); margin-bottom: 16px; }
+.arc-overview .arc-label { font-size: 13px; color: var(--muted); }
+.arc-overview strong { font-size: 22px; line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; }
+.arc-overview .arc-unit { font-size: 13px; color: var(--muted); }
+.arc-overview .arc-sample { margin-left: auto; font-size: 12px; color: var(--muted); text-align: right; }
+.arc-section { font-size: 14px; font-weight: 600; margin: 0 2px 6px; }
+.arc-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--bg); }
+.arc-row { padding: 11px 14px; border-top: .5px solid var(--line); overflow-wrap: anywhere; }
+.arc-row:first-child { border-top: 0; }
+.arc-line1 { display: flex; align-items: baseline; gap: 8px; min-width: 0; line-height: 22px; }
+.arc-title { font-size: 15px; font-weight: 600; white-space: nowrap; }
+.arc-who { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-chip { flex-shrink: 0; font-size: 12px; line-height: 20px; padding: 0 8px; border-radius: 10px; background: var(--theirs); color: var(--muted); white-space: nowrap; }
+.arc-chip.is-due { background: #fff0eb; color: #9b3520; font-weight: 600; }
+.arc-line2 { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.arc-line2 b { color: var(--text); font-weight: 600; }
+.arc-detail { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); }
+.arc-note { font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); margin: 12px 2px; }
+@media (prefers-color-scheme: dark) { .arc-chip.is-due { background: #351f20; color: #ffb4a0; } }
 </style>
-<section class="arc-page" aria-labelledby="arc-title">
-  <h1 id="arc-title">我的弧长</h1><p class="arc-subtitle">{{ owner }} · 回复节奏</p>
+<section class="arc-page">
   {% if arc_view.average is not none %}
   <div class="arc-overview" aria-label="本人总平均：{{ arc_view.average }}分钟">
-    <div class="arc-label">平均回复用时</div>
-    <div class="arc-number"><strong>{{ arc_view.average }}</strong><span>分钟</span></div>
-    {% if arc_view.sample %}<div class="arc-sample">{{ arc_view.sample }}</div>{% endif %}
+    <span class="arc-label">平均回复</span><strong>{{ arc_view.average }}</strong><span class="arc-unit">分钟</span>
+    {% if arc_view.sample %}<span class="arc-sample">{{ arc_view.sample }}</span>{% endif %}
   </div>
   {% endif %}
-  {% if arc_view.sessions %}<h2 class="arc-section">进行中的场次 · {{ arc_view.sessions|length }}</h2>{% endif %}
+  {% if arc_view.sessions %}
+  <h2 class="arc-section">进行中的场次 · {{ arc_view.sessions|length }}</h2>
+  <ol class="arc-list">
   {% for item in arc_view.sessions %}
-  <article class="arc-card">
-    <h3>{{ item.title }}</h3><p class="arc-participants">{{ item.participants }}</p>
-    <div class="arc-metrics">
-      {% if item.progress %}<div><span class="arc-label">写帖 · 我 / 对方</span><strong>{{ item.progress|replace('v',' / ') }}</strong></div>{% endif %}
-      <div><span class="arc-label">本场平均回复</span><strong>{{ item.average }} <small>分钟</small></strong></div>
-    </div>
-    <p class="arc-sample">统计样本：{{ item.sample }}</p>
-    {% if item.waiting.startswith('你还没回：') %}
-    {% set wait_parts = item.waiting.split('；', 1) %}
-    <div class="arc-wait needs-reply">
-      <div class="arc-wait-title"><span class="arc-wait-dot" aria-hidden="true"></span>待你回复</div>
-      <strong class="arc-wait-duration">{{ wait_parts[0][5:] }}</strong>
-      <span class="arc-label">截至最近同步的等待时长</span>
-      {% if wait_parts|length > 1 %}<div class="arc-wait-detail">{{ wait_parts[1] }}</div>{% endif %}
-    </div>
-    {% else %}<div class="arc-wait">{{ item.waiting|replace('；','\n') }}</div>{% endif %}
-  </article>
+    {% set due = item.waiting.startswith('你还没回：') %}
+    {% set parts = item.waiting.split('；', 1) %}
+    <li class="arc-row">
+      <div class="arc-line1">
+        <span class="arc-title">{{ item.title }}</span><span class="arc-who">{{ item.participants }}</span>
+        {% if due %}<span class="arc-chip is-due">待你回复 {{ parts[0][5:] }}</span>{% else %}<span class="arc-chip">{{ parts[0] }}</span>{% endif %}
+      </div>
+      <div class="arc-line2">
+        {% if item.progress %}<span>写帖 我 / 对方 <b>{{ item.progress|replace('v',' / ') }}</b></span>{% endif %}
+        <span>本场平均 <b>{{ item.average }}</b> 分钟</span><span>{{ item.sample }}</span>
+      </div>
+      {% if parts|length > 1 %}<div class="arc-detail">{{ parts[1]|replace('；', '\n') }}</div>{% endif %}
+    </li>
   {% endfor %}
+  </ol>
+  {% endif %}
   {% for note in arc_view.notes %}<p class="arc-note">{{ note }}</p>{% endfor %}
   {% if arc_view.average is none and not arc_view.sessions and not arc_view.notes %}<p class="arc-note">暂无弧长记录，等待下一次同步。</p>{% endif %}
 </section>
