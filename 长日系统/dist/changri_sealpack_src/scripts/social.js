@@ -162,7 +162,11 @@ cmd_post_forum.solve = (ctx, msg, cmdArgs) => {
     }
 
     let author, content;
-    if (cmdArgs.args.length > 1) {
+    if (cmdArgs.formPost) {
+        // 竖版写法：【发帖】/署名：/内容：…，署名和内容已经分开，不用再按空格猜
+        author = cmdArgs.formPost.author || roleName;
+        content = (cmdArgs.formPost.content || "").trim();
+    } else if (cmdArgs.args.length > 1) {
         author = cmdArgs.getArgN(1);
         content = msg.message.replace(/^[。.]?发帖\s+\S+\s*/, "").trim();
     } else {
@@ -956,6 +960,24 @@ ext.onNotCommandReceived = (ctx, msg) => {
         getArgN: (n) => parts[n - 1] || "",
         args: parts
     });
+
+    // 论坛（无前缀）：以前在主插件里分派，但指令定义在本文件，主插件引用不到会报错，挪到这里
+    {
+        const f = getApi()?.parseInteractionForm ? getApi().parseInteractionForm(_rawIn, ["发帖"]) : null;
+        if (f) return cmd_post_forum.solve(ctx, msg, { args: [f.v.content], getArgN: n => n === 1 ? f.v.content : "", formPost: { author: f.v.sign, content: f.v.content } });
+    }
+    if (raw.startsWith("发帖")) {
+        const rest = raw.slice(2).trim();
+        if (rest) return cmd_post_forum.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+    }
+    if (raw.startsWith("回复帖子")) {
+        const rest = raw.slice(4).trim();
+        if (rest) return cmd_reply_post.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
+    }
+    if (raw.startsWith("查看帖子")) {
+        const rest = raw.slice(4).trim();
+        return cmd_view_posts.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
+    }
 
     // 关系线
     if (raw.startsWith("拉线")) {

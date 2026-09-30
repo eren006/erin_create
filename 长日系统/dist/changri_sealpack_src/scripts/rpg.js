@@ -3539,8 +3539,10 @@ ext.onNotCommandReceived = (ctx, msg) => {
     }
 
     // ── 合成系统 ──
-    if (raw === "合成列表") {
-        return cmd_view_craft.solve(ctx, msg, fa([]));
+    // 「合成列表」和帮助/报错里叫玩家用的「查看合成」都指向「合成 查看」——以前调用的 cmd_view_craft 从来没定义过，一触发就报错
+    if (raw === "合成列表" || raw === "查看合成" || raw.startsWith("查看合成 ")) {
+        const kw = raw.startsWith("查看合成 ") ? raw.slice(5).trim() : "";
+        return cmd_craft.solve(ctx, msg, fa(kw ? ["查看", kw] : ["查看"]));
     }
 
     // ── 道具 ──
@@ -3591,7 +3593,8 @@ ext.onNotCommandReceived = (ctx, msg) => {
     }
     if (raw.startsWith("物品详情")) {
         const parts = raw.slice(4).trim().split(/\s+/);
-        if (parts[0]) return cmd_item_detail.solve(ctx, msg, fa(parts));
+        // 等同「背包 详情 物品名」（以前调用的 cmd_item_detail 从来没定义过）
+        if (parts[0]) return cmd_bag.solve(ctx, msg, fa(["详情", ...parts]));
     }
     if (raw.startsWith("二手市场 买")) {
         const parts = raw.slice("二手市场".length).trim().split(/\s+/);

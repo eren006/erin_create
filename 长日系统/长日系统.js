@@ -1911,7 +1911,8 @@ function getBlockEntry(platform, blockerUid, blockedUid) {
 //   内容：今晚有空吗     （没有标签的续行会接到上一项后面，内容可以写多行）
 // 换算成跟横版完全一样的字符串（如「短信 张三 今晚有空吗」）再交给原来的解析，所以两种写法行为一致。
 // 认不出（首行不是这些指令、或一个标签都没认出）就原样返回，不影响其它消息。
-// 发帖不做：横版「发帖 署名 内容」靠空格区分署名和内容，内容带空格时换算回去会被误拆；悬赏心愿是带句号的注册指令，不走这里
+// 发帖不在这里换算：横版「发帖 署名 内容」靠空格区分署名和内容，内容带空格时换算回去会被误拆——
+// 发帖的竖版写法在社交插件里用 parseInteractionForm 直接拿署名/内容；悬赏心愿是带句号的注册指令，不走这里
 // ========================
 const FORM_LABELS = {
     target:  ["对象", "收信人", "收件人", "发送对象", "对方", "送给", "给"],
@@ -1934,12 +1935,12 @@ function getInteractionFormSpecs() {
     specs["漂流瓶"] = v => `漂流瓶 ${v.id ? v.id + " " : ""}${v.content}`;
     return specs;
 }
-function normalizeInteractionForm(raw) {
-    if (!raw || !raw.includes("\n")) return raw;
+// 按表单解析：首行是 heads 里的某个指令词（可带【】）才解析，返回 { head, v }；认不出返回 null
+function parseInteractionForm(raw, heads) {
+    if (!raw || !raw.includes("\n")) return null;
     const lines = raw.split(/\r?\n/);
     const head = lines[0].trim().replace(/^【\s*(.+?)\s*】$/, "$1");
-    const build = getInteractionFormSpecs()[head];
-    if (!build) return raw;
+    if (!heads.includes(head)) return null;
     const v = { target: "", content: "", sign: "", time: "", place: "", id: "" };
     let cur = null, recognized = 0;
     for (const line of lines.slice(1)) {
@@ -1949,12 +1950,17 @@ function normalizeInteractionForm(raw) {
         if (key) { cur = key; v[key] = m[2].trim(); recognized++; continue; }
         if (cur && t) v[cur] = v[cur] ? `${v[cur]}\n${t}` : t;   // 续行：接到上一项（多行内容）
     }
-    if (!recognized) return raw;
-    return build(v).trim();
+    return recognized ? { head, v } : null;
+}
+function normalizeInteractionForm(raw) {
+    const specs = getInteractionFormSpecs();
+    const f = parseInteractionForm(raw, Object.keys(specs));
+    return f ? specs[f.head](f.v).trim() : raw;
 }
 
 const changriApi = {
     normalizeInteractionForm: (raw) => normalizeInteractionForm(raw),   // 社交插件的无前缀分派也要先换算竖版写法
+    parseInteractionForm: (raw, heads) => parseInteractionForm(raw, heads),   // 发帖的竖版写法（署名/内容分开给，不绕横版）
     ext,
     // 存储（带缓存，卫星读写主存储必须走这两对函数；JSON key 用 kvGet/kvSet，裸串用 kvGetRaw/kvSetRaw）
     kvGetRaw: cachedGet,
@@ -10950,7 +10956,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
         "心愿":   "挂心愿 1400-1500 花园 一起散步\n\n也可以竖着写：\n【挂心愿】\n时间：1400-1500\n地点：花园\n内容：一起散步\n昵称：小猫（选填）",
         "悬赏心愿": "悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1",
         "拉线":   `拉线 张三 在高中时期是同班同学\n\n也可以竖着写：\n【拉线】\n对象：张三\n内容：在高中时期是同班同学\n\n${RECALL_FORMAT_HINT}`,
-        "发帖":   "发帖 张三 今天天气真好！",
+        "发帖":   "发帖 内容\n或：发帖 署名 内容\n例：发帖 匿名树洞 今天天气真好！\n\n也可以竖着写（内容里有空格、分行都没关系）：\n【发帖】\n署名：匿名树洞（选填，不填用角色名）\n内容：今天天气真好！",
         "点歌":   "（先回复一张音乐卡片，再发送）\n点歌人：张三 留言：这首歌送给你 歌名：晴天（选填） 送给：李四（选填）",
         "撤回":   "短信/礼物/拉线发错人时：\n长按你发的那条（或机器人回的「已送达」那条）→ 引用/回复 → 发送：\n撤回\n\n· 2 分钟内有效，已送到对方群里的那条会一起删掉\n· 今日次数返还，可以马上重发给对的人\n· 超过 2 分钟请联系管理员帮忙撤回",
         "提交二表": "长按你要提交的那条消息 → 引用/回复 → 发送：\n提交二表\n\n· 会原样转发到后台群备份，并在皮相墙把你名字前面的 ⬜ 换成 ✅\n· 提交过之后随时可以再提交（比如内容改过），不限次数",
@@ -11175,20 +11181,8 @@ ext.onNotCommandReceived = async (ctx, msg) => {
 
     if (raw === "查看信箱") return cmd_view_mylovemails.solve(ctx, msg, makeFakeCmdArgs([]));
 
-    if (raw.startsWith("发帖")) {
-        const rest = raw.slice(2).trim();
-        if (rest) return cmd_post_forum.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
-    }
-
-    if (raw.startsWith("回复帖子")) {
-        const rest = raw.slice(4).trim();
-        if (rest) return cmd_reply_post.solve(ctx, msg, makeFakeCmdArgs(rest.split(/\s+/)));
-    }
-
-    if (raw.startsWith("查看帖子")) {
-        const rest = raw.slice(4).trim();
-        return cmd_view_posts.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
-    }
+    // 发帖/回复帖子/查看帖子的无前缀写法在社交插件（长日社交.js）里分派：这几个指令定义在那边，
+    // 主插件这里引用不到（以前放在这里，一触发就 ReferenceError，只有带句号的「。发帖」能用）
 
 
     // 4.5 角色系统（无前缀）
