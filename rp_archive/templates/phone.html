@@ -112,6 +112,8 @@ a { color: var(--link); text-decoration: none; }
 .empty { color: var(--muted); text-align: center; padding: 60px 24px; font-size: 14px; }
 
 /* 聊天气泡 */
+.new-message-anchor { position: sticky; bottom: 160px; height: 0; z-index: 6; text-align: center; }
+.new-message { transform: translateY(-100%); padding: 8px 16px; border: 1px solid var(--line); border-radius: 24px; background: var(--bg); color: var(--text); box-shadow: 0 3px 14px #00000012; font: inherit; font-size: 13px; cursor: pointer; }
 .chat { padding: 8px 12px 24px; display: flex; flex-direction: column; }
 .stamp { text-align: center; color: var(--muted); font-size: 12px; margin: 16px 0 6px; }
 .stamp b { font-weight: 600; }
@@ -277,6 +279,7 @@ a { color: var(--link); text-decoration: none; }
       {% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
     </div>
   </div>
+  <div class="new-message-anchor"><button class="new-message" id="newMessage" type="button" hidden>有新信息 ↓</button></div>
   {% if can_reply and (status.sms or status.gift) %}
   {% if stickers %}
   <div class="stickers" id="stickers" hidden>
@@ -407,6 +410,22 @@ a { color: var(--link); text-decoration: none; }
   document.addEventListener('phone:updated', unread);
   document.addEventListener('visibilitychange', unread);
   window.addEventListener('storage', unread);
+  var scroller = document.getElementById('scroll'), newMessage = document.getElementById('newMessage');
+  function nearEnd() {
+    var root = document.scrollingElement;
+    return scroller && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 120
+      && root.scrollHeight - root.scrollTop - root.clientHeight < 120;
+  }
+  function clearNew() { if (newMessage && nearEnd()) newMessage.hidden = true; }
+  if (newMessage) {
+    newMessage.addEventListener('click', function () {
+      scroller.scrollTo({top: scroller.scrollHeight, behavior: 'smooth'});
+      window.scrollTo({top: document.scrollingElement.scrollHeight, behavior: 'smooth'});
+      newMessage.hidden = true;
+    });
+    scroller.addEventListener('scroll', clearNew, {passive: true});
+    window.addEventListener('scroll', clearNew, {passive: true});
+  }
   var revision = {{ (revision or '')|tojson }}, busy = false;
   function avatars() {
     document.querySelectorAll('.avatar[data-name]').forEach(function (el) {
@@ -431,13 +450,18 @@ a { color: var(--link); text-decoration: none; }
       var selector = {{ ("#inbox" if mode == "inbox" else ".chat")|tojson }};
       var current = document.querySelector(selector), next = doc.querySelector(selector);
       if (!current || !next) return;
-      // 只在本来就停在底部附近时才跟到最新一条；正在往上翻历史的不拽回去
-      var sc = document.getElementById('scroll'), root = document.scrollingElement;
-      var nearBottom = sc && (sc.scrollHeight - sc.scrollTop - sc.clientHeight < 120)
-                       && (root.scrollHeight - root.scrollTop - root.clientHeight < 120);
-      // 只替换消息区域，输入框、光标、输入法状态都保留。
+      var sc = scroller, root = document.scrollingElement;
+      var nearBottom = nearEnd(), oldTop = sc ? sc.scrollTop : 0, rootTop = root.scrollTop;
+      var changed = current.innerHTML !== next.innerHTML;
+      // 完整替换后的历史节点尺寸相同，保留顶部偏移可固定正在看的内容。
       current.replaceWith(next);
-      if (sc && nearBottom) { sc.scrollTop = sc.scrollHeight; root.scrollTop = root.scrollHeight; }
+      if (sc) {
+        if (nearBottom) { sc.scrollTop = sc.scrollHeight; root.scrollTop = root.scrollHeight; }
+        else {
+          sc.scrollTop = oldTop; root.scrollTop = rootTop;
+          if (changed) newMessage.hidden = false;
+        }
+      }
       avatars();
       document.dispatchEvent(new Event('phone:updated'));
       revision = data.revision;
