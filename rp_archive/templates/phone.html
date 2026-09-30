@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'thread' %}{{ other.partition('＠')[0] }} · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'thread' %}{{ other.partition('＠')[0] }} · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -333,6 +333,18 @@ a { color: var(--link); text-decoration: none; }
 .song-form textarea { min-height: 70px; resize: vertical; }
 .song-submit { padding: 11px; font-weight: 600; }
 .song-submit:disabled { opacity: .45; }
+.lm-tabs a { flex: 1; text-align: center; border: 1px solid var(--line); border-radius: 10px; padding: 7px; font-size: 13px; background: var(--bg); color: var(--text); }
+.lm-tabs a[aria-current] { border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); font-weight: 600; }
+.lm-flash { margin: 12px auto 0; }
+.lm-page { padding-bottom: 28px; }
+.lm-letter { margin: 8px 16px; padding: 16px 18px; border-radius: 16px; border: 1px solid var(--gift-line); background: var(--gift-bg); color: var(--gift-text); }
+.lm-letter.lm-sent, .lm-letter.lm-pending { background: var(--bg); color: var(--text); border-color: var(--line); }
+.lm-letter.lm-pending { border-style: dashed; }
+.lm-to { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.lm-body { font-size: var(--reading-size, 16px); line-height: 1.8; white-space: pre-wrap; word-break: break-word; }
+.lm-sig { text-align: right; font-size: 13px; opacity: .8; margin-top: 10px; }
+.lm-revoke { margin-top: 8px; font-size: 13px; }
+.lm-avatar { filter: none; }
 .song-note { padding: 8px 16px; font-size: 12px; color: var(--muted); }
 .notice-body p { font-size: 14px; line-height: 1.75; margin-bottom: 10px; }
 .notice-body b { color: var(--tag); }
@@ -445,6 +457,15 @@ a { color: var(--link); text-decoration: none; }
       <div class="body">
         <div class="top"><span class="name">公开播报</span><span class="time">{{ public.game_day }} {{ public.time }}</span></div>
         <div class="preview">{{ public.preview }}</div>
+      </div>
+    </a>
+    {% endif %}
+    {% if lovemail and not admin_as %}
+    <a class="row public-row" data-other="__lovemail__" data-received-ts="{{ lovemail.last }}" href="{{ url_for('player_lovemail') }}">
+      <div class="avatar public-avatar lm-avatar">💌</div>
+      <div class="body">
+        <div class="top"><span class="name">心动信箱</span></div>
+        <div class="preview">收到 {{ lovemail.received }} 封{% if lovemail.pending %} · {{ lovemail.pending }} 封等派送{% endif %}{% if lovemail.can %} · 今天还能投 {{ lovemail.left }} 封{% endif %}</div>
       </div>
     </a>
     {% endif %}
@@ -785,6 +806,83 @@ a { color: var(--link); text-decoration: none; }
   })();
   </script>
 
+{% elif mode == 'lovemail' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_phone_inbox') }}">信息</a>
+    <div class="title">心动信箱<small>{% if lm.ready %}{{ lm.game_day }} 已投 {{ lm.used }}/{{ lm.limit }}{% if lm.delivery_time %} · {{ lm.delivery_time }} 派送{% endif %}{% else %}匿名来信{% endif %}</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll lm-page" data-received-ts="{{ recv[0].id if recv else 0 }}">
+    <nav class="song-tabs lm-tabs" aria-label="心动信箱">
+      <a href="{{ url_for('player_lovemail') }}"{% if view == 'inbox' %} aria-current="page"{% endif %}>收到的 {{ recv|length }}</a>
+      <a href="{{ url_for('player_lovemail', view='sent') }}"{% if view == 'sent' %} aria-current="page"{% endif %}>寄出的 {{ sent|length + lm.pending|length }}</a>
+      <a href="{{ url_for('player_lovemail', view='write') }}"{% if view == 'write' %} aria-current="page"{% endif %}>写信</a>
+    </nav>
+    {% if flash %}<div class="notice lm-flash">{{ flash }}</div>{% endif %}
+
+    {% if view == 'inbox' %}
+      {% for m in recv %}
+      {% if loop.first or m.game_day != recv[loop.index0 - 1].game_day %}<div class="stamp"><b>{{ m.game_day or '往期' }}</b></div>{% endif %}
+      <article class="lm-letter">
+        <div class="lm-body">{{ m.content }}</div>
+        <div class="lm-sig">—— {{ m.signature }}</div>
+        {% if m.public %}<div class="tag">📢 派送途中飘落到了公告区</div>{% endif %}
+      </article>
+      {% else %}
+      <div class="empty">信箱还是空的。每晚{{ ' ' ~ lm.delivery_time if lm.delivery_time }} 邮差会统一派送当天的心动信，来信只署名、不写是谁。</div>
+      {% endfor %}
+
+    {% elif view == 'sent' %}
+      {% if lm.pending %}
+      <div class="stamp"><b>等待派送</b></div>
+      {% for p in lm.pending %}
+      <article class="lm-letter lm-pending">
+        <div class="lm-to">寄给 {{ p.to }}{% if p.game_day %} · {{ p.game_day }}{% endif %}</div>
+        <div class="lm-body">{{ p.content }}</div>
+        <div class="lm-sig">—— {{ p.signature }}</div>
+        {% if p.revoking %}<div class="tag">撤回中，半分钟内生效</div>
+        {% else %}
+        <form method="post" action="{{ url_for('player_lovemail_post') }}" onsubmit="return confirm('撤回这封寄给 {{ p.to }} 的信？')">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="revoke">
+          <input type="hidden" name="ts" value="{{ p.ts }}"><input type="hidden" name="web_id" value="{{ p.web_id }}">
+          <button type="submit" class="quiet-button lm-revoke">撤回</button>
+        </form>
+        {% endif %}
+      </article>
+      {% endfor %}
+      {% endif %}
+      {% for m in sent %}
+      {% if loop.first or m.game_day != sent[loop.index0 - 1].game_day %}<div class="stamp"><b>{{ m.game_day or '往期' }}</b> 已派送</div>{% endif %}
+      <article class="lm-letter lm-sent">
+        <div class="lm-to">寄给 {{ m.to }}</div>
+        <div class="lm-body">{{ m.content }}</div>
+        <div class="lm-sig">—— {{ m.signature }}</div>
+        {% if m.public %}<div class="tag">📢 派送途中飘落到了公告区</div>{% endif %}
+      </article>
+      {% else %}
+      {% if not lm.pending %}<div class="empty">还没有寄出过心动信</div>{% endif %}
+      {% endfor %}
+
+    {% else %}
+      {% if lm.why %}<div class="song-note">{{ lm.why }}</div>{% endif %}
+      {% set d = draft or {} %}
+      <form class="song-form" method="post" action="{{ url_for('player_lovemail_post') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label for="lmTo">寄给</label>
+        <select id="lmTo" name="to" required>
+          <option value="">选一个人</option>
+          {% for n in contacts %}<option value="{{ n }}"{% if n == (d.to or preset_to) %} selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select>
+        <label for="lmContent">想说的话（{{ max_len }} 字内）</label>
+        <textarea id="lmContent" name="content" maxlength="{{ max_len }}" required rows="6">{{ d.content }}</textarea>
+        <label for="lmSig">署名（选填，{{ sig_max }} 字内，不写就是「匿名」）</label>
+        <input id="lmSig" name="signature" maxlength="{{ sig_max }}" autocomplete="off" placeholder="匿名" value="{{ d.signature }}">
+        <button type="submit" class="song-submit"{% if not lm.can %} disabled{% endif %}>投进信箱</button>
+      </form>
+      <p class="song-note">对方只会看到署名，不会知道是你。信会在{{ ' ' ~ lm.delivery_time if lm.delivery_time else '每晚' }} 统一派送，派送前可以在「寄出的」里撤回。群里「发送心动信」和这里共用每天的次数。</p>
+    {% endif %}
+  </div>
+
 {% elif mode == 'admin_index' %}
   <header class="bar">
     <form method="post" action="{{ url_for('player_phone_logout') }}"><button class="linkbtn" type="submit">退出</button></form>
@@ -904,12 +1002,15 @@ a { color: var(--link); text-decoration: none; }
   </header>
   <div class="scroll" id="scroll">
     {% set their_av = none if alias_thread == 'back' else other.partition('＠')[0] %}
+    {# 用化名聊天时自己这边也显示化名（灰底首字），免得截图/转述时让人以为对方看得到真实头像 #}
+    {% set my_alias = other.partition('＠')[2] if alias_thread == 'out' else '' %}
     <div class="chat" data-received-ts="{{ msgs|rejectattr('mine')|map(attribute='ts')|max|default(0) }}">
       {% for m in msgs %}
         {% if m.show_time %}<div class="stamp">{% if m.day_break %}<b>{{ m.day_break }}</b> {% endif %}{{ m.time }}</div>{% endif %}
         <div class="msg {{ 'mine' if m.mine else 'theirs' }}" id="message-{{ [sid, owner, m.id]|phone_message_key }}">
           {% if m.sig_above %}<div class="sig">{{ m.sig_above }}</div>{% endif %}
-          {% if m.mine %}<div class="avatar bav" data-name="{{ owner }}">{{ owner[:1] }}</div>
+          {% if m.mine and my_alias %}<div class="avatar bav public-avatar" title="你的化名">{{ my_alias[:1] }}</div>
+          {% elif m.mine %}<div class="avatar bav" data-name="{{ owner }}">{{ owner[:1] }}</div>
           {% elif their_av %}<div class="avatar bav" data-name="{{ their_av }}">{{ their_av[:1] }}</div>
           {% else %}<div class="avatar bav public-avatar">?</div>{% endif %}
           {% if m.kind == 'song' %}
@@ -1127,7 +1228,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail') %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -1223,7 +1324,7 @@ a { color: var(--link); text-decoration: none; }
     b.remove();
   });
 </script>
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail') %}
 <script>
 (function () {
   var scope = {{ ([sid, owner]|tojson) }};
@@ -1343,10 +1444,10 @@ a { color: var(--link); text-decoration: none; }
   function readKey(other) { return 'phone:read:' + JSON.stringify(scope.concat([other])); }
   function unread() {
     if (document.hidden) return;
-    {% if mode in ('thread', 'public', 'moments') %}
+    {% if mode in ('thread', 'public', 'moments', 'lovemail') %}
     try {
-      var key = readKey({{ (other if mode == 'thread' else ('__moments__' if mode == 'moments' else '__public__'))|tojson }});
-      var ts = Number(document.querySelector('.chat').dataset.receivedTs);
+      var key = readKey({{ (other if mode == 'thread' else {'moments': '__moments__', 'lovemail': '__lovemail__'}.get(mode, '__public__'))|tojson }});
+      var ts = Number(document.querySelector('.chat, .lm-page').dataset.receivedTs);
       localStorage.setItem(key, String(Math.max(Number(localStorage.getItem(key)) || 0, ts)));
     } catch (_) {}
     {% else %}

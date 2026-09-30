@@ -9,8 +9,10 @@ const KV = {
   global_chaos_letter_counts: { "QQ:111": { day: "D2", count: 2 }, "QQ:222": { day: "D1", count: 4 } },
   global_gift_stats: {}, global_gift_cooldowns: { "QQ:111": 1000 }, extra_accounts: {}, ts_feature_windows: [],
   gift_sightings: { "QQ:111": { unlocked_gifts: ["#001"] } }, shop_personal_display: { "QQ:111": { giftId: "#001", refreshedAt: 5 } },
+  lovemail_day_limits: { D2: 4 }, lovemail_day_counts: { "111": { D2: 1 }, "222": { D1: 3 } },
+  lovemail_pool: [{ uid: "111", receiver: "沈知意", content: "群里投的", signature: "小猫", gameDay: "D2", timestamp: 777 }],
 };
-const CACHE = { global_days: "D2", "chaos_letter_cooldown_QQ:111": "5000", mailCooldown: "60" };
+const CACHE = { global_days: "D2", "chaos_letter_cooldown_QQ:111": "5000", mailCooldown: "60", lovemail_delivery_time: "\"21:30\"" };
 const kvGet = (k, d) => (k in KV ? JSON.parse(JSON.stringify(KV[k])) : d), kvSet = (k, v) => { KV[k] = v; };
 const cachedGet = k => CACHE[k], cachedSet = (k, v) => { CACHE[k] = v; };
 const getStorageInt = (k, d) => (CACHE[k] ? parseInt(CACHE[k]) : d);
@@ -20,7 +22,10 @@ const getPrimaryUid = (p, u) => u;
 const getUidByRoleName = (p, n) => Object.entries(KV.a_private_group.QQ).find(([_, v]) => v[0] === n || v[2] === n)?.[0] || null;
 const stats = []; const recordInteractionStat = (...a) => stats.push(a);
 let sent;
-global.fetch = async (url, opt) => { sent = { url, body: JSON.parse(opt.body) }; return { ok: true, json: async () => ({ web_send: true, shop_events: [
+let LM = [{ id: 5, from_role: "周屿", to_role: "林晚", content: "网页投的", signature: "匿名", game_day: "D2", timestamp: 888 }],
+    LMREV = [{ id: 9, from_role: "林晚", ts: 777 }, { id: 10, from_role: "林晚", ts: 12345 }];
+global.fetch = async (url, opt) => { sent = { url, body: JSON.parse(opt.body) }; return { ok: true, json: async () => ({ web_send: true,
+  lovemails: LM, lovemail_revokes: LMREV, shop_events: [
   { id: 7, role: "林晚", unlocked: ["#002", "#001"], display: { giftId: "#002", refreshedAt: 99 } },
   { id: 8, role: "周屿", unlocked: ["#003"], display: null } ], events: [
   { id: 41, type: "sms", from_role: "林晚", to_role: "周屿", timestamp: 9000, day_key: "D2", lost: false },
@@ -57,6 +62,22 @@ eval(fnSrc + "\n;globalThis.phoneWebSync = phoneWebSync; globalThis.phoneWebSend
   assert.equal(snap.rules.sms_public, false); assert.equal(snap.rules.gift_public_chance, 50); assert.equal(snap.rules.hide_receiver, false);
   assert.ok(phoneWebSendNotice("短信").includes("https://archive.x/p"));
   KV.phone_web_send.at = Date.now() - 11 * 60 * 1000; assert.equal(phoneWebSendNotice("短信"), null);  // 过期当关闭
+  // 心动信：快照带规则/今日次数/信池（撤回前的状态）；网页投的放进信池、计次数；撤回按发件人+投递时间拿掉、还次数
+  assert.deepEqual(snap.rules.lovemail, { enabled: true, has_day: true, window: null, limit: 4, delivery_time: "21:30" });
+  assert.deepEqual(snap.lovemail.counts, { "林晚": 1 });   // 周屿的是 D1 的
+  assert.deepEqual(snap.lovemail.pending, [{ from: "林晚", to: "沈知意", content: "群里投的", signature: "小猫", game_day: "D2", ts: 777, web_id: 0 }]);
+  assert.deepEqual(KV.lovemail_pool, [{ uid: "222", receiver: "林晚", content: "网页投的", signature: "匿名", gameDay: "D2", timestamp: 888, webId: 5 }]);
+  assert.deepEqual(KV.lovemail_day_counts, { "222": { D1: 3, D2: 1 } });   // 林晚撤回后 D2 归零被删
+  assert.deepEqual(KV.phone_lovemail_done, [5]); assert.deepEqual(KV.phone_lovemail_revoke_done, [9, 10]);
   await phoneWebSync(); assert.equal(sent.body.after, 43); assert.equal(sent.body.shop_after, 8);
+  // 第二次同步：回报上次处理的 id；同一封网页信（回报前又给了一次）不会重复进信池；回报过的清掉只剩这次的
+  assert.deepEqual(sent.body.lovemail_done, [5]); assert.deepEqual(sent.body.lovemail_revoke_done, [9, 10]);
+  assert.equal(sent.body.snapshot.lovemail.pending[0].web_id, 5);
+  assert.equal(KV.lovemail_pool.length, 1); assert.equal(KV.lovemail_day_counts["222"].D2, 1);
+  assert.deepEqual(KV.phone_lovemail_done, [5]); assert.deepEqual(KV.phone_lovemail_revoke_done, [9, 10]);
+  LM = []; LMREV = []; await phoneWebSync();
+  assert.deepEqual(KV.phone_lovemail_done, []); assert.deepEqual(KV.phone_lovemail_revoke_done, []);
+  KV.feature_user_blocklist["111"] = { enable_lovemail: false }; await phoneWebSync();
+  assert.deepEqual(sent.body.snapshot.feature_off["林晚"], ["lovemail"]);
   console.log("JS OK", JSON.stringify(sent.body).length, "bytes");
 })().catch(e => { console.error(e); process.exit(1); });

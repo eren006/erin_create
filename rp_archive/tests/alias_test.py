@@ -52,6 +52,8 @@ ev = c.execute("SELECT * FROM extra_events ORDER BY id DESC LIMIT 1").fetchone()
 ok(ev["to_role"] == "周屿" and not info.get("is_misdelivered") and info["public_from"] == "小狐狸", "delivered to target")
 lp = lin.get("/p/me").get_data(as_text=True); ok("化名·小狐狸" in lp, "owner inbox shows alias tag")
 ok("你的化名：小狐狸" in lin.get("/p/me/周屿＠小狐狸").get_data(as_text=True), "owner thread title")
+_t = lin.get("/p/me/周屿＠小狐狸").get_data(as_text=True)
+ok('title="你的化名">小</div>' in _t and 'class="avatar bav" data-name="林晚"' not in _t, "own bubbles show alias, not real avatar")
 
 # 周屿那边：对话叫「小狐狸」，看不到「林晚」
 zin = zy.get("/p/me").get_data(as_text=True); ok("小狐狸" in zin, "target inbox")

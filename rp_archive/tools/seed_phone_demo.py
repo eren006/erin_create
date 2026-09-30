@@ -57,6 +57,31 @@ def _demo_shop(db, tid, sid):
             db.execute("UPDATE phone_sync SET snapshot=? WHERE show_id=?", (json.dumps(snap, ensure_ascii=False), sid))
     db.commit()
 
+def _demo_lovemail(db, tid, sid):
+    """演示季的心动信：快照补上规则/次数/一封等派送的信（标成 demo，没有机器人也能投），再放几封已派送的往期；已经有就不动"""
+    row = db.execute("SELECT snapshot FROM phone_sync WHERE show_id=?", (sid,)).fetchone()
+    if not row:
+        return
+    snap = json.loads(row["snapshot"] or "{}")
+    if "lovemail" in (snap.get("rules") or {}):
+        return
+    now = int(time.time() * 1000)
+    snap["demo"] = True
+    snap.setdefault("rules", {})["lovemail"] = {"enabled": True, "has_day": True, "window": None, "limit": 20, "delivery_time": "22:00"}
+    snap["lovemail"] = {"counts": {"体验者": 1}, "pending": [
+        {"from": "体验者", "to": "周屿", "content": "天台的风很大，下次记得多穿一件。", "signature": "路过的人",
+         "game_day": snap.get("game_day") or "D1", "ts": now - 30 * 60000, "web_id": 0}]}
+    db.execute("UPDATE phone_sync SET snapshot=? WHERE show_id=?", (json.dumps(snap, ensure_ascii=False), sid))
+    for frm, to, content, sig, day, public, mins in [
+        ("周屿", "体验者", "第一次见你是在排练厅门口，你抱着一摞谱子差点摔倒。那天之后我就一直在想，要怎么跟你说话才不显得奇怪。", "楼上的琴声", "D0", False, 1500),
+        ("林晚", "体验者", "谢谢你昨天帮我占了座位！虽然你可能已经忘了。", "小熊软糖", "D0", True, 1490),
+        ("沈知意", "体验者", "喵。", "猫", "D1", False, 60),
+        ("体验者", "林晚", "你的晚霞照片拍得真好，能教教我吗？", "匿名", "D0", False, 1480)]:
+        db.execute("INSERT INTO extra_events (show_id, tenant_id, session_id, type, from_role, to_role, content, extra_info, timestamp, game_day) "
+                   "VALUES (?, ?, '', 'lovemail', ?, ?, ?, ?, ?, ?)",
+                   (sid, tid, frm, to, content, json.dumps({"signature": sig, "isPublic": public}, ensure_ascii=False), now - mins * 60000, day))
+    db.commit()
+
 row = db.execute("SELECT id FROM tenants WHERE username='phone_demo'").fetchone()
 if row:
     tid = row["id"]
@@ -71,6 +96,7 @@ if row:
     else:
         acode = arow["code"]
     _demo_shop(db, tid, sid)
+    _demo_lovemail(db, tid, sid)
     print("演示团账号已存在。各角色激活码（一直有效）：")
     _print_codes(_demo_codes(db, tid, sid))
     print(f"演示管理员手机码：{acode}\n入口：https://archive.changri.work/p/{acode}")
@@ -129,6 +155,7 @@ db.execute("""INSERT INTO song_requests (tenant_id, show_id, from_role, to_role,
               '周杰伦', '叶惠美', '', 0, '送你一首歌', 'web', 'D1', ?, 1)""", (tid, sid, now - 100 * 60000))
 db.commit()
 _demo_shop(db, tid, sid)
+_demo_lovemail(db, tid, sid)
 print("演示团账号已建好（跟真实数据完全隔开）。各角色激活码（一直有效）：")
 _print_codes(_demo_codes(db, tid, sid))
 print(f"体验激活码（一直有效）：{code}")

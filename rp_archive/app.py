@@ -1623,6 +1623,36 @@ def _migrate(conn):
         )
     """)
 
+    # ── 24. 网页投的心动信：先存这里，机器人同步时取走放进自己的信池，跟群里投的一起每晚派送 ──
+    # state: new=还没交给机器人 / taken=机器人回报已放进信池 / revoked=撤回了；handed_at=已经在同步回包里给过机器人
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_lovemails (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            show_id    INTEGER NOT NULL,
+            from_role  TEXT    NOT NULL,
+            to_role    TEXT    NOT NULL,
+            content    TEXT    NOT NULL,
+            signature  TEXT    NOT NULL DEFAULT '匿名',
+            game_day   TEXT    NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            state      TEXT    NOT NULL DEFAULT 'new',
+            handed_at  INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_phone_lovemails_show ON phone_lovemails(show_id, state, id)")
+    # 撤回已经在机器人信池里的信（群里投的、或网页投的已被取走）：按 发件人+投递时间 找到那封，机器人处理完回报 done
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_lovemail_revokes (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id    INTEGER NOT NULL,
+            from_role  TEXT    NOT NULL,
+            mail_ts    INTEGER NOT NULL,
+            created_at INTEGER NOT NULL,
+            done       INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
     # ── 长日将尽许愿墙：独立的小功能，不挂在 tenant/superadmin 体系下 ──────────
     conn.execute("""
         CREATE TABLE IF NOT EXISTS changri_wishes (
@@ -5121,7 +5151,7 @@ def player_phone_inbox():
     db = get_db()
     return render_template("phone.html", mode="inbox", owner=owner, sid=sid,
                            threads=_phone_threads(db, sid, owner), status=_phone_status(db, sid, owner),
-                           public=_phone_public_summary(db, sid),
+                           public=_phone_public_summary(db, sid), lovemail=_lm_summary(db, sid, owner),
                            moments_latest=db.execute(
                                "SELECT role_name, content, created_at, game_day, (SELECT COUNT(*) FROM moment_images i "
                                "WHERE i.moment_id=m.id) AS n FROM moments m WHERE show_id=? AND deleted=0 "
@@ -5974,8 +6004,10 @@ def api_phone_sync():
                     "display": ({"giftId": r["display_gift"], "refreshedAt": r["refreshed_at"]} if r["display_gift"] else None)}
                    for r in db.execute("SELECT * FROM phone_shop_log WHERE show_id=? AND id>? ORDER BY id LIMIT 200",
                                        (show["id"], shop_after))]
+    lovemails, lm_revokes = _lm_for_bot(db, show["id"], data.get("lovemail_done"), data.get("lovemail_revoke_done"))
     return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "events": events, "shop_events": shop_events,
-                    "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done"))})
+                    "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done")),
+                    "lovemails": lovemails, "lovemail_revokes": lm_revokes})
 
 @app.route("/p/<code>")
 def player_phone_enter(code):
@@ -6728,6 +6760,209 @@ def _song_pending_for_bot(db, sid, done_ids):
              "name": r["song_name"], "artists": r["artists"], "to": r["to_role"], "message": r["message"]}
             for r in db.execute("SELECT * FROM song_requests WHERE show_id=? AND announced=0 AND deleted=0 ORDER BY id LIMIT 20",
                                 (sid,))]
+
+# ── 心动信 ─────────────────────────────────────────────────────────────────────
+# 规则、今日已投封数、还在机器人信池里等派送的信，全部来自插件同步快照（rules.lovemail / snapshot.lovemail），存档站不另存一套。
+# 网页投的信先进 phone_lovemails，下一次同步交给机器人放进它的信池、计进每日次数，之后跟群里投的一样每晚统一派送；
+# 派送时机器人照常 POST /api/event 存档，所以「收到的 / 寄出的」往期直接读存档。
+# 机器人没连上（快照过期）时不收信：信只能靠它派送，次数也只有它算得准。收件人只看得到署名，看不到是谁寄的。
+_LM_MAX_LEN = 500
+_LM_SIG_MAX = 20
+_CQ_CODE    = re.compile(r"\[CQ:[^\]]*\]")
+
+def _lm_state(db, sid, owner):
+    """页面和投递共用：能不能投、为什么不能、今日上限/已投、等派送的信（机器人信池里的 + 网页还没交出去的）"""
+    now  = int(time.time() * 1000)
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    sync = _phone_sync_row(db, sid)
+    snap = sync["snap"] if sync else {}
+    rules = (snap.get("rules") or {}).get("lovemail")
+    st = {"ready": rules is not None, "can": False, "why": "", "limit": 0, "used": 0, "pending": [],
+          "delivery_time": "", "game_day": snap.get("game_day") or ""}
+    if rules is None:
+        st["why"] = "心动信要等机器人升级到新版本、同步过一次才能在网页上用"
+        return st
+    lm = snap.get("lovemail") or {}
+    st["limit"] = int(rules.get("limit") or 0)
+    st["delivery_time"] = rules.get("delivery_time") or ""
+    revoking = {r["mail_ts"] for r in db.execute(
+        "SELECT mail_ts FROM phone_lovemail_revokes WHERE show_id=? AND from_role=? AND done=0", (sid, owner))}
+    pool = [p for p in (lm.get("pending") or []) if p.get("from") == owner]
+    handed = {p.get("web_id") for p in pool if p.get("web_id")}
+    pending = [{"to": p.get("to") or "", "content": _CQ_CODE.sub("", p.get("content") or "").strip(),
+                "signature": p.get("signature") or "匿名", "game_day": p.get("game_day") or "",
+                "ts": int(p.get("ts") or 0), "web_id": 0, "revoking": int(p.get("ts") or 0) in revoking} for p in pool]
+    web = [r for r in db.execute("SELECT * FROM phone_lovemails WHERE show_id=? AND from_role=? AND state='new' ORDER BY id",
+                                 (sid, owner)) if r["id"] not in handed]
+    pending += [{"to": r["to_role"], "content": r["content"], "signature": r["signature"], "game_day": r["game_day"],
+                 "ts": r["created_at"], "web_id": r["id"], "revoking": False} for r in web]
+    st["pending"] = sorted(pending, key=lambda p: p["ts"])
+    day = st["game_day"]
+    st["used"] = int((lm.get("counts") or {}).get(owner) or 0) + sum(1 for r in web if r["game_day"] == day)
+    win = rules.get("window")
+    hour = datetime.now(TZ_BEIJING).hour
+    if _schedule_zone(dict(show)) != "main":
+        why = "不在档期内，暂时不能投信"
+    elif now - sync["synced_at"] >= _PHONE_SYNC_FRESH_MS and not snap.get("demo"):  # 演示季没有机器人，快照是脚本写死的
+        why = "机器人暂时没连上，信要靠它派送，稍后再来投"
+    elif not rules.get("enabled"):
+        why = "心动信箱已关闭，暂不可投稿"
+    elif not rules.get("has_day"):
+        why = "还没设置游戏天数，暂时不能投信"
+    elif "lovemail" in set((snap.get("feature_off") or {}).get(owner) or []):
+        why = "你的心动信功能已被管理员关闭"
+    elif win and not (int(win.get("start", 0)) <= hour < int(win.get("end", 24))):
+        why = f"心动信开放时间为 {int(win['start']):02d}:00–{int(win['end']):02d}:00"
+    elif st["limit"] <= 0:
+        why = f"{day} 的心动信投稿已关闭"
+    elif st["used"] >= st["limit"]:
+        why = f"{day} 已经投了 {st['used']} 封（上限 {st['limit']} 封），等下一天再来"
+    else:
+        why = ""
+    st["why"], st["can"] = why, not why
+    return st
+
+def _lm_send(db, sid, tid, owner, to_role, content, signature):
+    """网页投信：返回 (ok, 提示)。调用方持有 _phone_send_lock，查次数和写入之间不会被插队"""
+    st = _lm_state(db, sid, owner)
+    if not st["can"]:
+        return False, "📪 " + st["why"]
+    to_role = (to_role or "").strip()
+    if to_role not in _phone_roster(_phone_sync_row(db, sid)):
+        return False, "❌ 找不到这个收件人，请从名单里选"
+    content = (content or "").strip()
+    signature = (signature or "").strip() or "匿名"
+    if not content:
+        return False, "❌ 写点什么再投"
+    if len(content) > _LM_MAX_LEN:
+        return False, f"❌ 信最多 {_LM_MAX_LEN} 字（现在 {len(content)} 字）"
+    if len(signature) > _LM_SIG_MAX:
+        return False, f"❌ 署名最多 {_LM_SIG_MAX} 字"
+    if _CQ_CODE.search(content + signature):
+        return False, "❌ 信里不能带 [CQ:…] 这样的代码"
+    if _blocked_hit(sid, owner, "心动信", content, signature):
+        return False, BLOCKED_MSG
+    db.execute("""INSERT INTO phone_lovemails (tenant_id, show_id, from_role, to_role, content, signature, game_day, created_at)
+                  VALUES (?,?,?,?,?,?,?,?)""",
+               (tid, sid, owner, to_role, content, signature, st["game_day"], int(time.time() * 1000)))
+    db.commit()
+    left = st["limit"] - st["used"] - 1
+    when = f"{st['delivery_time']} " if st["delivery_time"] else ""
+    return True, f"💌 已投进「{to_role}」的信箱，{when}统一派送。{st['game_day']} 还能投 {left} 封"
+
+def _lm_revoke(db, sid, owner, ts, web_id):
+    """撤回还没派送的信：网页的还没交给机器人就直接作废；已经在机器人信池里的，记一条撤回请求等下次同步"""
+    now = int(time.time() * 1000)
+    if web_id:
+        row = db.execute("SELECT * FROM phone_lovemails WHERE id=? AND show_id=? AND from_role=?",
+                         (web_id, sid, owner)).fetchone()
+        if not row or row["state"] != "new":
+            return False, "这封信已经交给邮差了，刷新看看"
+        db.execute("UPDATE phone_lovemails SET state='revoked' WHERE id=?", (web_id,))
+        if row["handed_at"]:  # 同步回包里已经给过机器人，它可能已经放进信池
+            db.execute("INSERT INTO phone_lovemail_revokes (show_id, from_role, mail_ts, created_at) VALUES (?,?,?,?)",
+                       (sid, owner, row["created_at"], now))
+        db.commit()
+        return True, "✅ 已撤回，今日次数会还给你"
+    st = _lm_state(db, sid, owner)
+    if not any(p["ts"] == ts and not p["web_id"] for p in st["pending"]):
+        return False, "找不到这封信，可能已经派送了"
+    if not db.execute("SELECT 1 FROM phone_lovemail_revokes WHERE show_id=? AND from_role=? AND mail_ts=? AND done=0",
+                      (sid, owner, ts)).fetchone():
+        db.execute("INSERT INTO phone_lovemail_revokes (show_id, from_role, mail_ts, created_at) VALUES (?,?,?,?)",
+                   (sid, owner, ts, now))
+        db.commit()
+    return True, "✅ 撤回已提交，半分钟内生效，次数会还给你（到点已经派送的就撤不回了）"
+
+def _lm_history(db, sid, owner):
+    """存档里已经派送的心动信：(收到的, 寄出的)，新的在前。收到的只给署名，不给发件人"""
+    recv, sent = [], []
+    for r in db.execute("""SELECT id, from_role, to_role, content, extra_info, timestamp, game_day FROM extra_events
+                           WHERE show_id=? AND type='lovemail' AND (to_role=? OR from_role=?) ORDER BY id DESC""",
+                        (sid, owner, owner)):
+        info = json.loads(r["extra_info"] or "{}")
+        item = {"id": r["id"], "content": _CQ_CODE.sub("", r["content"] or "").strip() or "（图片）",
+                "signature": info.get("signature") or info.get("from_custom_name") or "匿名",
+                "game_day": r["game_day"] or "", "public": bool(info.get("isPublic"))}
+        if r["to_role"] == owner:
+            recv.append(item)
+        if r["from_role"] == owner:
+            sent.append(dict(item, to=r["to_role"]))
+    return recv, sent
+
+def _lm_summary(db, sid, owner):
+    """收件箱那一行：收到几封、最新一封的 id（当未读标记用）；功能没接上、也没收过信就不显示"""
+    row = db.execute("SELECT COUNT(*) AS n, MAX(id) AS last FROM extra_events WHERE show_id=? AND type='lovemail' AND to_role=?",
+                     (sid, owner)).fetchone()
+    st = _lm_state(db, sid, owner)
+    if not st["ready"] and not row["n"]:
+        return None
+    return {"received": row["n"], "last": row["last"] or 0, "can": st["can"],
+            "left": max(st["limit"] - st["used"], 0), "pending": len(st["pending"])}
+
+def _lm_for_bot(db, sid, done_ids, revoke_done):
+    """同步用：标掉机器人回报已放进信池的 / 已处理的撤回，再给出还没交出去的信和撤回请求"""
+    now = int(time.time() * 1000)
+    for ids, sql in ((done_ids, "UPDATE phone_lovemails SET state='taken' WHERE show_id=? AND state='new' AND id IN ({})"),
+                     (revoke_done, "UPDATE phone_lovemail_revokes SET done=1 WHERE show_id=? AND id IN ({})")):
+        ids = [int(i) for i in (ids or []) if str(i).isdigit()][:200]
+        if ids:
+            db.execute(sql.format(",".join("?" * len(ids))), [sid] + ids)
+    mails = db.execute("SELECT * FROM phone_lovemails WHERE show_id=? AND state='new' ORDER BY id LIMIT 50", (sid,)).fetchall()
+    if mails:
+        db.execute(f"UPDATE phone_lovemails SET handed_at=? WHERE handed_at=0 AND id IN ({','.join('?' * len(mails))})",
+                   [now] + [m["id"] for m in mails])
+    revokes = db.execute("SELECT * FROM phone_lovemail_revokes WHERE show_id=? AND done=0 ORDER BY id LIMIT 50", (sid,)).fetchall()
+    db.commit()
+    return ([{"id": m["id"], "from_role": m["from_role"], "to_role": m["to_role"], "content": m["content"],
+              "signature": m["signature"], "game_day": m["game_day"], "timestamp": m["created_at"]} for m in mails],
+            [{"id": r["id"], "from_role": r["from_role"], "ts": r["mail_ts"]} for r in revokes])
+
+@app.route("/p/me/lovemail")
+def player_lovemail():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_index"))
+    db = get_db()
+    view = request.args.get("view") if request.args.get("view") in ("sent", "write") else "inbox"
+    recv, sent = _lm_history(db, sid, owner)
+    return render_template("phone.html", mode="lovemail", owner=owner, sid=sid, view=view, lm=_lm_state(db, sid, owner),
+                           recv=recv, sent=sent, csrf=_phone_csrf(), max_len=_LM_MAX_LEN, sig_max=_LM_SIG_MAX,
+                           contacts=sorted(n for n in _phone_roster(_phone_sync_row(db, sid)) if n != owner),
+                           preset_to=request.args.get("to", ""), flash=session.pop("lm_flash", None),
+                           draft=session.pop("lm_draft", None))
+
+@app.route("/p/me/lovemail", methods=["POST"])
+def player_lovemail_post():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_index"))
+    f = request.form
+    if not hmac.compare_digest(f.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        ok, msg = False, "❌ 页面过期了，刷新后再投"
+    else:
+        db = get_db()
+        tid = db.execute("SELECT tenant_id FROM shows WHERE id=?", (sid,)).fetchone()["tenant_id"]
+        with _phone_send_lock:
+            if f.get("action") == "revoke":
+                ok, msg = _lm_revoke(db, sid, owner, int(f.get("ts") or 0) if str(f.get("ts") or "").isdigit() else 0,
+                                     int(f.get("web_id") or 0) if str(f.get("web_id") or "").isdigit() else 0)
+            else:
+                ok, msg = _lm_send(db, sid, tid, owner, f.get("to", ""), f.get("content", ""), f.get("signature", ""))
+    session["lm_flash"] = msg
+    if f.get("action") == "revoke":
+        return redirect(url_for("player_lovemail", view="sent"))
+    if not ok:  # 没投出去，草稿留着
+        session["lm_draft"] = {"to": f.get("to", "")[:20], "content": f.get("content", "")[:_LM_MAX_LEN],
+                               "signature": f.get("signature", "")[:_LM_SIG_MAX]}
+        return redirect(url_for("player_lovemail", view="write"))
+    return redirect(url_for("player_lovemail", view="sent"))
 
 # ── 管理身份（网页手机里维护）───────────────────────────────────────────────────
 # 用后台生成的「管理员手机码」进门：能以任何角色的视角翻手机（每条带管理员才看得到的真实情况小字），

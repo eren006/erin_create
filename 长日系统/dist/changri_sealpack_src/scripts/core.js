@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.9.2
+// @version      1.10.0
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.9.2");
+    ext = seal.ext.new("changri", "长日将尽", "1.10.0");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -12565,6 +12565,16 @@ async function phoneWebSyncCore(base, token) {
         gift_public_chance: getStorageInt("giftPublicChance", 50),
         hide_receiver: cachedGet("drop_hide_receiver") === "true"
     };
+    // 心动信：网页信箱照这里的开关/开放时间/当天上限执行，跟「发送心动信」一样
+    const lmWin = kvGet("ts_feature_windows", []).find(w => w.feature === "enable_lovemail");
+    const lmDayLimits = kvGet("lovemail_day_limits", {});
+    rules.lovemail = {
+        enabled: toggle.enable_lovemail !== false,
+        has_day: !!cachedGet("global_days"),
+        window: lmWin ? { start: lmWin.start, end: lmWin.end } : null,
+        limit: lmDayLimits[gameDay] !== undefined ? lmDayLimits[gameDay] : parseInt(cachedGet("lovemail_default_limit") || "3"),
+        delivery_time: (cachedGet("lovemail_delivery_time") || "22:00").replace(/"/g, "").trim() || "22:00"
+    };
 
     const featureOff = {};
     for (const [uid, cfg] of Object.entries(kvGet("feature_user_blocklist", {}))) {
@@ -12573,6 +12583,7 @@ async function phoneWebSyncCore(base, token) {
         const off = [];
         if (cfg.enable_chaos_letter === false) off.push("sms");
         if (cfg.enable_general_gift === false) off.push("gift");
+        if (cfg.enable_lovemail === false) off.push("lovemail");
         if (off.length) featureOff[name] = off;
     }
     const blocks = [];
@@ -12610,14 +12621,28 @@ async function phoneWebSyncCore(base, token) {
         catalog_on_receive: cachedGet("shop_gift_catalog_on_receive") === "true"
     };
 
+    // 心动信：今天每人已投几封、信池里还没派送的信（网页「寄出的」里显示，可以撤回）
+    const lmCountsRaw = kvGet("lovemail_day_counts", {}), lmCounts = {};
+    for (const uid of Object.keys(priv)) {
+        const name = nameOf(uid);
+        if (name && lmCountsRaw[uid]?.[gameDay]) lmCounts[name] = lmCountsRaw[uid][gameDay];
+    }
+    const lmPending = kvGet("lovemail_pool", []).map(r => ({
+        from: nameOf(r.uid), to: r.receiver, content: r.content, signature: r.signature,
+        game_day: r.gameDay || "", ts: r.timestamp || 0, web_id: r.webId || 0
+    })).filter(r => r.from);
+    const lovemail = { counts: lmCounts, pending: lmPending };
+
     const after = parseInt(cachedGet("phone_web_cursor") || "0") || 0;
     const shopAfter = parseInt(cachedGet("phone_shop_cursor") || "0") || 0;
     const songsDone = kvGet("phone_songs_done", []);
+    const lmDone = kvGet("phone_lovemail_done", []), lmRevokeDone = kvGet("phone_lovemail_revoke_done", []);
     const resp = await fetch(base + "/api/phone/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Archive-Token": token },
         body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
-            snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, counts, last, catalogs, displays, shop } })
+            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone,
+            snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, counts, last, catalogs, displays, shop, lovemail } })
     });
     if (!resp.ok) return;
     const data = await resp.json();
@@ -12625,6 +12650,10 @@ async function phoneWebSyncCore(base, token) {
     if (songsDone.length) kvSet("phone_songs_done", []);
     phoneAnnounceSongs(platform, data.songs || []);
     phoneApplyShopEvents(platform, data.shop_events || [], shopAfter);
+    // 这次回报的已经被存档站记下，清掉；再处理这次给的网页心动信和撤回
+    if (lmDone.length) kvSet("phone_lovemail_done", kvGet("phone_lovemail_done", []).filter(id => !lmDone.includes(id)));
+    if (lmRevokeDone.length) kvSet("phone_lovemail_revoke_done", kvGet("phone_lovemail_revoke_done", []).filter(id => !lmRevokeDone.includes(id)));
+    phoneApplyLoveMails(platform, data.lovemails || [], data.lovemail_revokes || []);
     kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
 
     const events = data.events || [];
@@ -12663,6 +12692,47 @@ async function phoneWebSyncCore(base, token) {
     kvSet("global_gift_stats", giftS);
     kvSet("global_gift_cooldowns", giftC);
     cachedSet("phone_web_cursor", String(cursor));
+}
+
+// 网页心动信：网页投的信放进信池（带 webId）、计进当天次数，跟「发送心动信」一样；网页撤回按 发件人+投递时间 找信池里那封拿掉、还次数。
+// 处理过的 id 记进 phone_lovemail_done / phone_lovemail_revoke_done，下次同步报给存档站；
+// phone_lovemail_seen 防同一封因为回报丢了被放进信池两次。
+function phoneApplyLoveMails(platform, mails, revokes) {
+    if (!mails.length && !revokes.length) return;
+    const pool = kvGet("lovemail_pool", []), dayCounts = kvGet("lovemail_day_counts", {});
+    const seen = kvGet("phone_lovemail_seen", []), done = kvGet("phone_lovemail_done", []);
+    const revDone = kvGet("phone_lovemail_revoke_done", []);
+    for (const m of mails) {
+        done.push(m.id);
+        if (seen.includes(m.id)) continue;
+        seen.push(m.id);
+        const rawUid = getUidByRoleName(platform, m.from_role);
+        if (!rawUid) continue;
+        const uid = getPrimaryUid(platform, rawUid);
+        pool.push({ uid, receiver: m.to_role, content: m.content, signature: m.signature || "匿名",
+                    gameDay: m.game_day, timestamp: m.timestamp, webId: m.id });
+        if (!dayCounts[uid]) dayCounts[uid] = {};
+        dayCounts[uid][m.game_day] = (dayCounts[uid][m.game_day] || 0) + 1;
+    }
+    for (const rv of revokes) {
+        revDone.push(rv.id);
+        const rawUid = getUidByRoleName(platform, rv.from_role);
+        if (!rawUid) continue;
+        const uid = getPrimaryUid(platform, rawUid);
+        const i = pool.findIndex(r => r.uid === uid && r.timestamp === rv.ts);
+        if (i < 0) continue;   // 已经派送了，撤不回
+        const mail = pool.splice(i, 1)[0];
+        if (dayCounts[uid]?.[mail.gameDay] > 0) {
+            dayCounts[uid][mail.gameDay]--;
+            if (dayCounts[uid][mail.gameDay] === 0) delete dayCounts[uid][mail.gameDay];
+            if (!Object.keys(dayCounts[uid]).length) delete dayCounts[uid];
+        }
+    }
+    kvSet("lovemail_pool", pool);
+    kvSet("lovemail_day_counts", dayCounts);
+    kvSet("phone_lovemail_seen", seen.slice(-300));
+    kvSet("phone_lovemail_done", done.slice(-300));
+    kvSet("phone_lovemail_revoke_done", revDone.slice(-300));
 }
 
 // 网页礼品店的变化写回图鉴：新收的礼物加进 gift_sightings，货架比本地新就覆盖 shop_personal_display。
