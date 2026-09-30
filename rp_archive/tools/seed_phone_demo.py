@@ -1,0 +1,80 @@
+"""建一个网页手机「演示团账号」，给一个永久有效的体验激活码，用来看效果。
+- 独立的团账号（username=phone_demo），跟真实团账号的数据完全隔开；
+- 里面一个「演示季」：不设档期（永远算主档期）、一直是进行中，所以激活码一直有效；
+- 几个假角色和示例短信/礼物/朋友圈/点歌；打开了网页发送，体验者可以直接发；
+- 没有机器人，点歌不会发到任何 QQ 群。
+重复执行不会重复建，只会把激活码再打印一遍。
+
+用法（服务器上，rp_archive 目录）：venv/bin/python3 tools/seed_phone_demo.py
+"""
+import os, sys, json, secrets, sqlite3, time
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import app as A
+from werkzeug.security import generate_password_hash
+
+A.init_db()  # 保证表都在（跟服务启动时做的一样）
+db = sqlite3.connect(A.DB_PATH)
+db.row_factory = sqlite3.Row
+
+row = db.execute("SELECT id FROM tenants WHERE username='phone_demo'").fetchone()
+if row:
+    tid = row["id"]
+    sid = db.execute("SELECT id FROM shows WHERE tenant_id=? AND is_current=1", (tid,)).fetchone()["id"]
+    code = db.execute("SELECT code FROM phone_codes WHERE show_id=? AND role_name='体验者'", (sid,)).fetchone()["code"]
+    print(f"演示团账号已存在。体验激活码：{code}\n入口：https://archive.changri.work/p/{code}")
+    sys.exit(0)
+
+now = int(time.time() * 1000)
+view_pw, admin_pw = secrets.token_urlsafe(9), secrets.token_urlsafe(9)
+cur = db.execute("INSERT INTO tenants (username, view_password_hash, admin_password_hash, api_token, display_name, created_at) "
+                 "VALUES ('phone_demo', ?, ?, ?, '网页手机演示', ?)",
+                 (generate_password_hash(view_pw, method="pbkdf2:sha256"), generate_password_hash(admin_pw, method="pbkdf2:sha256"),
+                  secrets.token_urlsafe(24), now))
+tid = cur.lastrowid
+cur = db.execute("INSERT INTO shows (tenant_id, name, is_current, created_at) VALUES (?, '演示季', 1, ?)", (tid, now))
+sid = cur.lastrowid
+
+roles = ["体验者", "林晚", "周屿", "沈知意"]
+for r in roles:
+    db.execute("INSERT INTO players (show_id, tenant_id, qq, role_name, sessions_count, total_replies, total_words, last_updated) "
+               "VALUES (?, ?, ?, ?, 0, 0, 0, ?)", (sid, tid, "demo-" + r, r, now))
+code = "".join(secrets.choice(A._PHONE_CODE_ALPHABET) for _ in range(A._PHONE_CODE_LEN))
+db.execute("INSERT INTO phone_codes (tenant_id, show_id, role_name, code, created_at) VALUES (?, ?, '体验者', ?, ?)", (tid, sid, code, now))
+
+# 网页发送打开 + 一份规则快照（宽松的上限、没有混乱效果），没有机器人也能发
+db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, 1)", (sid,))
+snap = {"game_day": "D1", "roster": [{"name": r} for r in roles],
+        "rules": {"sms_enabled": True, "gift_enabled": True, "chaos": {"dailyLimit": 20, "publicChance": 30},
+                  "mail_cooldown_min": 0, "gift_cooldown_min": 0, "gift_daily_limit": 20, "gift_mode": 0,
+                  "sms_public": True, "gift_public": True, "gift_public_chance": 30},
+        "counts": {"sms": {}, "gift": {}}, "last": {"sms": {}, "gift": {}}}
+db.execute("INSERT INTO phone_sync (show_id, tenant_id, snapshot, cursor, synced_at) VALUES (?, ?, ?, 0, ?)",
+           (sid, tid, json.dumps(snap, ensure_ascii=False), now))
+
+def ev(t, frm, to, content, info, minutes_ago, day="D1"):
+    db.execute("INSERT INTO extra_events (show_id, tenant_id, session_id, type, from_role, to_role, content, extra_info, timestamp, game_day) "
+               "VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?)",
+               (sid, tid, t, frm, to, content, json.dumps(info, ensure_ascii=False), now - minutes_ago * 60000, day))
+def sms(frm, to, text, m, **kw):
+    info = {"delivered": text, "signature": f"落款：{frm}"}; info.update(kw); ev("sms", frm, to, text, info, m)
+sms("林晚", "体验者", "欢迎来到演示季～这里是网页手机，可以随便点点看。", 300)
+sms("体验者", "林晚", "谢谢！这个界面好像真的手机", 290)
+sms("林晚", "体验者", "右上角「外观」可以换主题色和头像，消息列表顶部有朋友圈和公开播报。", 285)
+sms("周屿", "体验者", "晚上天台见？", 120)
+ev("gift", "周屿", "体验者", "路过花店，觉得它像你", {"giftName": "一束洋桔梗", "isPublic": True, "intended_to": "体验者"}, 110)
+sms("沈知意", "林晚", "今天的排练辛苦啦", 60, isPublic=True, public_show_effect=False)
+
+db.execute("INSERT INTO moments (tenant_id, show_id, role_name, content, game_day, created_at) VALUES (?, ?, '林晚', ?, 'D1', ?)",
+           (tid, sid, "第一次用朋友圈，今天的晚霞超好看 🌅", now - 200 * 60000))
+mid = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+db.execute("INSERT INTO moment_likes (moment_id, role_name, created_at) VALUES (?, '周屿', ?)", (mid, now - 190 * 60000))
+db.execute("INSERT INTO moment_comments (moment_id, role_name, reply_to, content, created_at) VALUES (?, '周屿', '', '下次一起去看', ?)",
+           (mid, now - 180 * 60000))
+db.execute("""INSERT INTO song_requests (tenant_id, show_id, from_role, to_role, platform, song_id, song_mid, song_name, artists, album,
+              cover, fee, message, source, game_day, created_at, announced) VALUES (?, ?, '周屿', '体验者', '163', 186016, '', '晴天',
+              '周杰伦', '叶惠美', '', 0, '送你一首歌', 'web', 'D1', ?, 1)""", (tid, sid, now - 100 * 60000))
+db.commit()
+print("演示团账号已建好（跟真实数据完全隔开）。")
+print(f"体验激活码（一直有效）：{code}")
+print(f"入口：https://archive.changri.work/p/{code}")
+print(f"演示团账号后台：账号 phone_demo，查看密码 {view_pw}，后台密钥 {admin_pw}（只打印这一次，自己记下）")
