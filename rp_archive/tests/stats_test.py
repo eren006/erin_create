@@ -39,7 +39,7 @@ lin, zy = player("LINWAN0001"), player("ZHOUYU0001")
 # 「我的」里有入口；还没有报告时提示去群里查
 ok("时间线与统计" in lin.get("/p/me/library?view=profile").get_data(as_text=True), "entry")
 _inb = lin.get("/p/me").get_data(as_text=True)
-ok('aria-label="时间线与统计"' in _inb and 'href="/p/me/stats?view=timeline"' in _inb and 'href="/p/me/stats?view=interact"' in _inb, "inbox quick entries")
+ok('class="timeline-btn"' in _inb and 'href="/p/me/stats?view=timeline"' in _inb, "inbox timeline entry")
 sync()
 ok("等机器人升级" in page(lin, "timeline") and "「时间线」" in page(lin, "timeline"), "no report yet")
 ok("「我的待回」" in page(lin, "pending"), "no report pending hint")

@@ -369,11 +369,6 @@ a { color: var(--link); text-decoration: none; }
 .stats-table th, .stats-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: center; white-space: nowrap; }
 .stats-table th:first-child, .stats-table td:first-child { text-align: left; }
 .stats-table th small { font-weight: 400; color: var(--muted); }
-.quick-row { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 8px; margin: 0 16px 8px; }
-.quick-chip { display: flex; align-items: center; justify-content: center; gap: 4px; height: 36px; border-radius: 10px; border: 1px solid var(--line);
-              background: var(--bg); color: var(--text); font-size: 14px; text-decoration: none; white-space: nowrap; }
-.quick-chip svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.quick-chip b { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--mine); color: var(--mine-text); font-size: 11px; line-height: 18px; text-align: center; }
 .search-pill { display: flex; align-items: center; gap: 6px; margin: 10px 16px 6px; padding: 9px 12px; border-radius: 12px; background: var(--theirs); color: var(--muted); font-size: 15px; text-decoration: none; }
 .group-avatar { background: var(--theirs) !important; color: var(--text) !important; font-weight: 600; }
 .group-sys { font-size: 12px; margin: 10px 24px 4px; }
@@ -460,6 +455,38 @@ a { color: var(--link); text-decoration: none; }
 .viewer { margin: auto; padding: 0; border: none; background: transparent; max-width: 100vw; max-height: 100dvh; }
 .viewer::backdrop { background: #000e; }
 .viewer img { max-width: 100vw; max-height: 100dvh; display: block; }
+
+/* ── 顶部与间距（统一一套）──────────────────────────────────────────────────────────
+   一个左右边距 --gutter 贯穿标题、搜索条、快捷按钮、待回卡片、列表行、卡片页；
+   高度按 4 的倍数：标题行 48、按钮 40、卡片内边距 14。放在样式末尾，同优先级下覆盖前面零散的数值。 */
+:root { --gutter: 18px; --gap: 12px; }
+.bar { padding-left: 10px; padding-right: 10px; }
+.bar.tab-bar { padding: calc(env(safe-area-inset-top) + 16px) var(--gutter) 14px; }
+.tab-head { min-height: 48px; }
+.tab-head h1 { font-size: 32px; line-height: 40px; letter-spacing: -.5px; }
+.tab-sub { margin-top: 4px; font-size: 13px; line-height: 20px; }
+.bar.tab-bar .tab-sub .quota { font-size: 13px; }
+.icon-btn { width: 40px; height: 40px; }
+.icon-btn svg { width: 20px; height: 20px; }
+.song-tabs { padding: var(--gap) var(--gutter) 0; }
+.lm-letter { margin: 10px var(--gutter); }
+.stats-page .stats-tabs { padding: 10px calc(var(--gutter) - 6px); }
+.lm-sub small { font-size: 13px; }
+
+/* 首页：标题 → 搜索行 → 待回卡片，每层之间 14px 留白，不再叠一排按钮 */
+.find-row { display: flex; align-items: center; gap: 10px; margin: 14px var(--gutter) 14px; }
+.search-pill { flex: 1; min-width: 0; margin: 0; gap: 8px; height: 42px; padding: 0 14px; border-radius: 12px; font-size: 15px; }
+.search-pill svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; flex-shrink: 0; }
+.timeline-btn { position: relative; flex-shrink: 0; width: 42px; height: 42px; border-radius: 12px; background: var(--theirs); color: var(--text); display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.timeline-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.timeline-btn b { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--mine); color: var(--mine-text); font-size: 11px; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--bg); }
+.search-pill:active, .timeline-btn:active { filter: brightness(.96); }
+
+/* 列表：用细线和一小段留白分组，不再用整条灰带 */
+.public-row { border-bottom: 0; }
+.list a.row.public-row + a.row:not(.public-row) { margin-top: 12px; border-top: .5px solid var(--line); }
+.list a.row { padding: 16px var(--gutter); }
+.notice.inbox-flash { margin: var(--gap) var(--gutter) 0; }
 </style>
 </head>
 <body>
@@ -508,13 +535,10 @@ a { color: var(--link); text-decoration: none; }
   </header>
   {% endif %}
   <div class="scroll list" id="inbox">
-    {% if not admin_as %}<a class="search-pill" href="{{ url_for('player_phone_library') }}"><span aria-hidden="true">🔍</span>检索短信和礼物</a>
-    <nav class="quick-row" aria-label="时间线与统计">
-      <a class="quick-chip" href="{{ url_for('player_stats', view='timeline') }}"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h3M13.5 14h3M7.5 17h3"/></svg>时间线{% if timeline_n %}<b>{{ timeline_n }}</b>{% endif %}</a>
-      <a class="quick-chip" href="{{ url_for('player_stats', view='counts') }}">数量</a>
-      <a class="quick-chip" href="{{ url_for('player_stats', view='arc') }}">弧长</a>
-      <a class="quick-chip" href="{{ url_for('player_stats', view='interact') }}">互动</a>
-    </nav>{% endif %}
+    {% if not admin_as %}<div class="find-row">
+      <a class="search-pill" href="{{ url_for('player_phone_library') }}"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>检索短信和礼物</a>
+      <a class="timeline-btn" href="{{ url_for('player_stats', view='timeline') }}" aria-label="时间线与统计" title="时间线与统计"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M7.5 14h3M13.5 14h3M7.5 17h3"/></svg>{% if timeline_n %}<b>{{ timeline_n }}</b>{% endif %}</a>
+    </div>{% endif %}
     {% if not admin_as %}{% include '_phone_pending_entry.html' %}{% endif %}
     {% if public %}
     <a class="row public-row" data-other="__public__" data-received-ts="{{ public.ts }}" href="{{ url_for('player_phone_public') }}">

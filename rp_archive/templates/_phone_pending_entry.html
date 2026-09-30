@@ -1,10 +1,10 @@
 <style>
-.pending-entry { display: flex; align-items: center; gap: 12px; margin: 0 16px 12px; padding: 14px; border: 1px solid #e5a18e; border-radius: 16px; background: #fff0eb; color: #9b3520; min-height: 64px; }
+.pending-entry { display: flex; align-items: center; gap: var(--gap, 12px); margin: 0 var(--gutter, 18px) 14px; padding: 12px 14px; border: 1px solid #e5a18e; border-radius: 14px; background: #fff0eb; color: #9b3520; }
 .pending-entry[hidden] { display: none; }
 .pending-entry-dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 .pending-entry-copy { flex: 1; min-width: 0; }
-.pending-entry strong { display: block; font-size: 16px; }
-.pending-entry small { display: block; font-size: 12px; margin-top: 5px; line-height: 1.6; }
+.pending-entry strong { display: block; font-size: 15px; }
+.pending-entry small { display: block; font-size: 12px; margin-top: 2px; line-height: 1.5; }
 .pending-entry.is-stale { background: var(--theirs); border-color: var(--line); color: var(--muted); }
 @media (prefers-color-scheme: dark) { .pending-entry:not(.is-stale) { background: #351f20; color: #ffb4a0; border-color: #8e4b40; } }
 </style>
