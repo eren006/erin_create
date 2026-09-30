@@ -14,6 +14,7 @@
   background: var(--accent); color: #fff; border: none; border-radius: 8px;
   padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
 }
+.pc-btn:disabled { opacity: .45; cursor: not-allowed; }
 .pc-btn:hover { background: var(--accent2); }
 .pc-btn.ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); font-weight: 400; }
 .pc-btn.sm { padding: 4px 10px; font-size: 12px; }
@@ -45,7 +46,7 @@
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <form method="post"><input type="hidden" name="action" value="web_send">
         <input type="hidden" name="on" value="{{ '0' if web_send else '1' }}">
-        <button class="pc-btn{{ ' ghost' if web_send else '' }}" type="submit">{{ '关闭网页发送' if web_send else '打开网页发送' }}</button></form>
+        <button class="pc-btn{{ ' ghost' if web_send else '' }}" type="submit" {% if not web_send and not has_sync %}disabled{% endif %}>{{ '关闭网页发送' if web_send else '打开网页发送' }}</button></form>
       <span style="font-size:13px;">当前：<b style="color:{{ 'var(--green)' if web_send else 'var(--muted)' }}">{{ '已打开' if web_send else '已关闭' }}</b></span>
     </div>
     <div style="font-size:12px;color:var(--muted);line-height:1.8;">

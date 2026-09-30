@@ -5271,6 +5271,8 @@ def admin_phone_codes():
         action = request.form.get("action")
         now = int(time.time() * 1000)
         if action == "web_send":
+            if request.form.get("on") == "1" and not sync:
+                return "机器人还没有同步本季规则，暂时不能打开网页发送", 409
             db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, ?) "
                        "ON CONFLICT(show_id) DO UPDATE SET web_send=excluded.web_send",
                        (sid, 1 if request.form.get("on") == "1" else 0))
@@ -5310,7 +5312,7 @@ def admin_phone_codes():
         sync_ago = max(0, int(time.time() * 1000) - sync["synced_at"]) // 60000
     return render_template("admin_phone_codes.html", rows=rows, show=show,
                            base_url=_phone_base_url(),
-                           web_send=_phone_web_send_on(db, sid), sync_ago=sync_ago,
+                           web_send=_phone_web_send_on(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
                            sync_fresh=bool(sync) and sync_ago is not None and sync_ago < 10,
                            zone=_schedule_zone(dict(show)))
 

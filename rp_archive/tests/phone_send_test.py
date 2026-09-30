@@ -44,6 +44,15 @@ def send(cl, to, text, kind="sms", token=None):
 def ok(c, m): 
     if not c: raise AssertionError(m)
 
+# 从未同步时 UI 与直接 POST 都拒绝打开
+admin_gate = app.test_client()
+with admin_gate.session_transaction() as sess:
+    sess["tenant_id"] = TID
+    sess["admin_logged_in"] = True
+    sess["view_show_id"] = SID
+assert re.search(r'<button[^>]*disabled[^>]*>打开网页发送', admin_gate.get("/admin/phone_codes").get_data(as_text=True))
+assert admin_gate.post("/admin/phone_codes", data={"action":"web_send","on":"1"}).status_code == 409
+assert c.execute("SELECT web_send FROM phone_settings WHERE show_id=?", (SID,)).fetchone() is None
 lin = player("LINWAN0001")
 # 开关关着：没有输入框
 ok(bot.post("/api/phone/sync", headers={"X-Archive-Token":"bad"}, json={}).status_code == 403, "token")
@@ -146,4 +155,9 @@ adm.post("/admin/phone_codes", data={"action":"web_send","on":"1"}); sync(after=
 A._PHONE_MIN_GAP_MS = 5000
 sz = player("SHENZY0001")
 g1 = send(sz, "周屿", "一"); ok("鸽子衔往" in g1, re.findall(r'class="(?:notice|compose-note)">[^<]*', g1)); ok("鸽子正在休息" in send(sz, "周屿", "二"), "gap 2")
+# 有过同步即可启用备用通道，快照过期不自动关闭
+c.execute("UPDATE phone_sync SET synced_at=1 WHERE show_id=?", (SID,)); c.commit()
+assert admin_gate.post("/admin/phone_codes", data={"action":"web_send","on":"1"}).status_code == 302
+assert c.execute("SELECT web_send FROM phone_settings WHERE show_id=?", (SID,)).fetchone()[0] == 1
+assert "关闭网页发送" in admin_gate.get("/admin/phone_codes").get_data(as_text=True)
 print("ALL OK")
