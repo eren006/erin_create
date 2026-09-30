@@ -948,7 +948,9 @@ ext.cmdMap["关系线统计"] = cmd_rel_stats;
 // 无前缀触发：关系线指令
 // ========================
 ext.onNotCommandReceived = (ctx, msg) => {
-    const raw = (msg.rawMessage || msg.message || "").trim();
+    // 竖版表单写法（【送礼】/对象：/礼物：…）先换算成横版，实现在主插件 normalizeInteractionForm
+    const _rawIn = (msg.rawMessage || msg.message || "").trim();
+    const raw = getApi()?.normalizeInteractionForm ? getApi().normalizeInteractionForm(_rawIn) : _rawIn;
 
     const makeFakeCmdArgs = (parts) => ({
         getArgN: (n) => parts[n - 1] || "",

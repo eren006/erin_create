@@ -1903,7 +1903,58 @@ function getBlockEntry(platform, blockerUid, blockedUid) {
 // 所有插件运行在同一个 JS 运行时，经 globalThis 共享。
 // 卫星插件（RPG/设置/社交/写信综/晚餐）调用时懒获取 globalThis.__changriApi，
 // 不要在卫星文件里复制这些函数的实现。
+// ========================
+// 📝 竖版（表单）写法 → 横版一行指令
+// 除了约会类（私约/电话/踩点/约战/官约/官电 已有 maybeParseAppointmentForm），下面这几条互动也支持竖着写：
+//   【短信】            （首行也可以不带【】，直接写「短信」）
+//   对象：张三          （「【对象】张三」也认；标签有几个同义词，见 FORM_LABELS）
+//   内容：今晚有空吗     （没有标签的续行会接到上一项后面，内容可以写多行）
+// 换算成跟横版完全一样的字符串（如「短信 张三 今晚有空吗」）再交给原来的解析，所以两种写法行为一致。
+// 认不出（首行不是这些指令、或一个标签都没认出）就原样返回，不影响其它消息。
+// 发帖不做：横版「发帖 署名 内容」靠空格区分署名和内容，内容带空格时换算回去会被误拆；悬赏心愿是带句号的注册指令，不走这里
+// ========================
+const FORM_LABELS = {
+    target:  ["对象", "收信人", "收件人", "发送对象", "对方", "送给", "给"],
+    content: ["内容", "正文", "留言", "礼物", "礼物内容", "心愿", "心愿内容", "关系", "细节"],
+    sign:    ["署名", "落款", "昵称"],
+    time:    ["时间"],
+    place:   ["地点"],
+    id:      ["编号", "瓶子编号"],
+};
+function getInteractionFormSpecs() {
+    const specs = {};
+    // build 返回横版字符串；v 是认出来的字段（没填的是 ""）
+    const sms  = v => `${v.sign}${"短信"} ${v.target} ${v.content}`;
+    specs["短信"] = sms;
+    for (const a of getSmsAliases()) if (a.trigger) specs[a.trigger] = v => `${v.sign}${a.trigger} ${v.target} ${v.content}`;
+    specs["送礼"] = v => `${v.sign}送礼 ${v.target} ${v.content}`;
+    for (const a of kvGet("gift_aliases", [])) if (a && a.trigger) specs[a.trigger] = v => `${v.sign}${a.trigger} ${v.target} ${v.content}`;
+    specs["拉线"]   = v => `拉线 ${v.target} ${v.content}`;
+    specs["挂心愿"] = v => `挂心愿 ${v.time} ${v.place} ${v.content}${v.sign ? ` | ${v.sign}` : ""}`;
+    specs["漂流瓶"] = v => `漂流瓶 ${v.id ? v.id + " " : ""}${v.content}`;
+    return specs;
+}
+function normalizeInteractionForm(raw) {
+    if (!raw || !raw.includes("\n")) return raw;
+    const lines = raw.split(/\r?\n/);
+    const head = lines[0].trim().replace(/^【\s*(.+?)\s*】$/, "$1");
+    const build = getInteractionFormSpecs()[head];
+    if (!build) return raw;
+    const v = { target: "", content: "", sign: "", time: "", place: "", id: "" };
+    let cur = null, recognized = 0;
+    for (const line of lines.slice(1)) {
+        const t = line.trim();
+        const m = t.match(/^【\s*([^】]{1,8}?)\s*】\s*(.*)$/) || t.match(/^([^:：\s]{1,6})\s*[:：]\s*(.*)$/);
+        const key = m ? Object.keys(FORM_LABELS).find(k => FORM_LABELS[k].includes(m[1].trim())) : null;
+        if (key) { cur = key; v[key] = m[2].trim(); recognized++; continue; }
+        if (cur && t) v[cur] = v[cur] ? `${v[cur]}\n${t}` : t;   // 续行：接到上一项（多行内容）
+    }
+    if (!recognized) return raw;
+    return build(v).trim();
+}
+
 const changriApi = {
+    normalizeInteractionForm: (raw) => normalizeInteractionForm(raw),   // 社交插件的无前缀分派也要先换算竖版写法
     ext,
     // 存储（带缓存，卫星读写主存储必须走这两对函数；JSON key 用 kvGet/kvSet，裸串用 kvGetRaw/kvSetRaw）
     kvGetRaw: cachedGet,
@@ -10849,7 +10900,8 @@ function handlePrivateGroupListen(ctx, msg, platform, groupId, uid) {
 }
 
 ext.onNotCommandReceived = async (ctx, msg) => {
-    const raw = (msg.rawMessage || msg.message || "").trim();
+    // 竖版表单写法（【短信】/对象：/内容：…）先换算成横版一行，后面照常解析；不是表单的消息原样不变
+    const raw = normalizeInteractionForm((msg.rawMessage || msg.message || "").trim());
     const platform = msg.platform;
     const _rawUid = msg.sender.userId.replace(`${platform}:`, '');
     const uid = getPrimaryUid(platform, _rawUid); // 辅助账号自动解析为主账号 uid
@@ -10883,8 +10935,8 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     // 2.6 格式导览：新手记不住各种指令格式时，发「格式」查目录，发「格式+类型」直接拿可复制的模板
     const FORMAT_TEMPLATES = {
         "心动信": "发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）",
-        "短信":   `短信 收信人 内容\n例：短信 张三 你好！\n\n${RECALL_FORMAT_HINT}`,
-        "漂流瓶": "漂流瓶 内容\n例：漂流瓶 有人能听到我说话吗\n\n回信（对方捡到后会得到编号）：漂流瓶 编号 内容\n例：漂流瓶 1 我听到啦，你还好吗",
+        "短信":   `短信 收信人 内容\n例：短信 张三 你好！\n\n也可以竖着写：\n【短信】\n对象：张三\n内容：你好！\n署名：神秘人（选填）\n\n${RECALL_FORMAT_HINT}`,
+        "漂流瓶": "漂流瓶 内容\n例：漂流瓶 有人能听到我说话吗\n\n回信（对方捡到后会得到编号）：漂流瓶 编号 内容\n例：漂流瓶 1 我听到啦，你还好吗\n\n也可以竖着写：\n【漂流瓶】\n编号：1（回信才填）\n内容：我听到啦",
         "前置电话": "前置电话 编号\n例：前置电话 1\n（编号对应谁只有管理员知道，可以多次选不同编号）",
         "信件":   "发送信件\n【收件人】小明\n【内容】亲爱的小明，今天天气真好...\n【日期】2026年4月28日（选填）\n【附件】随信附上一份礼物（选填）\n【署名】小红（选填）",
         // 一行式还是表单式，跟网页「邀约表单标签」里各类型的展示设置走（默认一行式）；两种写法机器人始终都认
@@ -10894,10 +10946,10 @@ ext.onNotCommandReceived = async (ctx, msg) => {
         "踩点":   appointmentFormDisplayMode("踩点") === "form"
                     ? appointmentFormTemplate("踩点", { time: "20:00", place: "大图书馆", names: "李四" })
                     : "踩点 20:00 大图书馆 李四（李四可省略，独自踩点）",
-        "送礼":   `送礼 张三 一束玫瑰\n\n${RECALL_FORMAT_HINT}`,
-        "心愿":   "挂心愿 1400-1500 花园 一起散步",
+        "送礼":   `送礼 张三 一束玫瑰\n\n也可以竖着写：\n【送礼】\n对象：张三\n礼物：一束玫瑰\n署名：匿名（选填）\n\n${RECALL_FORMAT_HINT}`,
+        "心愿":   "挂心愿 1400-1500 花园 一起散步\n\n也可以竖着写：\n【挂心愿】\n时间：1400-1500\n地点：花园\n内容：一起散步\n昵称：小猫（选填）",
         "悬赏心愿": "悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1",
-        "拉线":   `拉线 张三 在高中时期是同班同学\n\n${RECALL_FORMAT_HINT}`,
+        "拉线":   `拉线 张三 在高中时期是同班同学\n\n也可以竖着写：\n【拉线】\n对象：张三\n内容：在高中时期是同班同学\n\n${RECALL_FORMAT_HINT}`,
         "发帖":   "发帖 张三 今天天气真好！",
         "点歌":   "（先回复一张音乐卡片，再发送）\n点歌人：张三 留言：这首歌送给你 歌名：晴天（选填） 送给：李四（选填）",
         "撤回":   "短信/礼物/拉线发错人时：\n长按你发的那条（或机器人回的「已送达」那条）→ 引用/回复 → 发送：\n撤回\n\n· 2 分钟内有效，已送到对方群里的那条会一起删掉\n· 今日次数返还，可以马上重发给对的人\n· 超过 2 分钟请联系管理员帮忙撤回",
