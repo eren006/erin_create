@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.8.0
+// @version      1.8.1
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.8.0");
+    ext = seal.ext.new("changri", "长日将尽", "1.8.1");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -1457,11 +1457,15 @@ const LOOK_WALL_LEGEND = "✅ 已提交二表　⬜ 尚未提交";
 function buildLookWallContent(platform) {
     const roles = store.get("a_private_group")[platform] || {};
     const submitted = kvGet("form2_submitted", {});
+    // NPC 单独一栏，不跟嘉宾混在男生/女生里；NPC 不交二表，不标 ✅/⬜
+    const npcSet = new Set([...kvGet("a_npc_list", []), ...kvGet("a_generic_npc_list", [])]);
     const byGender = { "男": [], "女": [] };
+    const npcs = [];
     for (const uid of Object.keys(roles)) {
         const roleName = roles[uid][0];
         const prof = getCharProfile(platform, roleName);
         if (!prof.look) continue;
+        if (npcSet.has(roleName)) { npcs.push(`${roleName}｜${prof.look}`); continue; }
         // 行首图标标二表状态：✅ 已提交，⬜ 还没提交（回复消息发「提交二表」后自动变 ✅）
         const mark = submitted[`${platform}:${uid}`] ? "✅" : "⬜";
         const bucket = byGender[prof.gender];
@@ -1470,13 +1474,14 @@ function buildLookWallContent(platform) {
     return [
         LOOK_WALL_SIGNATURE,
         "",
-        "👨 男生",
+        "男生",
         ...(byGender["男"].length ? byGender["男"] : ["（暂无）"]),
         "",
-        "👩 女生",
+        "女生",
         ...(byGender["女"].length ? byGender["女"] : ["（暂无）"]),
+        ...(npcs.length ? ["", "NPC", ...npcs] : []),
         "",
-        LOOK_WALL_LEGEND,
+        LOOK_WALL_LEGEND,   // 必须是最后一行：删旧皮相墙时靠「首行皮相墙 + 末行二表图例」认公告
     ].join("\n");
 }
 
@@ -1548,7 +1553,8 @@ function runLookWallRefresh(platform) {
         if (_lookWallAgain) { _lookWallAgain = false; runLookWallRefresh(platform); }
     };
     const postNew = () => WSM.request(
-        { action: "_send_group_notice", params: { group_id: target, content: buildLookWallContent(platform) } },
+        // confirm_required: false —— llbot 发群公告默认「需要群成员确认收到」，皮相墙每次更新都让全群点确认太打扰
+        { action: "_send_group_notice", params: { group_id: target, content: buildLookWallContent(platform), confirm_required: false } },
         finish,
         () => { console.error("[皮相墙] 发布新公告失败"); finish(); },
         8000

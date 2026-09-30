@@ -268,7 +268,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
       <a href="player_guide.html" target="_blank">玩家指南</a>
       <a href="changri_wishes.html">许愿墙</a>
     </div>
-    <div class="nav-meta">SYSTEM · v1.8.0</div>
+    <div class="nav-meta">SYSTEM · v1.8.1</div>
   </div>
 </nav>
 
@@ -284,7 +284,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
     <div class="hero-stats">
       <div class="hero-stat"><b>10</b><span>个子系统</span></div>
       <div class="hero-stat"><b>200+</b><span>条指令</span></div>
-      <div class="hero-stat"><b>v1.8.0</b><span>当前版本</span></div>
+      <div class="hero-stat"><b>v1.8.1</b><span>当前版本</span></div>
     </div>
     <div class="hero-cta">
       <a class="btn btn-light" onclick="showTab('manual')">进入指令手册 →</a>
@@ -461,9 +461,20 @@ document.getElementById("subsysGrid").innerHTML = SUBSYSTEMS.map(s => `
 // ========================
 const CHANGELOG = [
   {
-    version: "1.8.0",
+    version: "1.8.1",
     date: "2026-09-30",
     latest: true,
+    groups: [
+      { type: "improve", title: "优化", items: [
+        "皮相墙把 NPC 和嘉宾分开：嘉宾照旧按男生/女生分栏（带二表 ✅/⬜），NPC 单独列在下面一栏（NPC 不交二表，不标记）；男生/女生前面的表情去掉了",
+        "皮相墙发群公告不再要求全群「确认收到」：llbot 发群公告默认需要成员确认，皮相墙每次更新都让大家点一遍太打扰，现在发的时候明确关掉。管理员手动「发公告」不受影响",
+      ]},
+    ]
+  },
+  {
+    version: "1.8.0",
+    date: "2026-09-30",
+    latest: false,
     major: true,   // 开季/结季流程大改 + 存档服务器搬家，hub 上显示「重大更新」标签
     groups: [
       { type: "feat", title: "新增", items: [
