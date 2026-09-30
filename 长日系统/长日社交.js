@@ -1004,6 +1004,11 @@ ext.onNotCommandReceived = (ctx, msg) => {
         return cmd_rel_stats.solve(ctx, msg, makeFakeCmdArgs([]));
     }
 
+    // 悬赏心愿：以前只有带句号的「。悬赏心愿」能用；不带句号、以及竖版（上面已换算成横版）都走这里
+    if (raw.startsWith("悬赏心愿")) {
+        return cmd_bounty_wish.solve(ctx, msg, { args: [], getArgN: () => "", rawText: raw });
+    }
+
     // 心愿
     if (raw.startsWith("挂心愿")) {
         const rest = raw.slice(3).trim();
@@ -1400,7 +1405,8 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
     if (!isUserFeatureEnabled(rawUid, "enable_wish_system"))
         return seal.replyToSender(ctx, msg, "❌ 你已被限制使用心愿功能");
 
-    const rawFull = msg.message.trim().replace(/^[。.]?\s*悬赏心愿\s*/, "");
+    // 无前缀/竖版写法由分派入口换算好传进来（cmdArgs.rawText），带句号的注册指令照旧读原消息
+    const rawFull = String(cmdArgs && cmdArgs.rawText != null ? cmdArgs.rawText : msg.message).trim().replace(/^[。.]?\s*悬赏心愿\s*/, "");
     const pipeIdx = rawFull.search(/[|｜]/);
     if (pipeIdx === -1) return seal.replyToSender(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量 [| 昵称]\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1 | 神秘人A");
 
