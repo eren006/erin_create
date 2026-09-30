@@ -3,7 +3,7 @@ format_version = "1.0.0"
 [package]
 id = "changri/changriyuca"
 name = "（私人用请勿下载）长日将尽系统"
-version = "1.9.0"
+version = "1.9.1"
 authors = ["长日将尽"]
 license = "CC BY-NC-SA"
 description = "长日将尽 QQ 群语擦恋综系统：设置、社交、闹钟、季度、拍卖、晚餐、出场、写信综、RPG；联络方式：3052553938，如需挪用请标注来源"
@@ -21,6 +21,7 @@ network_hosts = [
     "music.163.com",
     "y.qq.com",
     "120.26.120.128",
+    "archive.changri.work",
 ]
 dangerous = false
 http_server = false
@@ -41,5 +42,4 @@ scripts = [
 
 [store]
 icon = "assets/icon.png"
-banner = "assets/banner.png"
 category = "social"
