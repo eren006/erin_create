@@ -119,6 +119,14 @@ REP['林晚']['day'] = 'D1'; sync(REP)
 ok(lin.get('/p/me/public/daily').json['text'] == '今日统计等待同步', 'yesterday not presented as today')
 ok('今日速报' in lin.get('/p/me/public').get_data(as_text=True), 'ticker rendered')
 
+# 弧长兼容单双人场与中文/ASCII括号；无法识别的行保留，不猜测数值。
+arc = A._phone_arc_view("【林晚 的弧长】\n本人总平均：18分钟（24次，3场，含已结/未结）\n当前未结双嘉宾小群：\n私约5001：林晚x周屿 3v4（待你），本人平均15分钟（3次），你还没回：2h5m\n当前未结多人场次：\n约战5002：林晚所在多人场（共3人），本人平均8分钟（2次，本场共3次），你已回复，等其他人；周屿未回：10m")
+ok(arc['average'] == '18' and len(arc['sessions']) == 2, 'arc summary and sessions')
+ok(arc['sessions'][0]['progress'] == '3v4' and arc['sessions'][0]['waiting'] == '你还没回：2h5m', 'arc pair fields')
+ok('周屿未回：10m' in arc['sessions'][1]['waiting'], 'arc multiplayer waiting preserved')
+ok(A._phone_arc_view('新格式原文')['notes'] == ['新格式原文'], 'arc unknown fallback')
+ok(A._phone_arc_view('')['average'] is None, 'missing arc is not zero')
+
 # 管理身份、没登录
 adm = app.test_client(); adm.get("/p/ADMINCODE1")
 ok(adm.get("/p/me/stats").status_code == 302 and app.test_client().get("/p/me/stats").status_code == 302, "access")

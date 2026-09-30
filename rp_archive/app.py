@@ -6910,6 +6910,36 @@ def _song_pending_for_bot(db, sid, done_ids):
 # 短信礼物照「对话」归人（误投/换落款照玩家看到的算），心动信只算寄出的去向、收到的只给总数（来信是匿名的）。
 _STATS_VIEWS = ("timeline", "counts", "pending", "arc", "interact")
 
+def _phone_arc_view(text):
+    """兼容已上报的文字报告；未知格式保留原文，不推断回复状态。"""
+    out = {"average": None, "sample": "", "sessions": [], "notes": []}
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line or (line.startswith("【") and line.endswith("的弧长】")):
+            continue
+        summary = re.fullmatch(r"本人总平均[：:]\s*(\d+(?:\.\d+)?)分钟(?:[（(](.*)[）)])?", line)
+        if summary:
+            out["average"], out["sample"] = summary.group(1), summary.group(2) or ""
+            continue
+        if line in ("当前未结双嘉宾小群：", "当前未结多人场次："):
+            continue
+        if line == "当前没有进行中的场次。":
+            out["notes"].append(line)
+            continue
+        event = re.fullmatch(r"(.+?)[：:](.+?)[，,]本人平均(\d+(?:\.\d+)?)分钟[（(](.+?)[）)][，,](.+)", line)
+        if not event:
+            out["notes"].append(line)
+            continue
+        title, participants, average, sample, waiting = event.groups()
+        progress = ""
+        pair = re.fullmatch(r"(.+) (\d+v\d+)[（(]待(.+)[）)]", participants)
+        if pair:
+            participants, progress, turn = pair.groups()
+        out["sessions"].append({"title": title, "participants": participants, "progress": progress,
+                                "average": average, "sample": sample, "waiting": waiting})
+    return out
+
+
 def _phone_count_line(text, prefix):
     """只读取明确指定口径的报告行。"""
     for line in (text or "").splitlines():
@@ -6995,6 +7025,7 @@ def player_stats():
                            updated=(_phone_time(row["updated_at"]) if row else ""),
                            stale=bool(row) and int(time.time() * 1000) - row["updated_at"] > 10 * 60 * 1000,
                            inter=inter, lm_recv=lm_recv,
+                           arc_view=_phone_arc_view((report or {}).get("arc")) if view == "arc" else None,
                            personal_counts=_phone_personal_counts((report or {}).get("counts")) if view == "counts" else [])
 
 # ── 网页群聊 ─────────────────────────────────────────────────────────────────────

@@ -1,0 +1,44 @@
+<style>
+.arc-page { padding: 22px 16px 12px; }
+.arc-page h1 { margin: 0; font-size: 24px; letter-spacing: -.5px; }
+.arc-subtitle { margin: 6px 0 20px; color: var(--muted); font-size: 13px; }
+.arc-overview { padding: 22px; border-radius: 20px; background: var(--theirs); margin-bottom: 26px; }
+.arc-label { font-size: 13px; color: var(--muted); }
+.arc-number { display: flex; align-items: baseline; gap: 8px; margin: 10px 0; }
+.arc-number strong { font-size: 40px; line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; }
+.arc-number span { font-size: 13px; color: var(--muted); }
+.arc-sample { font-size: 12px; color: var(--muted); line-height: 1.7; }
+.arc-section { font-size: 16px; margin: 0 0 12px; }
+.arc-card { border: 1px solid var(--line); border-radius: 18px; padding: 16px; margin-bottom: 12px; overflow-wrap: anywhere; }
+.arc-card h3 { margin: 0; font-size: var(--reading-size,16px); font-weight: 600; }
+.arc-participants { color: var(--muted); font-size: calc(var(--reading-size,16px) - 3px); margin: 5px 0 16px; }
+.arc-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.arc-metrics strong { display: block; margin-top: 5px; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.arc-metrics strong small { font-size: 12px; font-weight: 400; }
+.arc-wait { margin: 16px 0 0; padding: 12px; border-radius: 12px; background: var(--theirs); font-size: calc(var(--reading-size,16px) - 2px); line-height: 1.8; white-space: pre-wrap; }
+.arc-note { font-size: calc(var(--reading-size,16px) - 2px); line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); margin: 12px 2px; }
+</style>
+<section class="arc-page" aria-labelledby="arc-title">
+  <h1 id="arc-title">我的弧长</h1><p class="arc-subtitle">{{ owner }} · 回复节奏</p>
+  {% if arc_view.average is not none %}
+  <div class="arc-overview" aria-label="本人总平均：{{ arc_view.average }}分钟">
+    <div class="arc-label">平均回复用时</div>
+    <div class="arc-number"><strong>{{ arc_view.average }}</strong><span>分钟</span></div>
+    {% if arc_view.sample %}<div class="arc-sample">{{ arc_view.sample }}</div>{% endif %}
+  </div>
+  {% endif %}
+  {% if arc_view.sessions %}<h2 class="arc-section">进行中的场次 · {{ arc_view.sessions|length }}</h2>{% endif %}
+  {% for item in arc_view.sessions %}
+  <article class="arc-card">
+    <h3>{{ item.title }}</h3><p class="arc-participants">{{ item.participants }}</p>
+    <div class="arc-metrics">
+      {% if item.progress %}<div><span class="arc-label">写帖 · 我 / 对方</span><strong>{{ item.progress|replace('v',' / ') }}</strong></div>{% endif %}
+      <div><span class="arc-label">本场平均回复</span><strong>{{ item.average }} <small>分钟</small></strong></div>
+    </div>
+    <p class="arc-sample">统计样本：{{ item.sample }}</p>
+    <div class="arc-wait">{{ item.waiting|replace('；','\n') }}</div>
+  </article>
+  {% endfor %}
+  {% for note in arc_view.notes %}<p class="arc-note">{{ note }}</p>{% endfor %}
+  {% if arc_view.average is none and not arc_view.sessions and not arc_view.notes %}<p class="arc-note">暂无弧长记录，等待下一次同步。</p>{% endif %}
+</section>
