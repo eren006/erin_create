@@ -898,6 +898,12 @@ select.cfg-input { cursor: pointer; }
       {{ grid(s['论坛']) }}
     </div>
 
+    {# 呼叫管理组：玩家「呼叫管理组 内容」转后台群的次数/间隔（必须渲染出来，否则保存配置会把它重置成默认值） #}
+    <div class="cfg-card">
+      <div class="cfg-card-title">呼叫管理组 <span class="cfg-badge">玩家发「呼叫管理组 内容」转到后台群</span></div>
+      {{ grid(s['呼叫管理组']) }}
+    </div>
+
     {# ═══════════════════════════════════════════ #}
 </div>
 
@@ -998,6 +1004,8 @@ select.cfg-input { cursor: pointer; }
            "{收件人} {收件人QQ} {发送者} {礼物名} {寄语}"),
           ("gift_broadcast",       "礼物公开播报",             "★必填：{发送者} {收件人} {礼物名}",
            "{发送者} {收件人} {礼物名} {寄语}"),
+          ("daily_tip",            "每日指令提示（心动信派送后发到公告群）", "",
+           "{天数}　·　留空用默认提示（我的待回/我的数量/格式/撤回/提交二表/呼叫管理组/长日网址）；整段只写「关闭」就不发"),
         ] %}
 
         {% for key, label, required, vars in tpl_defs %}

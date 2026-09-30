@@ -1904,6 +1904,37 @@ function getBlockEntry(platform, blockerUid, blockedUid) {
 // 卫星插件（RPG/设置/社交/写信综/晚餐）调用时懒获取 globalThis.__changriApi，
 // 不要在卫星文件里复制这些函数的实现。
 // ========================
+// 🆘 呼叫管理组：玩家发「呼叫管理组 内容」→ 转到后台群。每人每天次数、两次间隔在网页「游戏配置 → 呼叫管理组」改
+// （call_admin_daily_limit 默认 10，0=关闭；call_admin_cooldown_min 默认 5 分钟）。计数按现实日期，清空季度数据时清掉
+// ========================
+function handleCallAdmin(ctx, msg, platform, uid, groupId, content) {
+    const limit = getStorageInt("call_admin_daily_limit", 10);
+    const cdMin = getStorageInt("call_admin_cooldown_min", 5);
+    if (limit <= 0) return seal.replyToSender(ctx, msg, "🔕 呼叫管理组功能已关闭，有事请直接私聊管理员。");
+    if (!content) return seal.replyToSender(ctx, msg, `🆘 用法：呼叫管理组 想说的事\n例：呼叫管理组 私约群机器人没反应\n（每人每天最多 ${limit} 次，两次之间隔 ${cdMin} 分钟）`);
+    const bgGid = kvGet("background_group_id", "");
+    if (!bgGid || bgGid === "未设置") return seal.replyToSender(ctx, msg, "❌ 还没配置后台群，暂时呼叫不了管理组，请直接私聊管理员。");
+
+    const d = new Date();
+    const today = `${d.getFullYear()}-${getTodayMMDD()}`;
+    const key = `${platform}:${uid}`;
+    const counts = kvGet("call_admin_counts", {});
+    const rec = counts[key] && counts[key].date === today ? counts[key] : { date: today, count: 0, last: 0 };
+    if (rec.count >= limit) return seal.replyToSender(ctx, msg, `⏳ 你今天已经呼叫 ${rec.count} 次了（每天最多 ${limit} 次），急事请直接私聊管理员。`);
+    const waitMs = rec.last + cdMin * 60000 - Date.now();
+    if (waitMs > 0) return seal.replyToSender(ctx, msg, `⏳ 刚刚呼叫过了，请 ${Math.ceil(waitMs / 60000)} 分钟后再试。`);
+
+    const roleName = getRoleName(ctx, msg);
+    const who = roleName ? `${roleName}（QQ ${uid}）` : `${msg.sender.nickname || "未建角色的玩家"}（QQ ${uid}）`;
+    const text = content.length > 250 ? content.slice(0, 250) + "……" : content;   // 单条回复要控制在 1000 字节以内
+    sendTextToGroup(platform, bgGid, `🆘【呼叫管理组】${who}\n📍 来自群 ${groupId}\n💬 ${text}`);
+    rec.count += 1; rec.last = Date.now();
+    counts[key] = rec;
+    kvSet("call_admin_counts", counts);
+    return seal.replyToSender(ctx, msg, `✅ 已通知管理组，请耐心等待回复。（今天还能呼叫 ${limit - rec.count} 次）`);
+}
+
+// ========================
 // 📝 竖版（表单）写法 → 横版一行指令
 // 除了约会类（私约/电话/踩点/约战/官约/官电 已有 maybeParseAppointmentForm），下面这几条互动也支持竖着写：
 //   【短信】            （首行也可以不带【】，直接写「短信」）
@@ -5577,7 +5608,7 @@ const CLEAR_KEYS = [
     "feature_user_blocklist","noquit",                "season_show_name",
     "season_mode",           "season_schedule_start", "season_schedule_end",
     "season_supplement_end", "season_created_at",     "love_show_name",
-    "pending_npc_names",   "season_auto_toggles_off",
+    "pending_npc_names",     "call_admin_counts",   "season_auto_toggles_off",
     // ── 约会 / 日程 ──
     "appointmentList",       "b_MultiGroupRequest",   "b_confirmedSchedule",
     "join_request_list",     "allowed_appointment_times",
@@ -10919,6 +10950,11 @@ ext.onNotCommandReceived = async (ctx, msg) => {
     const _rawUid = msg.sender.userId.replace(`${platform}:`, '');
     const uid = getPrimaryUid(platform, _rawUid); // 辅助账号自动解析为主账号 uid
     const groupId = msg.groupId.replace(`${platform}-Group:`, ''), isAdmin = isUserAdmin(ctx, msg);
+
+    // 呼叫管理组放在最前面：后面的短信/送礼匹配比较宽松，「呼叫管理组 短信 发给 张三 失败」这种会被误当成发短信
+    if (raw.startsWith("呼叫管理组")) {
+        return handleCallAdmin(ctx, msg, platform, uid, groupId, raw.slice(5).trim());
+    }
     const getS = (k) => kvGet(k, (k.includes("list") || k.includes("presets") || k.includes("projects")) ? [] : {});
 
     // 1. 回复卡片逻辑 (撤回/点歌/复盘/提交二表)
@@ -10966,6 +11002,7 @@ ext.onNotCommandReceived = async (ctx, msg) => {
         "发帖":   "发帖 内容\n或：发帖 署名 内容\n例：发帖 匿名树洞 今天天气真好！\n\n也可以竖着写（内容里有空格、分行都没关系）：\n【发帖】\n署名：匿名树洞（选填，不填用角色名）\n内容：今天天气真好！",
         "点歌":   "（先回复一张音乐卡片，再发送）\n点歌人：张三 留言：这首歌送给你 歌名：晴天（选填） 送给：李四（选填）",
         "撤回":   "短信/礼物/拉线发错人时：\n长按你发的那条（或机器人回的「已送达」那条）→ 引用/回复 → 发送：\n撤回\n\n· 2 分钟内有效，已送到对方群里的那条会一起删掉\n· 今日次数返还，可以马上重发给对的人\n· 超过 2 分钟请联系管理员帮忙撤回",
+        "呼叫管理组": "呼叫管理组 想说的事\n例：呼叫管理组 私约群机器人没反应\n\n会转到管理员的后台群；每人每天次数有限，两次之间要隔几分钟（管理员在网页端设置）",
         "提交二表": "长按你要提交的那条消息 → 引用/回复 → 发送：\n提交二表\n\n· 会原样转发到后台群备份，并在皮相墙把你名字前面的 ⬜ 换成 ✅\n· 提交过之后随时可以再提交（比如内容改过），不限次数",
     };
     // 私约（默认资源 + 每个额外资源）：用当前名字当 key，改名后旧名字这里也跟着一起失效，
@@ -12203,6 +12240,31 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
     return { success, fail, publicCount, empty: false, status: "派送完成" };
 }
 
+// 每日指令提示：心动信到点派送后顺手发到公告群（没配公告群发水群），帮玩家想起每天常用、容易忘的指令。
+// 文案可在网页「游戏配置 → 消息模板 → 每日指令提示」改（可用 {天数}），整段写「关闭」就不发；只在档期正式期/补戏期发
+const DAILY_TIP_DEFAULT = [
+    "📌 每日小提示（{天数}）",
+    "· 我的待回 —— 看看还没回的群和信",
+    "· 我的数量 —— 今天各种互动还剩几次",
+    "· 格式 —— 忘了怎么写？发「格式短信」「格式私约」直接拿模板",
+    "· 撤回 —— 发错人了，2 分钟内引用那条发「撤回」",
+    "· 提交二表 —— 引用自己的二表消息发送",
+    "· 呼叫管理组 内容 —— 有事找管理员",
+    "· 长日网址 —— 玩家指南、许愿墙的链接",
+].join("\n");
+function sendDailyTip(platform) {
+    const zone = getScheduleZone();
+    if (zone === "pre" || zone === "post") return;
+    const day = cachedGet("global_days") || "";
+    const custom = applyMsgTemplate("daily_tip", { "天数": day });
+    if (custom && custom.trim() === "关闭") return;
+    const text = custom || DAILY_TIP_DEFAULT.replace("{天数}", day);
+    let gid = kvGet("adminAnnounceGroupId", "");
+    if (!gid || gid === "未设置" || gid === "null") gid = kvGet("water_group_id", "");
+    if (!gid || gid === "未设置" || gid === "null") return;
+    sendTextToGroup(platform, gid, text);
+}
+
 let _loveMailLastTriggerMinute = -1;
 function loveMailTick() {
     if (!isLoveMailEnabled()) return;
@@ -12225,6 +12287,8 @@ function loveMailTick() {
         } catch (err) {
             console.error(`[心动信箱] 自动派送异常: ${err.message}`);
         }
+        // 派送完隔几秒再发每日提示，排在「今日心动信已派送完毕」后面（信池是空的也照发）
+        setTimeout(() => { try { sendDailyTip("QQ"); } catch (e) { console.error(`[每日提示] 发送失败: ${e.message}`); } }, 5000);
         _loveMailLastTriggerMinute = currentMinute;
     } else if (currentTimeTotal === getOffsetTotal(-5)) {
         // 提醒类播报只在档期主区间内发（补戏/超期/开季前都不发），跟弧长统计的口径保持一致；

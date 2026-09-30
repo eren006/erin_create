@@ -909,6 +909,12 @@ CONFIG_SCHEMA = [
         {"key": "官电_time",  "label": "官电·时间",   "type": "text", "default": "", "note": "留空=默认「时间」"},
         {"key": "官电_names", "label": "官电·参与者", "type": "text", "default": "", "note": "留空=默认「参与者」"},
     ]},
+    {"section": "呼叫管理组", "fields": [
+        {"key": "call_admin_daily_limit", "label": "每人每天可呼叫次数", "type": "number", "default": "10",
+         "note": "玩家发「呼叫管理组 内容」会转到后台群；0 = 关闭这个功能"},
+        {"key": "call_admin_cooldown_min", "label": "两次呼叫最少间隔（分钟）", "type": "number", "default": "5",
+         "note": "同一个人两次呼叫之间至少隔多久，防止刷屏"},
+    ]},
     {"section": "季末报告", "fields": [
         {"key": "end_season_report_enabled", "label": "季末互动报告", "type": "bool", "default": "false",
          "note": "开启后结束季度时自动向每位玩家个人群发送互动报告，请确保 bot 届时仍在各个人群内"},
