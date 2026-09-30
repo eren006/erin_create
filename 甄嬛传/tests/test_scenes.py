@@ -48,6 +48,30 @@ class SceneContentTests(unittest.TestCase):
                 self.assertNotIn(name, blob, key)
 
 
+class DailyEventContentTests(unittest.TestCase):
+    """宫人小事件、孩子小事件：字段只能用 *_event_choose 认得的，占位符只能用 view 里给的"""
+    MAID_FIELDS = {'text', 'say', 'silver', 'loyalty', 'loyalty2', 'virtue', 'appearance', 'seek', 'affinity', 'hide', 'gossip'}
+    HEIR_FIELDS = {'text', 'say', 'silver', 'mother_health', 'study', 'riding', 'virtue', 'favor', 'affinity',
+                   'conceal', 'to_mother_affinity', 'target_affinity'}
+
+    def check(self, events, fields, names):
+        for key, ev in events.items():
+            ev['text'].format(**names)
+            for o in ev['opts']:
+                self.assertLessEqual(set(o), fields, key)
+                o['text'].format(**names); o['say'].format(**names)
+                if o.get('affinity') and fields is self.MAID_FIELDS:
+                    self.assertTrue(ev.get('needs_target'), key)
+                if o.get('target_affinity'):
+                    self.assertTrue(ev.get('needs_target'), key)
+
+    def test_maid_events(self):
+        self.check(game.MAID_EVENTS, self.MAID_FIELDS, dict(m='春桃', m2='秋菊', t='华妃'))
+
+    def test_heir_events(self):
+        self.check(game.HEIR_EVENTS, self.HEIR_FIELDS, dict(h='大阿哥', t='华妃'))
+
+
 class ScenePickTests(unittest.TestCase):
     setUp = test_lifecycle.LifecycleTests.setUp
     tearDown = test_lifecycle.LifecycleTests.tearDown
@@ -84,6 +108,24 @@ class ScenePickTests(unittest.TestCase):
             self.client.post('/act/greet')
         sc = game.get_scene(game.get_consort(self.atk))
         self.assertEqual(sc and sc['key'], 'jingren_xinchangzai')
+
+
+class HeirEventStatTests(unittest.TestCase):
+    setUp = test_lifecycle.LifecycleTests.setUp
+    tearDown = test_lifecycle.LifecycleTests.tearDown
+    player = test_lifecycle.LifecycleTests.player
+    login = test_lifecycle.LifecycleTests.login
+
+    def test_riding_event_raises_riding(self):
+        import test_heirs
+        hid = test_heirs.HeirTests.heir(self, self.atk)
+        before = game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+        game.run('UPDATE consorts SET heir_event=? WHERE id=?',
+                 (game.json.dumps(dict(key='riding', heir=hid, day=game.cur_day())), self.atk))
+        self.client.post('/heirs/event', data={'opt': 0})
+        after = game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+        self.assertEqual(after['riding'], before['riding'] + 3)
+        self.assertEqual(game.get_consort(self.atk)['silver'], 2000 - 12)
 
 
 if __name__ == '__main__':

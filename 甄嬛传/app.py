@@ -3372,6 +3372,29 @@ MAID_EVENTS = {
     'sachet': dict(text='{m}熬了几个晚上，绣了个香囊孝敬你，针脚细密。', opts=[
         dict(text='自己戴着', appearance=1, loyalty=2, say='你把香囊系在腰间，{m}高兴得什么似的。'),
         dict(text='托人转送养心殿', seek=5, say='香囊送去了养心殿。今晚翻牌子的机会大了些。')]),
+    # ── 2026-09-29 扩充 ──
+    'sleepy': dict(text='{m}端着茶进来时眼皮直打架，差点把茶盏摔了。你这才想起她昨夜伺候到三更。', opts=[
+        dict(text='让她下去歇着，赏二两银子', silver=-2, loyalty=10, say='{m}红着眼眶谢了恩，下去补觉了。'),
+        dict(text='让她去洗把脸，接着当差', loyalty=-5, say='{m}应了一声，可手还在抖。')]),
+    'jewelry': dict(text='{m}在甬道上捡到一支赤金簪子，看着像是{t}宫里丢的。', needs_target=True, opts=[
+        dict(text='亲自送回去', affinity=3, say='{t}接过簪子，多看了你两眼。'),
+        dict(text='让{m}悄悄还回去', loyalty=2, affinity=1, say='簪子还了，{t}没说什么。'),
+        dict(text='悄悄托人换了银子', silver=15, virtue=-2, loyalty=-3, say='银子是到手了，{m}看你的眼神却有些变了。')]),
+    'maid_ill': dict(text='{m}咳嗽好几日了，还硬撑着当差。你听见她夜里咳得厉害。', opts=[
+        dict(text='让她歇着，请太医来看（5 两）', silver=-5, loyalty=12, virtue=1, say='太医开了方子，{m}感激得直磕头。'),
+        dict(text='让她自己去太医院拿点药', loyalty=-3, say='{m}去了，可回来时脸色更差了。')]),
+    'brocade': dict(text='{m}捧着一匹蜀锦进来，说是{t}赏的，让你裁件衣裳。', needs_target=True, opts=[
+        dict(text='收下，赏{m}二两', silver=-2, affinity=2, say='蜀锦收下了，你心里却打了个突。'),
+        dict(text='婉拒，说无功不受禄', affinity=-3, virtue=1, say='{m}把蜀锦送回去了，{t}那边没说什么。')]),
+    'pilfer': dict(text='{m}跪在你面前，说错拿了库房里的东西，求你饶过这一回。', opts=[
+        dict(text='罚她月钱，下不为例', loyalty=3, silver=5, say='{m}谢了恩，往后当差更勤快了。'),
+        dict(text='这事不能姑息，送去辛者库罚三天苦役', loyalty=-15, virtue=1, say='{m}回来后当差照旧，只是再没正眼看过你。')]),
+    'snacks': dict(text='{m}说{t}宫里的小太监总给她塞点心，还问起你的起居。', needs_target=True, opts=[
+        dict(text='让她收着，顺便套套对方的话', gossip=True, say=''),
+        dict(text='让她以后别收了，免得被人拿捏', loyalty=-3, say='{m}应了，可你总觉得她不太情愿。')]),
+    'brother': dict(text='{m}跪着求你，说她哥哥在宫外惹了官司，想求你帮忙说句话。', opts=[
+        dict(text='应下了，托人去打点（15 两）', silver=-15, loyalty=15, say='{m}磕头如捣蒜，你心里多了个死忠。'),
+        dict(text='让她别为难你，这事不好办', loyalty=-10, say='{m}抹着眼泪下去了。')]),
 }
 
 def roll_maid_event(c):
@@ -3752,6 +3775,28 @@ HEIR_EVENTS = {
     'sneak_visit': dict(text='宫人来报，他偷偷跑去看了生母，被拦在了半路上。', foster_only=True, opts=[
         dict(text='由他去', to_mother_affinity=6, say='你叹了口气，没有阻拦。'),
         dict(text='拦下', affinity=-3, say='他被拦回来，一路上都没说话。')]),
+    # ── 2026-09-29 扩充（study/riding 也能加，见 heir_event_choose） ──
+    'bored': dict(text='他撅着嘴说上书房无聊，师傅讲的他都会了。', opts=[
+        dict(text='让他背一段给额娘听', affinity=2, study=2, say='他背得滚瓜烂熟，你心里既欣慰又有点担心。'),
+        dict(text='让他去御花园玩一会儿', affinity=5, virtue=-1, say='他乐颠颠跑了，只怕师傅要有话说。')]),
+    'nightmare': dict(text='夜里乳母来报，说他做噩梦哭了，非要你去陪。', opts=[
+        dict(text='亲自去哄他', affinity=8, mother_health=-3, say='他抱着你不撒手，你陪到天亮。'),
+        dict(text='让乳母哄着', affinity=-5, say='他哭到半夜才睡，梦里还在喊额娘。')]),
+    'rosary': dict(text='他拿着一串佛珠回来，说是{t}给的，还叮嘱别告诉皇阿玛。', needs_target=True, opts=[
+        dict(text='收下，但不许他再往{t}那儿跑', affinity=-3, target_affinity=2, say='佛珠收下了，你心里却打了个突。'),
+        dict(text='让他原样还回去', affinity=-5, target_affinity=-3, say='他闷闷不乐地去了，{t}那边没说什么。')]),
+    'jealous': dict(text='他在御花园看见{t}逗弄别的孩子，回来就闹脾气，说你不疼他。', needs_target=True, opts=[
+        dict(text='抱着他哄了半天', affinity=8, mother_health=-2, say='他睡着了，你胳膊酸得抬不起来。'),
+        dict(text='「你是大孩子了，别闹。」', affinity=-5, virtue=1, say='他抹着眼泪走了，乳母说你太严厉。')]),
+    'riding': dict(text='他说想学骑马，求你准他。', opts=[
+        dict(text='准了，让人陪着（12 两）', silver=-12, affinity=6, riding=3, say='他乐得跳起来，你心里却七上八下。'),
+        dict(text='「等你再大些。」', affinity=-3, say='他撅着嘴走了。')]),
+    'swear': dict(text='宫人悄悄告诉你，他学会了说脏话，说是跟小太监学的。', opts=[
+        dict(text='罚他抄十遍《弟子规》', affinity=-5, virtue=3, say='他边抄边哭。'),
+        dict(text='把那个小太监打发走', affinity=2, virtue=1, say='小太监被领走了，他吓得不敢说话。')]),
+    'future': dict(text='他问你：「额娘，我长大了能当皇上吗？」', opts=[
+        dict(text='「那要看你争不争气。」', affinity=3, virtue=-1, say='他眼睛亮了，攥着小拳头说要好好读书。'),
+        dict(text='「别胡说，这话不能乱讲。」', affinity=-3, virtue=2, say='他吓得捂住嘴，你心里一紧。')]),
 }
 
 
@@ -4918,7 +4963,7 @@ def heir_event_choose():
         add_silver(c['id'], opt['silver']); parts.append(f"银子 {opt['silver']:+d}")
     if opt.get('mother_health'):
         add_stat(c['id'], 'health', opt['mother_health']); parts.append(f"体质 {opt['mother_health']:+d}")
-    for stat in ('virtue',):
+    for stat in ('study', 'riding', 'virtue'):
         if opt.get(stat):
             run(f'UPDATE heirs SET {stat}=? WHERE id=?', (clamp(h[stat] + opt[stat]), h['id']))
             parts.append(f"{HEIR_STATS[stat]} {opt[stat]:+d}")
