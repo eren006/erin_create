@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.8.2
+// @version      1.9.0
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.8.2");
+    ext = seal.ext.new("changri", "长日将尽", "1.9.0");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -1437,7 +1437,7 @@ function processProfileFieldLine(platform, roleName, line) {
 // ========================
 // 🌸 皮相墙：公告群里按性别分栏展示所有已设置皮相的角色，改皮相/改性别/提交二表都会重新生成整份公告
 // ========================
-// QQ 群公告没有"编辑"接口（OneBot 只有 _send_group_notice / _get_group_notice / _del_group_notice），
+// QQ 群公告没有"编辑"接口（OneBot 只有 _send_group_notice / _get_group_notice / _delete_group_notice），
 // 所以做法是：读公告列表 → 删掉所有旧皮相墙 → 发一条新的，群里看起来始终只有一份。
 // 发到公告群（adminAnnounceGroupId）；没配公告群的沿用水群（water_group_id）。两个都没配就跳过，不报错。
 //
@@ -1508,7 +1508,7 @@ function sweepLookWalls(groupIdNum, then) {
                 let remaining = oldOnes.length;
                 const one = () => { if (--remaining <= 0) then(true); };
                 oldOnes.forEach(n => WSM.request(
-                    { action: "_del_group_notice", params: { group_id: groupIdNum, notice_id: n.notice_id } },
+                    { action: "_delete_group_notice", params: { group_id: groupIdNum, notice_id: n.notice_id } },
                     one,
                     () => { console.error(`[皮相墙] 删除旧公告超时 ${n.notice_id}`); one(); },
                     8000
@@ -10442,6 +10442,8 @@ function handleDriftBottleReply(ctx, msg, platform, bottleId, bottle, uid, conte
 
 // 无前缀「短信」：识别署名（含自定义署名开关）后转交寄信流程
 function routeChaosLetterMessage(ctx, msg, platform, letM) {
+    const webNotice = phoneWebSendNotice("短信");
+    if (webNotice) return seal.replyToSender(ctx, msg, webNotice);
     const allowCustom = cachedGet("allow_custom_letter_sign") === "true";
     const priv = kvGet("a_private_group", {})[platform] || {};
     let snd = "";
@@ -12487,8 +12489,144 @@ function checkExpiredGroups() {
 
     if (changed) kvSet("group_expire_info", groupInfo);
 }
+// ========================
+// 📱 网页手机同步（存档站 /p）：网页发送是机器人挂掉时的备用通道，跟群里二选一
+// ========================
+// 每 30 秒把「当前规则 + 角色名单 + 拉黑 + 今日次数」整份上报给存档站，存档站照这份快照执行网页发送
+// （混乱效果/冷却/上限/功能权限/拉黑都不在存档站另存一套）；机器人挂了，存档站就沿用最后一次的快照。
+// 回包带两样东西：
+//   · web_send：管理员在存档站后台打开了「网页发送」→ 群里的短信/送礼改成提示去网页发（二选一，免得两边同时发）；
+//   · events：上次之后网页上发出的短信/礼物，这里计进每日次数、冷却和互动统计，切回群里发时次数是连续的。
+// 游标存在 phone_web_cursor（存档站的 extra_events.id），只往前走，同一条不会被计两次。
+let _phoneSyncBusy = false;
+async function phoneWebSync() {
+    if (_phoneSyncBusy) return;
+    if (!isArchiveEnabled()) { if (kvGet("phone_web_send", {}).on) kvSet("phone_web_send", {}); return; }
+    const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+    if (!base) return;
+    _phoneSyncBusy = true;
+    try {
+        const platform = "QQ";
+        const priv = kvGet("a_private_group", {})[platform] || {};
+        const nameOf = (uid) => priv[uid]?.[0] || null;
+        const gameDay = cachedGet("global_days") || "D0";
+        const npcSet = new Set([...kvGet("a_npc_list", []), ...kvGet("a_generic_npc_list", [])]);
+        const roster = [...new Set(Object.values(priv).map(v => v && v[0]).filter(Boolean))]
+            .map(name => ({ name, npc: npcSet.has(name) }));
+
+        const toggle = kvGet("global_feature_toggle", {});
+        const giftWin = kvGet("ts_feature_windows", []).find(w => w.feature === "enable_general_gift");
+        const rules = {
+            sms_enabled: toggle.enable_chaos_letter !== false,
+            gift_enabled: toggle.enable_general_gift ?? true,
+            chaos: {
+                misdelivery: 0, blackoutText: 0, loseContent: 0, antonymReplace: 0,
+                reverseOrder: 0, mistakenSignature: 0, tornPage: 0, dailyLimit: 5, publicChance: 50,
+                ...kvGet("chaos_letter_config", {})
+            },
+            mail_cooldown_min: getStorageInt("mailCooldown", 60),
+            gift_cooldown_min: getStorageInt("giftCooldown", 30),
+            gift_daily_limit: getStorageInt("giftDailyLimit", 100),
+            gift_mode: getStorageInt("giftMode", 0),
+            gift_window: giftWin ? { start: giftWin.start, end: giftWin.end } : null
+        };
+
+        const featureOff = {};
+        for (const [uid, cfg] of Object.entries(kvGet("feature_user_blocklist", {}))) {
+            const name = nameOf(uid);
+            if (!name || !cfg) continue;
+            const off = [];
+            if (cfg.enable_chaos_letter === false) off.push("sms");
+            if (cfg.enable_general_gift === false) off.push("gift");
+            if (off.length) featureOff[name] = off;
+        }
+        const blocks = [];
+        for (const [blockerUid, m] of Object.entries(kvGet("sys_blocklist", {})[platform] || {})) {
+            for (const [blockedUid, entry] of Object.entries(m || {})) {
+                const blocker = nameOf(blockerUid), blocked = nameOf(blockedUid);
+                if (blocker && blocked && entry) blocks.push({ blocker, blocked, silent: !!entry.silent });
+            }
+        }
+        const counts = { sms: {}, gift: {} }, last = { sms: {}, gift: {} };
+        const smsCounts = kvGet("global_chaos_letter_counts", {});
+        const giftStats = kvGet("global_gift_stats", {});
+        const giftCds = kvGet("global_gift_cooldowns", {});
+        for (const uid of Object.keys(priv)) {
+            const name = nameOf(uid), key = `${platform}:${uid}`;
+            if (!name) continue;
+            if (smsCounts[key]?.day === gameDay) counts.sms[name] = smsCounts[key].count || 0;
+            if (giftStats[key]?.day === gameDay) counts.gift[name] = giftStats[key].count || 0;
+            const smsLast = parseInt(cachedGet(`chaos_letter_cooldown_${key}`) || "0");
+            if (smsLast) last.sms[name] = smsLast;
+            if (giftCds[key]) last.gift[name] = giftCds[key];
+        }
+
+        const after = parseInt(cachedGet("phone_web_cursor") || "0") || 0;
+        const resp = await fetch(base + "/api/phone/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Archive-Token": token },
+            body: JSON.stringify({ after, snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, counts, last } })
+        });
+        if (!resp.ok) return;
+        const data = await resp.json();
+        kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
+
+        const events = data.events || [];
+        if (!events.length) return;
+        // 网页发出的记录：计次数（只算当前游戏日的）/ 冷却 / 互动统计，跟群里发的一样
+        const smsC = kvGet("global_chaos_letter_counts", {});
+        const giftS = kvGet("global_gift_stats", {});
+        const giftC = kvGet("global_gift_cooldowns", {});
+        let cursor = after;
+        for (const ev of events) {
+            cursor = Math.max(cursor, ev.id);
+            const rawUid = getUidByRoleName(platform, ev.from_role);
+            if (!rawUid) continue;
+            const key = `${platform}:${getPrimaryUid(platform, rawUid)}`;
+            const ts = ev.timestamp || 0;
+            if (ev.type === "sms") {
+                if (ev.day_key === gameDay) {
+                    const rec = smsC[key]?.day === gameDay ? smsC[key] : { day: gameDay, count: 0 };
+                    rec.count += 1;
+                    smsC[key] = rec;
+                }
+                const ck = `chaos_letter_cooldown_${key}`;
+                if (ts > (parseInt(cachedGet(ck) || "0") || 0)) cachedSet(ck, String(ts));
+                recordInteractionStat(platform, ev.from_role, ev.to_role, "sms");
+            } else if (ev.type === "gift") {
+                if (ev.day_key === gameDay) {
+                    const rec = giftS[key]?.day === gameDay ? giftS[key] : { day: gameDay, count: 0 };
+                    rec.count += 1;
+                    giftS[key] = rec;
+                }
+                if (ts > (giftC[key] || 0)) giftC[key] = ts;
+                recordInteractionStat(platform, ev.from_role, ev.to_role, "gift", !!ev.lost);
+            }
+        }
+        kvSet("global_chaos_letter_counts", smsC);
+        kvSet("global_gift_stats", giftS);
+        kvSet("global_gift_cooldowns", giftC);
+        cachedSet("phone_web_cursor", String(cursor));
+    } catch (e) {
+        console.warn(`[网页手机同步] 失败：${e.message || e}`);
+    } finally {
+        _phoneSyncBusy = false;
+    }
+}
+
+// 网页发送打开时，群里的短信/送礼改成提示去网页发；返回提示文字，没打开返回 null。
+// 超过 10 分钟没同步上（存档站挂了，网页也用不了）就当没打开，群里照常发，免得两边都发不出去
+const PHONE_WEB_SEND_STALE_MS = 10 * 60 * 1000;
+function phoneWebSendNotice(kindLabel) {
+    const st = kvGet("phone_web_send", {});
+    if (!st.on || Date.now() - (st.at || 0) > PHONE_WEB_SEND_STALE_MS) return null;
+    return `📱 ${kindLabel}现在改在网页手机里发：${st.url || "存档站 /p"}\n用管理员私发给你的激活码登录。`;
+}
+
 let _occupancyHeartbeat = 0;
 setInterval(() => {
+    phoneWebSync();
     checkAutoD0();
     checkExpiredGroups();
     loveMailTick();

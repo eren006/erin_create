@@ -1,0 +1,1 @@
+{% if status and status.can and (status.sms or status.gift) %}<div class="quota">今日{% if status.sms %} 短信 {{ status.sms[0] }}/{{ status.sms[1] }}{% endif %}{% if status.sms and status.gift %} ·{% endif %}{% if status.gift %} 礼物 {{ status.gift[0] }}/{{ status.gift[1] }}{% endif %}</div>{% endif %}

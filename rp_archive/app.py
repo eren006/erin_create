@@ -1,5 +1,5 @@
-import io, os, re, json, functools, secrets, time, hmac, hashlib, logging, traceback, zipfile
-import shutil, socket, ipaddress, urllib.request
+import io, os, re, json, math, functools, secrets, time, hmac, hashlib, logging, traceback, zipfile
+import shutil, socket, ipaddress, urllib.request, threading
 from urllib.parse import urlparse
 from collections import defaultdict
 from datetime import datetime, date as _date, timezone, timedelta
@@ -18,6 +18,8 @@ app.secret_key = os.environ.get("FLASK_SECRET", "rp_archive_secret_key_change_me
 if os.environ.get("BEHIND_PROXY") == "1":
     from werkzeug.middleware.proxy_fix import ProxyFix
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+# 别的网站不能借玩家/管理员的登录态偷偷提交表单（后台「重置激活码」之类的 POST）
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 
 # ── 错误日志 ──────────────────────────────────────────────────────────────────
@@ -1433,6 +1435,51 @@ def _migrate(conn):
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_collected_images_show ON collected_images(tenant_id, show_id)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_collected_images_user ON collected_images(tenant_id, show_id, uid)")
+
+    # ── 16. phone_codes 表（玩家手机激活码：一季一角色一个码，季度结束后随 is_current=0 失效）──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_codes (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            show_id    INTEGER NOT NULL,
+            role_name  TEXT    NOT NULL,
+            code       TEXT    NOT NULL UNIQUE,
+            created_at INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(show_id, role_name)
+        )
+    """)
+
+    # ── 17. 网页发送：开关 / 插件上报的规则快照 / 被静默拉黑的网页短信 ──────────────
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_settings (
+            show_id  INTEGER PRIMARY KEY,
+            web_send INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_sync (
+            show_id   INTEGER PRIMARY KEY,
+            tenant_id INTEGER NOT NULL,
+            snapshot  TEXT    NOT NULL DEFAULT '{}',
+            cursor    INTEGER NOT NULL DEFAULT 0,
+            synced_at INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    # 静默拉黑的网页短信：发件人手机里要显示「已发出」，但不能进 extra_events——
+    # 那张表会被复盘页/导出/互动统计直接读，进去就等于投递成功了
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_silent (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id   INTEGER NOT NULL,
+            from_role TEXT    NOT NULL,
+            to_role   TEXT    NOT NULL,
+            content   TEXT    NOT NULL,
+            timestamp INTEGER NOT NULL,
+            game_day  TEXT    NOT NULL DEFAULT '',
+            day_key   TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_phone_silent_show ON phone_silent(show_id, from_role)")
 
     # ── 长日将尽许愿墙：独立的小功能，不挂在 tenant/superadmin 体系下 ──────────
     conn.execute("""
@@ -4607,6 +4654,625 @@ def character_interactions(role_name):
                            lovemails=lovemails, smss=smss, gifts=gifts,
                            pairs_list=pairs_list, chaos_stats=chaos_stats, show_names=show_names,
                            is_admin=bool(session.get("admin_logged_in")))
+
+# ── 玩家手机：只看短信和礼物，按「联系人 → 聊天记录」浏览，适配手机 ──────────────────────
+# 只能凭激活码进（/p/<code>），一个码只能看自己的手机，赛季进行中实时看。
+# 完全按群里实际发生的来，一个字都不能多透露：
+#   · 自己发的短信挂在「原本想发给的人」名下（误送了自己不知道），显示自己写的原文；
+#   · 收到的短信按落款认人（落款可能被换成别人），显示实际送达的内容；被撕的信没有落款 →「未知号码」；
+#   · 撕掉的后半页飘到第三人手里，也按落款认人；
+#   · 群里送的礼物只进实际收件人的手机：存档只记了实际收件人，放进送礼人手机的话误送那份会挂错人名下，
+#     等于告诉他送错了；网页送的礼物记了 intended_to，送礼人那边照想送的人显示。丢失的礼物收件人看不到。
+
+def _phone_events(db, show_id):
+    rows = db.execute(
+        "SELECT * FROM extra_events WHERE show_id=? AND type IN ('sms','gift') ORDER BY timestamp, id",
+        (show_id,)
+    ).fetchall()
+    events = _parse_events(rows)
+    # 静默拉黑的网页短信：to_role 置空，收件人那边永远匹配不上；发件人按 intended_to 挂在对方名下
+    for r in db.execute("SELECT * FROM phone_silent WHERE show_id=?", (show_id,)):
+        events.append({"id": -r["id"], "type": "sms", "from_role": r["from_role"], "to_role": "",
+                       "content": r["content"], "extra_info": {"intended_to": r["to_role"]},
+                       "timestamp": r["timestamp"], "game_day": r["game_day"]})
+    events.sort(key=lambda e: (e["timestamp"] or 0, e["id"]))
+    return events
+
+def _sig_name(signature):
+    """「落款：张三」→ 张三"""
+    sig = (signature or "").strip()
+    for prefix in ("落款：", "落款:"):
+        if sig.startswith(prefix):
+            sig = sig[len(prefix):].strip()
+    return sig
+
+def _phone_view_of(e, owner):
+    """把一条事件翻译成 owner 手机里看到的样子；这条不在 owner 手机里就返回 None"""
+    info = e["extra_info"] or {}
+    frm, to = e["from_role"], e["to_role"]
+    m = {"id": e["id"], "kind": e["type"], "public": bool(info.get("isPublic")),
+         "ts": e["timestamp"] or 0, "game_day": e["game_day"] or "", "signature": ""}
+    if e["type"] == "sms":
+        sig = info.get("signature") or ""
+        if frm == owner:
+            m.update(other=info.get("intended_to") or to, mine=True, text=e["content"])
+        elif to == owner:
+            if info.get("is_torn"):
+                m.update(other="未知号码", signature="（落款在缺失的后半页上）")
+            else:
+                m.update(other=_sig_name(sig) or frm, signature=sig)
+            m.update(mine=False, text=info.get("delivered") or e["content"])
+        elif info.get("is_torn") and info.get("torn_holder") == owner:
+            m.update(other=_sig_name(sig) or frm, mine=False, signature=sig,
+                     text="……" + (info.get("torn_second_half") or ""))
+        else:
+            return None
+        return m
+    m.update(gift_name=info.get("giftName") or "礼物", text=e["content"] or "")
+    if frm == owner and info.get("source") == "web":
+        # 网页送的礼物记了原本想送给谁，送礼人这边照「想送的人」显示（丢了、送错了都看不出来）
+        m.update(other=info.get("intended_to") or to, mine=True)
+        return m
+    if to == owner and not info.get("isLost"):
+        m.update(other=info.get("from_custom_name") or frm, mine=False)
+        return m
+    return None
+
+def _phone_preview(m):
+    if m["kind"] == "gift":
+        return f"🎁 {m['gift_name']}" + (f"：{m['text']}" if m["text"] else "")
+    return m["text"].replace("\n", " ")
+
+def _phone_time(ts):
+    try:
+        return datetime.fromtimestamp(int(ts) / 1000).strftime("%H:%M") if ts else ""
+    except Exception:
+        return ""
+
+def _phone_threads(db, sid, owner):
+    threads = {}
+    for e in _phone_events(db, sid):
+        m = _phone_view_of(e, owner)
+        if not m or not m["other"]:
+            continue
+        t = threads.setdefault(m["other"], {"other": m["other"]})
+        t["last"] = m  # 按时间升序遍历，最后一条就是最新
+    threads = sorted(threads.values(), key=lambda t: -t["last"]["ts"])
+    for t in threads:
+        t["preview"] = ("我：" if t["last"]["mine"] else "") + _phone_preview(t["last"])
+        t["time"] = _phone_time(t["last"]["ts"])
+    return threads
+
+def _phone_msgs(db, sid, owner, other):
+    msgs = []
+    for e in _phone_events(db, sid):
+        m = _phone_view_of(e, owner)
+        if m and m["other"] == other:
+            m["time"] = _phone_time(m["ts"])
+            msgs.append(m)
+    # 按游戏日插分隔条；同一天内隔了 1 小时以上再补一个时间戳，像真手机那样
+    # 落款写在气泡上方（像群聊的发言人名字）：连续几条同一落款的来信只在第一条上面写一次
+    prev_day, prev_ts, prev_sig = None, 0, None
+    for m in msgs:
+        m["day_break"] = m["game_day"] if m["game_day"] != prev_day else None
+        m["show_time"] = bool(m["day_break"]) or (m["ts"] - prev_ts > 3600_000)
+        sig = None
+        if not m["mine"] and m["signature"]:
+            sig = _sig_name(m["signature"]) if m["signature"].startswith("落款") else m["signature"]
+        m["sig_above"] = sig if sig and (sig != prev_sig or m["show_time"]) else None
+        prev_day, prev_ts, prev_sig = m["game_day"], m["ts"], sig
+    return msgs
+
+# ── 玩家手机激活码：后台给每个角色生成一个码，玩家凭码只看自己的手机 ─────────────────────
+# 安全设计：
+#   · 码 10 位、32 个字符（约 50 bit），同一 IP 15 分钟内输错 10 次就锁 15 分钟，猜不出来；
+#   · 码只在进门时出现一次：/p/<码> 校验后记进会话，立刻跳到 /p/me，地址栏里不留码，
+#     玩家截图发群也不会把码带出去；
+#   · 每次打开都重新查库校验：后台「重置」或季度结束（is_current=0）后，已经打开的页面刷新就进不去了；
+#   · /p 下的页面不缓存、不带 Referer、不许被 iframe 嵌、不让搜索引擎收录。
+
+_PHONE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # 去掉 I/O/0/1，念给玩家不会抄错
+_PHONE_CODE_LEN      = 10
+_PHONE_FAIL_WINDOW   = 15 * 60
+_PHONE_FAIL_MAX      = 10
+_phone_fails         = {}   # ip -> [失败时间戳...]；单进程 waitress，放内存即可，重启清零无妨
+_phone_fails_lock    = threading.Lock()
+_PHONE_BAD_CODE      = "激活码不对，或者这一季已经结束了"
+
+def _phone_ip_locked():
+    now = time.time()
+    with _phone_fails_lock:
+        fails = [t for t in _phone_fails.get(request.remote_addr, []) if now - t < _PHONE_FAIL_WINDOW]
+        _phone_fails[request.remote_addr] = fails
+        return len(fails) >= _PHONE_FAIL_MAX
+
+def _phone_note_fail():
+    now = time.time()
+    with _phone_fails_lock:
+        _phone_fails.setdefault(request.remote_addr, []).append(now)
+        if len(_phone_fails) > 10000:  # 防内存被刷爆：清掉过期的
+            for ip in [ip for ip, ts in _phone_fails.items() if not ts or now - ts[-1] > _PHONE_FAIL_WINDOW]:
+                _phone_fails.pop(ip, None)
+
+def _new_phone_code(db):
+    while True:
+        code = "".join(secrets.choice(_PHONE_CODE_ALPHABET) for _ in range(_PHONE_CODE_LEN))
+        if not db.execute("SELECT 1 FROM phone_codes WHERE code=?", (code,)).fetchone():
+            return code
+
+def _phone_code_owner(db, code):
+    """码 → (show_id, role_name)；码不存在或所属季已结束都返回 None"""
+    code = (code or "").strip().upper()
+    if len(code) != _PHONE_CODE_LEN:
+        return None
+    row = db.execute("""
+        SELECT c.show_id, c.role_name FROM phone_codes c JOIN shows s ON s.id=c.show_id
+        WHERE c.code=? AND s.is_current=1
+    """, (code,)).fetchone()
+    return (row["show_id"], row["role_name"]) if row else None
+
+def _phone_try_enter(code):
+    """校验码并记进会话；成功返回跳转，失败返回带错误的输码页"""
+    if _phone_ip_locked():
+        return render_template("phone.html", mode="entry", error="输错太多次了，15 分钟后再试"), 429
+    code = (code or "").strip().upper()
+    if not _phone_code_owner(get_db(), code):
+        _phone_note_fail()
+        return render_template("phone.html", mode="entry", error=_PHONE_BAD_CODE), 404
+    session["phone_code"] = code
+    session.permanent = True
+    return redirect(url_for("player_phone_inbox"))
+
+def _phone_current():
+    """会话里的码还有效就返回 (show_id, role_name)，否则清掉它返回 None"""
+    who = _phone_code_owner(get_db(), session.get("phone_code"))
+    if not who:
+        session.pop("phone_code", None)
+    return who
+
+@app.after_request
+def _phone_security_headers(resp):
+    if request.path == "/p" or request.path.startswith("/p/"):
+        resp.headers["Cache-Control"]   = "no-store"
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        resp.headers["X-Frame-Options"] = "DENY"
+        resp.headers["X-Robots-Tag"]    = "noindex, nofollow"
+    return resp
+
+@app.route("/p", methods=["GET", "POST"])
+def phone_code_entry():
+    if request.method == "POST":
+        return _phone_try_enter(request.form.get("code"))
+    if _phone_current():
+        return redirect(url_for("player_phone_inbox"))
+    return render_template("phone.html", mode="entry", error=None)
+
+@app.route("/p/me")
+def player_phone_inbox():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    return render_template("phone.html", mode="inbox", owner=owner,
+                           threads=_phone_threads(db, sid, owner), status=_phone_status(db, sid, owner))
+
+@app.route("/p/me/<other>")
+def player_phone_thread(other):
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    st = _phone_status(db, sid, owner)
+    # 能回复的对象必须在角色名单里（「未知号码」、名单外的名字不能回）
+    can_reply = st["can"] and other in _phone_roster(_phone_sync_row(db, sid)) and other != owner
+    return render_template("phone.html", mode="thread", owner=owner, other=other,
+                           msgs=_phone_msgs(db, sid, owner, other), status=st, can_reply=can_reply,
+                           csrf=_phone_csrf(), flash=session.pop("phone_flash", None),
+                           draft=session.pop("phone_draft", ""), draft_kind=session.pop("phone_draft_kind", "sms"))
+
+@app.route("/p/logout", methods=["POST"])
+def player_phone_logout():
+    session.pop("phone_code", None)
+    return redirect(url_for("phone_code_entry"))
+
+# ── 网页发送：机器人挂掉时的备用通道 ─────────────────────────────────────────────
+# 玩家在网页上发的短信/礼物直接写进存档（extra_info.source="web"），收件人在自己的网页手机里看到，
+# 不经过机器人、也不转发进 QQ 群。规则全部来自插件每 30 秒上报的快照（/api/phone/sync）：
+# 混乱效果概率、冷却、每日上限、功能开关、个人功能权限、拉黑、角色名单——存档站只照着执行，不另存一套规则。
+# 次数同步：
+#   · 快照新鲜（10 分钟内）：今日已用 = 插件上报的今日次数 + 插件还没取走的网页记录；按游戏日算；
+#   · 快照过期（机器人挂了）：游戏日不会再推进，改按北京时间自然日只数网页记录，不然上限永远不重置；
+#   · 插件每次同步取走新的网页记录，计进自己的每日次数/冷却/互动统计，群里再发也不会超。
+# 管理员在后台打开「允许网页发送」才生效，默认关闭；只在主档期内能发（跟 /api/event 的档期门控一致）。
+
+_PHONE_SYNC_FRESH_MS = 10 * 60 * 1000
+_PHONE_MAX_LEN       = 500
+_PHONE_MIN_GAP_MS    = 5000          # 冷却配置成 0 也至少隔 5 秒，防脚本刷屏
+_phone_send_lock     = threading.Lock()
+_CHAOS_CHAR_POOL     = ["梦", "影", "幻", "虚", "无", "断", "零", "终", "念", "尘", "迹", "雾", "嘘", "寂"]
+_BLACKOUT_CHARS      = ["◼︎", "█", "■", "▮"]
+
+def _phone_web_send_on(db, sid):
+    row = db.execute("SELECT web_send FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
+    return bool(row and row["web_send"])
+
+def _phone_sync_row(db, sid):
+    row = db.execute("SELECT * FROM phone_sync WHERE show_id=?", (sid,)).fetchone()
+    if not row:
+        return None
+    try:
+        snap = json.loads(row["snapshot"] or "{}")
+    except Exception:
+        snap = {}
+    return {"snap": snap, "cursor": row["cursor"], "synced_at": row["synced_at"]}
+
+def _phone_roster(sync):
+    return [r["name"] for r in (sync["snap"].get("roster") or []) if r.get("name")] if sync else []
+
+def _phone_day(sync, now_ms):
+    """(计数用的日键, 记录上显示的游戏日, 快照是否新鲜)"""
+    game_day = (sync["snap"].get("game_day") or "") if sync else ""
+    fresh = bool(sync) and now_ms - sync["synced_at"] < _PHONE_SYNC_FRESH_MS
+    if fresh:
+        return game_day, game_day, True
+    return "日期" + datetime.now(TZ_BEIJING).strftime("%Y-%m-%d"), game_day, False
+
+def _phone_usage(db, sid, sync, role, kind, now_ms):
+    """kind: sms|gift → (今日已用, 上次发送时间戳)"""
+    day_key, _, fresh = _phone_day(sync, now_ms)
+    snap = sync["snap"] if sync else {}
+    web_rows = db.execute(
+        "SELECT id, timestamp, extra_info FROM extra_events WHERE show_id=? AND type=? AND from_role=? "
+        "AND json_extract(extra_info, '$.source')='web'", (sid, kind, role)
+    ).fetchall()
+    if kind == "sms":
+        web_rows = list(web_rows) + [
+            {"id": 0, "timestamp": r["timestamp"], "extra_info": json.dumps({"day_key": r["day_key"]})}
+            for r in db.execute("SELECT timestamp, day_key FROM phone_silent WHERE show_id=? AND from_role=?", (sid, role))
+        ]
+    used = int(((snap.get("counts") or {}).get(kind) or {}).get(role, 0)) if fresh else 0
+    last = int(((snap.get("last") or {}).get(kind) or {}).get(role, 0) or 0)
+    cursor = sync["cursor"] if sync else 0
+    for r in web_rows:
+        info = json.loads(r["extra_info"] or "{}")
+        last = max(last, int(r["timestamp"] or 0))
+        if info.get("day_key") != day_key:
+            continue
+        # 新鲜时插件已取走的（id<=cursor，静默拉黑那张表插件不取，id 记 0 → 这里要算）已含在上报的次数里
+        if fresh and r["id"] and r["id"] <= cursor:
+            continue
+        used += 1
+    return used, last
+
+def _phone_status(db, sid, role):
+    """给页面用：能不能发、为什么不能、今日次数"""
+    now = int(time.time() * 1000)
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    sync = _phone_sync_row(db, sid)
+    st = {"can": False, "why": "", "sms": None, "gift": None}
+    if not _phone_web_send_on(db, sid):
+        return st
+    if not sync:
+        st["why"] = "机器人还没同步过规则，暂时不能从网页发送"
+        return st
+    if _schedule_zone(dict(show)) != "main":
+        st["why"] = "不在档期内，暂时不能发送"
+        return st
+    rules = sync["snap"].get("rules") or {}
+    st["can"] = True
+    if rules.get("sms_enabled", True):
+        used, _ = _phone_usage(db, sid, sync, role, "sms", now)
+        st["sms"] = (used, int((rules.get("chaos") or {}).get("dailyLimit", 5)))
+    if rules.get("gift_enabled", True) and int(rules.get("gift_mode", 0)) != 1:
+        used, _ = _phone_usage(db, sid, sync, role, "gift", now)
+        st["gift"] = (used, int(rules.get("gift_daily_limit", 100)))
+    return st
+
+def _chaos_erode(content, cfg):
+    r = secrets.SystemRandom()
+    if r.random() < float(cfg.get("antonymReplace", 0)) / 100 and content:
+        arr = list(content)
+        for _ in range(int(len(arr) * (0.15 + r.random() * 0.1))):
+            arr[r.randrange(len(arr))] = r.choice(_CHAOS_CHAR_POOL)
+        content = "".join(arr)
+    if r.random() < float(cfg.get("loseContent", 0)) / 100 and len(content) > 5:
+        content = content[:int(len(content) * 0.7)] + "……"
+    if r.random() < float(cfg.get("blackoutText", 0)) / 100:
+        content = "".join(r.choice(_BLACKOUT_CHARS) if r.random() < 0.2 else c for c in content)
+    if r.random() < float(cfg.get("reverseOrder", 0)) / 100:
+        parts = re.findall(r"[^。！？!?\n]+[。！？!?\n]*", content)
+        if len(parts) > 1:
+            original = "".join(parts)
+            r.shuffle(parts)
+            shuffled = "".join(parts)
+            if shuffled == original:
+                shuffled = "".join(parts[1:]) + parts[0]
+            content = shuffled
+    return content
+
+def _phone_blocked(snap, blocker, blocked):
+    for b in snap.get("blocks") or []:
+        if b.get("blocker") == blocker and b.get("blocked") == blocked:
+            return {"silent": bool(b.get("silent"))}
+    return None
+
+def _phone_send(db, sid, tid, owner, kind, to_name, text):
+    """执行一次网页发送，返回 (是否发出, 给发件人看的一句话)；静默拉黑也算「发出」，发件人看不出区别。规则与插件的
+    handleNaturalChaosLetter / handleNaturalGift 对齐；群里才有意义的部分（公开播报、截信器/回音壁道具、
+    撤回、礼品店编号礼物）不做。"""
+    now = int(time.time() * 1000)
+    show = dict(db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone())
+    sync = _phone_sync_row(db, sid)
+    if not _phone_web_send_on(db, sid):
+        return False, "❌ 网页发送没有开放"
+    if not sync:
+        return False, "❌ 机器人还没同步过规则，暂时不能从网页发送"
+    if _schedule_zone(show) != "main":
+        return False, "❌ 不在档期内，暂时不能发送"
+    snap  = sync["snap"]
+    rules = snap.get("rules") or {}
+    roster = _phone_roster(sync)
+    text = (text or "").strip()
+    if not text:
+        return False, "❌ 内容不能为空"
+    if len(text) > _PHONE_MAX_LEN:
+        return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
+    if owner not in roster:
+        return False, "❌ 找不到你的角色，等机器人下一次同步后再试"
+    if to_name == owner:
+        return False, "📱 短信不可发给自己。" if kind == "sms" else "🌸 礼不自赠，情当他寄。"
+    if to_name not in roster:
+        return False, f"❌ 未找到收件人：{to_name}"
+    off = set((snap.get("feature_off") or {}).get(owner) or [])
+    day_key, game_day, _ = _phone_day(sync, now)
+    rnd = secrets.SystemRandom()
+
+    if kind == "sms":
+        if not rules.get("sms_enabled", True):
+            return False, "🕊️ 寄信功能已关闭。"
+        if "sms" in off:
+            return False, "🕊️ 你被限制使用寄信功能。"
+        chaos = rules.get("chaos") or {}
+        limit = int(chaos.get("dailyLimit", 5))
+        cooldown_ms = max(int(rules.get("mail_cooldown_min", 60)) * 60000, _PHONE_MIN_GAP_MS)
+        used, last = _phone_usage(db, sid, sync, owner, "sms", now)
+        if now - last < cooldown_ms:
+            return False, f"⏳ 鸽子正在休息，请 {math.ceil((cooldown_ms - (now - last)) / 60000)} 分钟后再试"
+        if used >= limit:
+            return False, f"🕊️ 今日寄信次数已达上限({limit})"
+        # 落款 / 误投 / 拉黑 / 侵蚀 / 残页，顺序同插件
+        eroded = _chaos_erode(text, chaos)
+        signature = f"落款：{owner}"
+        if rnd.random() < float(chaos.get("mistakenSignature", 0)) / 100:
+            others = [n for n in roster if n != owner]
+            if others:
+                signature = f"落款：{rnd.choice(others)}"
+        true_to = to_name
+        if rnd.random() < float(chaos.get("misdelivery", 0)) / 100:
+            others = [n for n in roster if n != to_name]
+            if others:
+                true_to = rnd.choice(others)
+        blk = _phone_blocked(snap, true_to, owner)
+        if blk and not blk["silent"]:
+            return False, f"❌ {true_to} 已拒绝你的联络。"
+        receipt = f"🕊️ 信件已由鸽子衔往 {to_name} 处。今日已发 {used + 1}/{limit}。"
+        if blk:  # 静默拉黑：伪装成功，照常占次数和冷却
+            db.execute("INSERT INTO phone_silent (show_id, from_role, to_role, content, timestamp, game_day, day_key) "
+                       "VALUES (?,?,?,?,?,?,?)", (sid, owner, to_name, text, now, game_day, day_key))
+            db.commit()
+            return True, receipt
+        torn = None
+        if rnd.random() < float(chaos.get("tornPage", 0)) / 100 and len(eroded) >= 10:
+            others = [n for n in roster if n not in (owner, true_to)]
+            if others:
+                cut = math.ceil(len(eroded) / 2)
+                torn = {"holder": rnd.choice(others), "first": eroded[:cut], "second": eroded[cut:]}
+        delivered = (torn["first"] + "\n（信纸的后半页不知去向……）") if torn else eroded
+        info = {
+            "source": "web", "day_key": day_key,
+            "delivered": delivered, "signature": signature, "intended_to": to_name,
+            "is_misdelivered": true_to != to_name, "is_content_chaos": delivered != text,
+            "is_signature_chaos": signature != f"落款：{owner}", "is_torn": bool(torn),
+            "torn_holder": torn["holder"] if torn else None,
+            "torn_second_half": torn["second"] if torn else None,
+            "isPublic": False,
+        }
+        info["is_chaos"] = info["is_misdelivered"] or info["is_content_chaos"] or info["is_signature_chaos"] or bool(torn)
+        _phone_insert_event(db, sid, tid, "sms", owner, true_to, text, info, now, game_day)
+        return True, receipt
+
+    # gift：只有自定义礼物（礼品店编号礼物要查图鉴，图鉴只在机器人里）
+    if not rules.get("gift_enabled", True):
+        return False, "🎁 礼物功能已被禁用。"
+    if int(rules.get("gift_mode", 0)) == 1:
+        return False, "❌ 当前仅允许使用预设礼物，网页不能送"
+    win = rules.get("gift_window")
+    if win:
+        h = datetime.now(TZ_BEIJING).hour
+        if not (int(win["start"]) <= h < int(win["end"])):
+            return False, f"⚠️ 该功能当前不可用，开放时间为 {int(win['start']):02d}:00–{int(win['end']):02d}:00。"
+    if "gift" in off:
+        return False, "🎁 你被限制使用礼物功能。"
+    limit = int(rules.get("gift_daily_limit", 100))
+    cooldown_ms = max(int(rules.get("gift_cooldown_min", 30)) * 60000, _PHONE_MIN_GAP_MS)
+    used, last = _phone_usage(db, sid, sync, owner, "gift", now)
+    if now - last < cooldown_ms:
+        return False, f"⏳ 快递员仍在路上，请等待 {math.ceil((cooldown_ms - (now - last)) / 1000)} 秒后再送~"
+    if used >= limit:
+        return False, f"🎁 今日送礼次数已达上限({limit})。"
+    chaos = rules.get("chaos") or {}
+    true_to, lost = to_name, False
+    if rnd.random() * 100 < float(chaos.get("giftLost", 0)):
+        lost = True
+    elif rnd.random() * 100 < float(chaos.get("giftMisdelivery", 0)):
+        others = [n for n in roster if n not in (to_name, owner)]
+        if others:
+            true_to = rnd.choice(others)
+    blk = _phone_blocked(snap, true_to, owner)
+    if blk and not blk["silent"]:
+        return False, f"❌ {true_to} 已拒绝你的联络。"
+    if blk:
+        lost = True  # 静默拉黑复用「礼物丢失」：不投递，发件人看到的跟成功一样
+    info = {"source": "web", "day_key": day_key, "giftName": "一份特别的礼物", "intended_to": to_name,
+            "isLost": lost, "isPublic": False, "hide_receiver": False}
+    _phone_insert_event(db, sid, tid, "gift", owner, true_to, text, info, now, game_day)
+    return True, f"🎁 已成功将 一份特别的礼物 送往「{to_name}」的房间。\n(今日第 {used + 1}份)"
+
+def _phone_insert_event(db, sid, tid, etype, from_role, to_role, content, info, ts, game_day):
+    db.execute("""
+        INSERT INTO extra_events
+          (show_id,tenant_id,session_id,type,from_role,to_role,content,extra_info,timestamp,game_day)
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+    """, (sid, tid, "", etype, from_role, to_role, content, json.dumps(info, ensure_ascii=False), ts, game_day))
+    db.commit()
+
+def _phone_csrf():
+    tok = session.get("phone_csrf")
+    if not tok:
+        tok = session["phone_csrf"] = secrets.token_urlsafe(24)
+    return tok
+
+@app.route("/p/me/send", methods=["POST"])
+def player_phone_send():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    to_name = request.form.get("to", "").strip()
+    back = url_for("player_phone_thread", other=to_name) if to_name else url_for("player_phone_inbox")
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再发"
+        return redirect(back)
+    kind = "gift" if request.form.get("kind") == "gift" else "sms"
+    db  = get_db()
+    tid = db.execute("SELECT tenant_id FROM shows WHERE id=?", (sid,)).fetchone()["tenant_id"]
+    with _phone_send_lock:  # 查次数和写入之间不能被另一个请求插队，否则连点能超上限
+        ok, msg = _phone_send(db, sid, tid, owner, kind, to_name, request.form.get("text", ""))
+    session["phone_flash"] = msg
+    if not ok:  # 没发出去，把草稿留着
+        session["phone_draft"] = request.form.get("text", "")[:_PHONE_MAX_LEN]
+        session["phone_draft_kind"] = kind
+    return redirect(back)
+
+@app.route("/p/me/new")
+def player_phone_new():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    st = _phone_status(db, sid, owner)
+    if not st["can"]:
+        return redirect(url_for("player_phone_inbox"))
+    contacts = sorted(n for n in _phone_roster(_phone_sync_row(db, sid)) if n != owner)
+    return render_template("phone.html", mode="new", owner=owner, contacts=contacts)
+
+@app.route("/api/phone/sync", methods=["POST"])
+def api_phone_sync():
+    """插件每 30 秒调一次：上报规则快照，取走 after 之后的网页记录（插件拿去计次数/冷却/互动统计）"""
+    tid  = get_tenant_from_token()
+    show = get_current_show_for_tenant(tid)
+    if not show:
+        return jsonify({"ok": False, "error": "no show"}), 503
+    data = request.json or {}
+    snap = data.get("snapshot") or {}
+    if not isinstance(snap, dict):
+        return jsonify({"ok": False, "error": "bad snapshot"}), 400
+    try:
+        after = int(data.get("after") or 0)
+    except (TypeError, ValueError):
+        after = 0
+    db  = get_db()
+    now = int(time.time() * 1000)
+    db.execute("""
+        INSERT INTO phone_sync (show_id, tenant_id, snapshot, cursor, synced_at) VALUES (?,?,?,?,?)
+        ON CONFLICT(show_id) DO UPDATE SET snapshot=excluded.snapshot, cursor=excluded.cursor, synced_at=excluded.synced_at
+    """, (show["id"], tid, json.dumps(snap, ensure_ascii=False), after, now))
+    db.commit()
+    rows = db.execute("""
+        SELECT id, type, from_role, to_role, timestamp, game_day, extra_info FROM extra_events
+        WHERE show_id=? AND id>? AND type IN ('sms','gift') AND json_extract(extra_info, '$.source')='web'
+        ORDER BY id LIMIT 200
+    """, (show["id"], after)).fetchall()
+    events = []
+    for r in rows:
+        info = json.loads(r["extra_info"] or "{}")
+        events.append({"id": r["id"], "type": r["type"], "from_role": r["from_role"], "to_role": r["to_role"],
+                       "timestamp": r["timestamp"], "day_key": info.get("day_key", ""),
+                       "lost": bool(info.get("isLost"))})
+    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "events": events})
+
+@app.route("/p/<code>")
+def player_phone_enter(code):
+    return _phone_try_enter(code)
+
+@app.route("/admin/phone_codes", methods=["GET", "POST"])
+@require_admin
+def admin_phone_codes():
+    sid = get_show_id()
+    tid = current_tenant_id()
+    db  = get_db()
+    if not sid:
+        return render_template("admin_phone_codes.html", rows=[], show=None)
+    # 名单 = 存档站见过的角色（参与过场次/收发过短信礼物）+ 管理员手动加过码的角色。
+    # 插件不会主动推送角色名单，开季前 players 表是空的，所以要允许手动加。
+    roles = {r["role_name"]: bool(r["is_npc"]) for r in db.execute(
+        "SELECT role_name, MAX(is_npc) AS is_npc FROM players WHERE show_id=? AND role_name!='' GROUP BY role_name", (sid,)
+    ).fetchall()}
+    for r in db.execute("SELECT role_name FROM phone_codes WHERE show_id=?", (sid,)):
+        roles.setdefault(r["role_name"], False)
+    sync = _phone_sync_row(db, sid)
+    for r in ((sync["snap"].get("roster") or []) if sync else []):  # 插件上报的角色名单（新版插件才有）
+        if r.get("name"):
+            roles[r["name"]] = roles.get(r["name"], False) or bool(r.get("npc"))
+    if request.method == "POST":
+        action = request.form.get("action")
+        now = int(time.time() * 1000)
+        if action == "web_send":
+            db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, ?) "
+                       "ON CONFLICT(show_id) DO UPDATE SET web_send=excluded.web_send",
+                       (sid, 1 if request.form.get("on") == "1" else 0))
+        elif action == "add_roles":
+            # 一行一个（也接受逗号/顿号/空格分隔），名字要跟群里「创建新角色」时的本名一字不差
+            names = {n.strip() for n in re.split(r"[\n,，、\s]+", request.form.get("names", "")) if n.strip()}
+            have = {r["role_name"] for r in db.execute("SELECT role_name FROM phone_codes WHERE show_id=?", (sid,))}
+            for role in sorted(names - have):
+                if len(role) <= 30:
+                    db.execute("INSERT INTO phone_codes (tenant_id, show_id, role_name, code, created_at) VALUES (?,?,?,?,?)",
+                               (tid, sid, role, _new_phone_code(db), now))
+        elif action == "delete":
+            # 手动加错名字时用；删掉码后，存档站没见过的角色会从列表里消失
+            db.execute("DELETE FROM phone_codes WHERE show_id=? AND role_name=?", (sid, request.form.get("role", "")))
+        elif action == "generate_all":
+            have = {r["role_name"] for r in db.execute("SELECT role_name FROM phone_codes WHERE show_id=?", (sid,))}
+            for role in roles:
+                if role not in have:
+                    db.execute("INSERT INTO phone_codes (tenant_id, show_id, role_name, code, created_at) VALUES (?,?,?,?,?)",
+                               (tid, sid, role, _new_phone_code(db), now))
+        elif action == "reset":
+            role = request.form.get("role", "")
+            if role in roles:
+                # 重置 = 旧码立刻作废，发出去的旧链接也打不开了（码泄露时用）
+                db.execute("DELETE FROM phone_codes WHERE show_id=? AND role_name=?", (sid, role))
+                db.execute("INSERT INTO phone_codes (tenant_id, show_id, role_name, code, created_at) VALUES (?,?,?,?,?)",
+                           (tid, sid, role, _new_phone_code(db), now))
+        db.commit()
+        return redirect(url_for("admin_phone_codes"))
+    codes = {r["role_name"]: r["code"] for r in db.execute(
+        "SELECT role_name, code FROM phone_codes WHERE show_id=?", (sid,))}
+    rows = [{"role": r, "is_npc": roles[r], "code": codes.get(r)}
+            for r in sorted(roles, key=lambda r: (roles[r], r))]
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    sync_ago = None
+    if sync and sync["synced_at"]:
+        sync_ago = max(0, int(time.time() * 1000) - sync["synced_at"]) // 60000
+    return render_template("admin_phone_codes.html", rows=rows, show=show,
+                           base_url=request.host_url.rstrip("/"),
+                           web_send=_phone_web_send_on(db, sid), sync_ago=sync_ago,
+                           sync_fresh=bool(sync) and sync_ago is not None and sync_ago < 10,
+                           zone=_schedule_zone(dict(show)))
 
 @app.route("/search")
 @require_login

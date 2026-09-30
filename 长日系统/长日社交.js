@@ -1509,6 +1509,8 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         return seal.replyToSender(ctx, msg, "🎁 礼物功能已被禁用。");
     }
     { const _fw = checkTsFeatureWindow("enable_general_gift"); if (!_fw.ok) return seal.replyToSender(ctx, msg, _fw.msg); }
+    // 存档站后台打开了「网页发送」：群里不送，改去网页手机送（二选一，状态由主插件每 30 秒同步，见 phoneWebSync）
+    { const _pw = mainKvGet("phone_web_send", {}); if (_pw.on && Date.now() - (_pw.at || 0) < 10 * 60 * 1000) return seal.replyToSender(ctx, msg, `📱 礼物现在改在网页手机里送：${_pw.url || "存档站 /p"}\n用管理员私发给你的激活码登录。`); }
 
     const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const a_private_group = mainKvGet("a_private_group", {});

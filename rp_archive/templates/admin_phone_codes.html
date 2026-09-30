@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}长日存档 · 短信激活码{% endblock %}
+
+{% block head %}
+<style>
+.pc-intro { color: var(--muted); font-size: 13px; margin-bottom: 18px; line-height: 1.8; }
+.pc-intro code { color: var(--text); background: var(--surface2); padding: 1px 6px; border-radius: 4px; }
+.pc-add { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 8px; }
+.pc-add label { font-size: 12px; color: var(--muted); }
+.pc-add textarea { background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; resize: vertical; }
+.pc-add .pc-btn { align-self: flex-start; }
+.pc-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.pc-btn {
+  background: var(--accent); color: #fff; border: none; border-radius: 8px;
+  padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.pc-btn:hover { background: var(--accent2); }
+.pc-btn.ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); font-weight: 400; }
+.pc-btn.sm { padding: 4px 10px; font-size: 12px; }
+.pc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pc-table th { background: var(--surface2); color: var(--muted); text-align: left; font-weight: 500; padding: 8px 10px; }
+.pc-table td { border-bottom: 1px solid var(--border); padding: 8px 10px; vertical-align: middle; }
+.pc-code { font-family: ui-monospace, Menlo, monospace; font-size: 15px; letter-spacing: 2px; color: var(--gold); }
+.pc-npc { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+.pc-ops { display: flex; gap: 6px; flex-wrap: wrap; }
+.pc-ops form { display: inline; }
+.pc-empty { color: var(--muted); padding: 40px 0; text-align: center; }
+@media (max-width: 600px) { .pc-table th:nth-child(3), .pc-table td:nth-child(3) { display: none; } }
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="container" style="max-width:860px;margin:0 auto;padding:24px 16px;">
+  <h2 style="margin-bottom:8px;">📱 短信激活码</h2>
+  {% if not show %}
+    <div class="pc-empty">还没有季度</div>
+  {% else %}
+  <p class="pc-intro">
+    把激活码或专属链接<b>私发</b>给对应玩家，玩家就能在手机上看自己收发的短信和收到的礼物，赛季进行中实时更新。每个码只能看自己的手机。<br>
+    玩家看到的跟群里实际收到的一样：误送、改内容、换落款都不会提示；礼物只显示收到的。本季 <b>{{ show['name'] }}</b> 结束后所有码自动失效。<br>
+    玩家入口：<code>{{ base_url }}/p</code>（输码），或直接点专属链接。码泄露了就点「重置」，旧码和已经打开的页面立即失效。
+  </p>
+  <div class="pc-add">
+    <label>网页发送（机器人挂了时的备用通道）</label>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <form method="post"><input type="hidden" name="action" value="web_send">
+        <input type="hidden" name="on" value="{{ '0' if web_send else '1' }}">
+        <button class="pc-btn{{ ' ghost' if web_send else '' }}" type="submit">{{ '关闭网页发送' if web_send else '打开网页发送' }}</button></form>
+      <span style="font-size:13px;">当前：<b style="color:{{ 'var(--green)' if web_send else 'var(--muted)' }}">{{ '已打开' if web_send else '已关闭' }}</b></span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+      打开后玩家可以在网页手机里直接发短信、送自定义礼物，收件人在网页上看到，<b>不会发进 QQ 群</b>。
+      混乱效果、冷却、每日上限、功能权限、拉黑都照机器人最后一次同步的规则执行，次数跟群里共用。<br>
+      机器人同步：{% if sync_ago is none %}<b style="color:var(--red)">从未同步</b>（插件升级到 1.9.0 并开启存档传输后才会同步，没同步过网页不能发送）
+      {% elif sync_fresh %}<b style="color:var(--green)">正常</b>（{{ sync_ago }} 分钟前）
+      {% else %}<b style="color:var(--gold)">{{ sync_ago }} 分钟前</b>（机器人可能挂了：网页照最后一次的规则继续工作，每日次数改按自然日算）{% endif %}
+      {% if zone != 'main' %}<br>现在不在主档期内，玩家暂时发不了。{% endif %}
+    </div>
+  </div>
+  <form method="post" class="pc-add">
+    <input type="hidden" name="action" value="add_roles">
+    <label>手动添加角色（一行一个，名字要跟群里「创建新角色」时的本名完全一致）</label>
+    <textarea name="names" rows="3" placeholder="张三&#10;李四"></textarea>
+    <button class="pc-btn" type="submit">添加并生成激活码</button>
+  </form>
+  <div class="pc-bar">
+    <form method="post"><input type="hidden" name="action" value="generate_all">
+      <button class="pc-btn" type="submit">为还没有码的角色生成</button></form>
+    {% if rows|selectattr('code')|list %}
+    <button class="pc-btn ghost" type="button" id="copy-all">复制全部（角色 + 链接）</button>
+    {% endif %}
+  </div>
+  {% if rows %}
+  <table class="pc-table">
+    <thead><tr><th>角色</th><th>激活码</th><th>链接</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.role }}{% if r.is_npc %}<span class="pc-npc">NPC</span>{% endif %}</td>
+        <td>{% if r.code %}<span class="pc-code">{{ r.code }}</span>{% else %}<span style="color:var(--muted)">—</span>{% endif %}</td>
+        <td style="color:var(--muted);font-size:12px;">{% if r.code %}{{ base_url }}/p/{{ r.code }}{% endif %}</td>
+        <td><div class="pc-ops">
+          {% if r.code %}
+          <button class="pc-btn ghost sm" type="button" data-copy="{{ base_url }}/p/{{ r.code }}">复制链接</button>
+          <form method="post" onsubmit="return confirm('重置后 {{ r.role }} 的旧码和旧链接立即失效，确定？')">
+            <input type="hidden" name="action" value="reset"><input type="hidden" name="role" value="{{ r.role }}">
+            <button class="pc-btn ghost sm" type="submit">重置</button></form>
+          <form method="post" onsubmit="return confirm('删除 {{ r.role }} 的激活码？发出去的链接会失效')">
+            <input type="hidden" name="action" value="delete"><input type="hidden" name="role" value="{{ r.role }}">
+            <button class="pc-btn ghost sm" type="submit">删除</button></form>
+          {% endif %}
+        </div></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <div class="pc-empty">存档站还没见过本季的角色：插件不会主动同步角色名单，角色参与场次或收发短信礼物后才会自动出现。<br>开季前可以用上面的输入框手动添加。</div>
+  {% endif %}
+  {% endif %}
+</div>
+<script>
+document.querySelectorAll('[data-copy]').forEach(function (b) {
+  b.addEventListener('click', function () { copyText(b.dataset.copy, b); });
+});
+var all = document.getElementById('copy-all');
+if (all) all.addEventListener('click', function () {
+  var lines = [];
+  {% for r in rows if r.code %}lines.push({{ (r.role ~ '：' ~ base_url ~ '/p/' ~ r.code)|tojson }});
+  {% endfor %}
+  copyText(lines.join('\n'), all);
+});
+</script>
+{% endblock %}
