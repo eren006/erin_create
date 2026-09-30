@@ -338,6 +338,7 @@ a { color: var(--link); text-decoration: none; }
 .stats-page .stats-tabs { position: sticky; top: 0; z-index: 2; margin: 0; padding: 10px 12px; gap: 3px; background: var(--bar); backdrop-filter: blur(20px); border-bottom: 1px solid var(--line); }
 .stats-page .stats-tabs a { min-height: 44px; display: flex; align-items: center; justify-content: center; padding: 7px 2px; font-size: 13px; border: 0; border-radius: 10px; }
 .stats-page .stats-tabs a[aria-current] { background: var(--theirs); color: var(--text); font-weight: 600; box-shadow: none; }
+.phone-watermark { flex-shrink: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); text-align: center; color: var(--muted); font-size: 11px; letter-spacing: 2px; background: var(--bar); border-top: 1px solid var(--line); pointer-events: none; }
 .stats-card { padding: 12px 16px; }
 .stats-title { font-weight: 600; font-size: 15px; }
 .stats-line { font-size: 14px; color: var(--text); margin-top: 4px; line-height: 1.6; }
@@ -878,6 +879,8 @@ a { color: var(--link); text-decoration: none; }
     {% endif %}
     {% if report and stale %}<p class="song-note">⚠️ 机器人有一阵子没同步了，上面可能不是最新的。</p>{% elif report and view in ('counts', 'arc') %}<p class="song-note">约每 2 分钟更新，最近同步时间见顶部。</p>{% elif report and view != 'interact' %}<p class="song-note">机器人每 2 分钟更新一次，跟群里发同名指令看到的是同一份数据。</p>{% endif %}
   </div>
+
+  {% if view == 'arc' %}<footer class="phone-watermark">长日小手机系统</footer>{% endif %}
 
 {% elif mode == 'group_new' %}
   <header class="bar">

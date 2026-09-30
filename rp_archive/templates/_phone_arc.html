@@ -16,6 +16,14 @@
 .arc-metrics strong { display: block; margin-top: 5px; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .arc-metrics strong small { font-size: 12px; font-weight: 400; }
 .arc-wait { margin: 16px 0 0; padding: 12px; border-radius: 12px; background: var(--theirs); font-size: calc(var(--reading-size,16px) - 2px); line-height: 1.8; white-space: pre-wrap; }
+.arc-wait.needs-reply { background: #fff0eb; color: #9b3520; border: 1px solid #e5a18e; border-left: 4px solid #c14a30; white-space: normal; }
+.arc-wait-title { display: flex; align-items: center; gap: 8px; font-size: var(--reading-size,16px); font-weight: 650; }
+.arc-wait-dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.arc-wait-duration { display: block; margin-top: 5px; font-size: 23px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.arc-wait-detail { margin-top: 8px; font-size: 13px; white-space: pre-wrap; }
+@media (prefers-color-scheme: dark) {
+ .arc-wait.needs-reply { background: #351f20; color: #ffb4a0; border-color: #8e4b40; border-left-color: #ff947b; }
+}
 .arc-note { font-size: calc(var(--reading-size,16px) - 2px); line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); margin: 12px 2px; }
 </style>
 <section class="arc-page" aria-labelledby="arc-title">
@@ -36,7 +44,15 @@
       <div><span class="arc-label">本场平均回复</span><strong>{{ item.average }} <small>分钟</small></strong></div>
     </div>
     <p class="arc-sample">统计样本：{{ item.sample }}</p>
-    <div class="arc-wait">{{ item.waiting|replace('；','\n') }}</div>
+    {% if item.waiting.startswith('你还没回：') %}
+    {% set wait_parts = item.waiting.split('；', 1) %}
+    <div class="arc-wait needs-reply">
+      <div class="arc-wait-title"><span class="arc-wait-dot" aria-hidden="true"></span>待你回复</div>
+      <strong class="arc-wait-duration">{{ wait_parts[0][5:] }}</strong>
+      <span class="arc-label">截至最近同步的等待时长</span>
+      {% if wait_parts|length > 1 %}<div class="arc-wait-detail">{{ wait_parts[1] }}</div>{% endif %}
+    </div>
+    {% else %}<div class="arc-wait">{{ item.waiting|replace('；','\n') }}</div>{% endif %}
   </article>
   {% endfor %}
   {% for note in arc_view.notes %}<p class="arc-note">{{ note }}</p>{% endfor %}
