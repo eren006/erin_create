@@ -5269,7 +5269,7 @@ def player_phone_public():
     db = get_db()
     return render_template("phone.html", mode="public", owner=owner, sid=sid,
                            phone_admin=(owner == PHONE_ADMIN), csrf=_phone_csrf(),
-                           items=_phone_public_items(db, sid),
+                           items=_phone_public_items(db, sid), daily=_phone_public_daily(db, sid),
                            revision=_phone_revision(_phone_all_views(db, sid, owner)))
 
 @app.route("/p/me/<other>")
@@ -6910,10 +6910,10 @@ def _song_pending_for_bot(db, sid, done_ids):
 # 短信礼物照「对话」归人（误投/换落款照玩家看到的算），心动信只算寄出的去向、收到的只给总数（来信是匿名的）。
 _STATS_VIEWS = ("timeline", "counts", "pending", "arc", "interact")
 
-def _phone_personal_counts(text):
-    """只解析报告中明确属于本人的一行，不把全员数量带入玩家页面。"""
+def _phone_count_line(text, prefix):
+    """只读取明确指定口径的报告行。"""
     for line in (text or "").splitlines():
-        match = re.fullmatch(r"\s*(?:👤\s*)?我今天[：:]\s*(.*?)\s*", line)
+        match = re.fullmatch(r"\s*(?:[👤🌐]\s*)?" + re.escape(prefix) + r"[：:]\s*(.*?)\s*", line)
         if not match:
             continue
         items = []
@@ -6924,6 +6924,34 @@ def _phone_personal_counts(text):
             items.append({"label": item.group(1), "count": int(item.group(2))})
         return items
     return []
+
+
+def _phone_personal_counts(text):
+    return _phone_count_line(text, "我今天")
+
+
+def _phone_public_daily(db, sid):
+    sync = _phone_sync_row(db, sid)
+    day = (sync or {}).get("snap", {}).get("game_day", "")
+    if day:
+        for row in db.execute("SELECT data, updated_at FROM phone_reports WHERE show_id=? ORDER BY updated_at DESC", (sid,)):
+            report = json.loads(row["data"])
+            if report.get("day") != day:
+                continue
+            counts = _phone_count_line(report.get("counts"), "全员今天")
+            if counts:
+                text = " · ".join(f"{item['label']} {item['count']} 次" for item in counts)
+                stale = int(time.time() * 1000) - row["updated_at"] > 10 * 60 * 1000
+                return {"text": text, "day": day, "stale": stale}
+    return {"text": "今日统计等待同步", "day": day, "stale": False}
+
+
+@app.route("/p/me/public/daily")
+def player_phone_public_daily():
+    who = _phone_current()
+    if not who:
+        return jsonify(error="手机登录已失效"), 401
+    return jsonify(_phone_public_daily(get_db(), who[0]))
 
 
 def _phone_interactions(db, sid, owner):

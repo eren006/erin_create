@@ -521,6 +521,7 @@ a { color: var(--link); text-decoration: none; }
     <div class="title">公开播报</div>
     <div class="right">{% if not phone_admin %}<a class="quiet-button" href="{{ url_for('player_song') }}">🎵 点歌</a>{% endif %}</div>
   </header>
+  {% include '_phone_public_ticker.html' %}
   <div class="scroll" id="scroll">
     <div class="chat public-feed" data-received-ts="{{ items[-1].ts if items else 0 }}">
       {% for it in items %}

@@ -108,6 +108,17 @@ sync(REP)
 count_page = page(lin, "counts")
 ok("秘密活动" not in count_page and "全员今天" not in count_page and "私约 1 次" in count_page, "global counts excluded from HTML")
 
+# 公告只读本季、当前游戏日的全员汇总，个人行和其他季报告不会泄露。
+daily = lin.get('/p/me/public/daily')
+ok(daily.status_code == 200 and daily.json['text'] == '秘密活动 999 次', 'public aggregate only')
+ok('林晚' not in daily.get_data(as_text=True) and '我今天' not in daily.get_data(as_text=True), 'no personal fields')
+ok(app.test_client().get('/p/me/public/daily').status_code == 401, 'daily requires authentication')
+c.execute('UPDATE phone_reports SET updated_at=?', (int(time.time()*1000)-11*60*1000,)); c.commit()
+ok(lin.get('/p/me/public/daily').json['stale'], 'daily stale indicator')
+REP['林晚']['day'] = 'D1'; sync(REP)
+ok(lin.get('/p/me/public/daily').json['text'] == '今日统计等待同步', 'yesterday not presented as today')
+ok('今日速报' in lin.get('/p/me/public').get_data(as_text=True), 'ticker rendered')
+
 # 管理身份、没登录
 adm = app.test_client(); adm.get("/p/ADMINCODE1")
 ok(adm.get("/p/me/stats").status_code == 302 and app.test_client().get("/p/me/stats").status_code == 302, "access")

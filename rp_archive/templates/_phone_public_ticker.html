@@ -1,0 +1,57 @@
+<style>
+.phone[data-mode="public"] { height: 100dvh; min-height: 0; }
+.phone[data-mode="public"] #scroll { min-height: 0; }
+@media (min-width:600px) { .phone[data-mode="public"] { height: calc(100vh - 56px); } }
+.public-ticker { display: flex; align-items: center; gap: 9px; flex-shrink: 0; margin: 10px 12px 4px; padding: 6px 6px 6px 12px; border: 1px solid var(--line); border-radius: 16px; background: var(--bar); box-shadow: 0 3px 12px #00000008; }
+.ticker-badge { font-size: 12px; font-weight: 600; color: var(--text); flex-shrink: 0; }
+.ticker-window { overflow: hidden; min-width: 0; flex: 1; }
+.ticker-track { display: flex; width: max-content; animation: ticker-slide var(--ticker-duration,24s) linear infinite; }
+.ticker-copy { flex-shrink: 0; white-space: nowrap; padding-right: 40px; font-size: calc(var(--reading-size,16px) - 3px); color: var(--text); }
+.public-ticker[data-paused] .ticker-track { animation-play-state: paused; }
+.ticker-toggle { width: 44px; height: 44px; flex-shrink: 0; border: 0; border-radius: 12px; background: var(--theirs); color: var(--text); font: inherit; cursor: pointer; }
+@keyframes ticker-slide { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+ .ticker-track { animation: none; width: auto; }
+ .ticker-copy { white-space: normal; padding-right: 0; }
+ .ticker-copy[aria-hidden], .ticker-toggle { display: none; }
+}
+</style>
+{% set daily = daily or {'text':'今日统计等待同步','day':'','stale':false} %}
+<aside class="public-ticker" id="publicTicker" aria-label="全员今日统计">
+  <span class="ticker-badge">今日速报</span>
+  <div class="ticker-window"><div class="ticker-track">
+    <span class="ticker-copy">{{ daily.day }}{% if daily.day %} · {% endif %}{{ daily.text }}{% if daily.stale %} · 同步延迟{% endif %}</span>
+    <span class="ticker-copy" aria-hidden="true">{{ daily.day }}{% if daily.day %} · {% endif %}{{ daily.text }}{% if daily.stale %} · 同步延迟{% endif %}</span>
+  </div></div>
+  <button class="ticker-toggle" type="button" aria-label="暂停今日速报滚动" aria-pressed="false">Ⅱ</button>
+</aside>
+<script>
+(function () {
+  const ticker = document.getElementById('publicTicker'), button = ticker.querySelector('button');
+  function speed() {
+    const width = ticker.querySelector('.ticker-copy').getBoundingClientRect().width;
+    ticker.style.setProperty('--ticker-duration', Math.max(14,width/24) + 's');
+  }
+  speed(); new ResizeObserver(speed).observe(ticker.querySelector('.ticker-window'));
+  button.addEventListener('click',function(){
+    const paused = ticker.toggleAttribute('data-paused');
+    button.setAttribute('aria-pressed',String(paused));
+    button.setAttribute('aria-label',paused ? '继续今日速报滚动' : '暂停今日速报滚动');
+    button.textContent = paused ? '▷' : 'Ⅱ';
+  });
+  async function refresh() {
+    if (document.hidden) return;
+    try {
+      const response = await fetch({{ url_for('player_phone_public_daily')|tojson }},{cache:'no-store'});
+      if (!response.ok) return;
+      const data = await response.json();
+      const text = (data.day ? data.day + ' · ' : '') + data.text + (data.stale ? ' · 同步延迟' : '');
+      if (ticker.querySelector('.ticker-copy').textContent !== text) {
+        ticker.querySelectorAll('.ticker-copy').forEach(el=>el.textContent=text); speed();
+      }
+    } catch (_) {}
+  }
+  setInterval(refresh,60000);
+  document.addEventListener('visibilitychange',refresh);
+})();
+</script>
