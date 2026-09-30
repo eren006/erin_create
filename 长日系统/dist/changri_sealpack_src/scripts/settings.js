@@ -1374,7 +1374,7 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
         }
         const typeTag = (t) => t.subtype && t.subtype !== "通用" ? `[${t.subtype}]` : "[通用]";
         const lines = templates.map((t, i) => `${t.enabled ? "✅" : "⏸️"} [${i+1}] ${t.name} ${typeTag(t)}`);
-        seal.replyToSender(ctx, msg, `📋 结戏加成模版列表：\n${lines.join("\n")}`);
+        replyLong(ctx, msg, `📋 结戏加成模版列表：\n${lines.join("\n")}`);
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -1433,7 +1433,7 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
                 lines.push(`  （块 #${blockNum}）`);
             });
         });
-        seal.replyToSender(ctx, msg, lines.join("\n"));
+        replyLong(ctx, msg, lines.join("\n"));
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -1583,7 +1583,8 @@ cmd_end_bonus.solve = function(ctx, msg, argv) {
         const tpl = findTemplate(templates, name);
         if (!tpl) { seal.replyToSender(ctx, msg, `❌ 模版「${name}」不存在`); return seal.ext.newCmdExecuteResult(true); }
         const exported = { name: tpl.name, subtype: tpl.subtype || "通用", enabled: tpl.enabled, groups: tpl.groups };
-        seal.replyToSender(ctx, msg, `📤 模版「${name}」JSON：\n${JSON.stringify(exported, null, 2)}\n\n编辑后用「结戏加成 导入 JSON」一次性导入。`);
+        // 紧凑 JSON（带缩进的动辄超过单条 1000 字节被吞），超长再分页
+        replyLong(ctx, msg, `📤 模版「${name}」JSON：\n${JSON.stringify(exported)}\n\n编辑后用「结戏加成 导入 JSON」一次性导入。`);
         return seal.ext.newCmdExecuteResult(true);
     }
 

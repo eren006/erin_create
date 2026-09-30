@@ -5588,6 +5588,7 @@ cmd_fix_noquit.solve = async (ctx, msg, cmdArgs) => {
 
     const groups = kvGet("group", []).map(g => g.replace(/_占用$/, ""));
     const noquit = kvGet("noquit", {});
+    const noquitBefore = JSON.parse(JSON.stringify(noquit));   // 扫描前的样子：最后只把「这次新增」合回最新数据
 
     let countUpdate = 0; // 新增记录数
     let countKick = 0;   // 尝试踢人计数
@@ -5635,9 +5636,18 @@ cmd_fix_noquit.solve = async (ctx, msg, cmdArgs) => {
         }
     }
 
-    // 只有数据有变更才保存
+    // 只有数据有变更才保存。扫所有群要逐个 await 查成员（群多时很久），期间别处可能改过 noquit（玩家退群会删记录）：
+    // 重新读最新的，只把这次扫出来的新增合进去，不拿扫描前读的旧整份覆盖
     if (countUpdate > 0) {
-        kvSet("noquit", noquit);
+        const fresh = kvGet("noquit", {});
+        for (const [qq, gids] of Object.entries(noquit)) {
+            for (const g of gids) {
+                if ((noquitBefore[qq] || []).includes(g)) continue;   // 扫描前就有的不回写，免得把期间被删掉的又加回来
+                if (!fresh[qq]) fresh[qq] = [];
+                if (!fresh[qq].includes(g)) fresh[qq].push(g);
+            }
+        }
+        kvSet("noquit", fresh);
     }
 
     // 根据模式回复不同的消息
@@ -5799,7 +5809,7 @@ async function resetSeasonDataCore(ctx, msg, force, quiet) {
         }
         if (remaining.length > 0) {
             const list = remaining.map(r => `· ${r.name}（${r.qq}）`).join("\n");
-            seal.replyToSender(ctx, msg,
+            replyLong(ctx, msg,
                 `⚠️ 以下 ${remaining.length} 名玩家仍在群内，请先执行「更新未退群 驱逐」再清空：\n${list}\n\n` +
                 `如需跳过检查强制清空，发送「。清空季度数据 确认」`
             );
@@ -6219,7 +6229,7 @@ cmd_appointment_healthcheck.solve = (ctx, msg, cmdArgs) => {
         lines.push("", `💡 以上标🟢的问题可用「。约会数据体检 修复」自动清理`);
     }
 
-    seal.replyToSender(ctx, msg, lines.join("\n"));
+    replyLong(ctx, msg, lines.join("\n"));   // 群多时体检清单会很长，超长自动分页
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["约会数据体检"] = cmd_appointment_healthcheck;
@@ -10800,9 +10810,15 @@ async function handleInfoDeleteUpload(ctx, msg, raw, isAdmin) {
             await deleteCollectedImage(url);
         }
     }
-    recs.splice(delIdx, 1);
-    delData[delProject] = recs;
-    kvSet("sys_info_collection", delData);
+    // 上面 await 删图期间可能有人新提交：重新读最新数据，按这条记录本身（提交人+时间+内容）找到再删，
+    // 不能拿 await 之前读的旧整份写回（会把期间的新提交覆盖掉），也不能按旧序号删（可能已经错位）
+    const freshData = kvGet("sys_info_collection", {});
+    const freshRecs = freshData[delProject] || [];
+    const sameRec = r => r === target || (r && r.sender === target.sender && r.ts === target.ts && r.text === target.text);
+    const freshIdx = freshRecs.findIndex(sameRec);
+    if (freshIdx !== -1) freshRecs.splice(freshIdx, 1);
+    freshData[delProject] = freshRecs;
+    kvSet("sys_info_collection", freshData);
     const bgGidDel = kvGet("background_group_id", null);
     if (bgGidDel) {
         const actor = getRoleName(ctx, msg);
@@ -10844,9 +10860,13 @@ async function handleInfoViewCollection(ctx, msg, raw, isAdmin) {
                 return checks.every(Boolean);
             }));
             if (aliveFlags.some(alive => !alive)) {
-                records = records.filter((_, i) => aliveFlags[i]);
-                allInfo[t] = records;
-                kvSet("sys_info_collection", allInfo);
+                // 探活要等网络（图多时好几秒），期间可能有人新提交：重新读最新数据，只去掉确认失效的那几条，
+                // 不能拿探活前读的旧整份写回（以前这样会把这几秒里的新提交覆盖掉）
+                const dead = records.filter((_, i) => !aliveFlags[i]);
+                const fresh = kvGet("sys_info_collection", {});
+                fresh[t] = (fresh[t] || []).filter(r => !dead.some(d => d === r || (d.sender === r.sender && d.ts === r.ts && d.text === r.text)));
+                kvSet("sys_info_collection", fresh);
+                records = fresh[t];
             }
             if (records.length === 0) {
                 return seal.replyToSender(ctx, msg, `❓ 项目「${t}」目前还没有人提交内容哦。`);
@@ -11771,7 +11791,7 @@ cmd_remind_timeouts.solve =(ctx, msg, cmdArgs) => {
 
     if (sentCount > 0) {
         kvSet("group_timers", timers);
-        seal.replyToSender(ctx, msg, `💖 提醒任务完成！\n共送出 ${sentCount} 份温柔提醒：\n${detail.join('\n')}\n大家一定会感受到的～ 🌟`);
+        replyLong(ctx, msg, `💖 提醒任务完成！\n共送出 ${sentCount} 份温柔提醒：\n${detail.join('\n')}\n大家一定会感受到的～ 🌟`);
     } else {
         seal.replyToSender(ctx, msg, "🌙 检查了一圈，现在大家都很守时，不需要打扰呢～");
     }
@@ -11842,8 +11862,12 @@ cmd_my_pending.solve = async (ctx, msg) => {
             // 已经查不到人了：视为已退群，不再保留
         }
         if (remaining.length !== myLeaveChecks.length) {
-            if (remaining.length) leaveStore[roleName] = remaining; else delete leaveStore[roleName];
-            kvSet("pending_leave_check", leaveStore);
+            // 上面逐个 await 查群成员期间，别人可能「结束私约」往这里加了新记录：重新读最新的，只删掉这次确认已退群/失效的那几条
+            const removed = myLeaveChecks.filter(e => !remaining.includes(e));
+            const freshStore = kvGet("pending_leave_check", {});
+            const freshMine = (freshStore[roleName] || []).filter(e => !removed.some(r => r.gid === e.gid && r.endedAt === e.endedAt));
+            if (freshMine.length) freshStore[roleName] = freshMine; else delete freshStore[roleName];
+            kvSet("pending_leave_check", freshStore);
         }
     }
 
