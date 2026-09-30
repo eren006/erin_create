@@ -16,6 +16,25 @@ A.init_db()  # 保证表都在（跟服务启动时做的一样）
 db = sqlite3.connect(A.DB_PATH)
 db.row_factory = sqlite3.Row
 
+def _demo_shop(db, tid, sid):
+    """演示季的礼品店：几件预设礼物 + 快照里补上图鉴/货架字段（没有机器人，只能在这里写好）；已经有就不动"""
+    if not db.execute("SELECT 1 FROM site_config WHERE show_id=? AND key='preset_gifts'", (sid,)).fetchone():
+        gifts = {"#001": {"name": "玫瑰花束", "content": "一束盛开的红玫瑰，花瓣上还带着露水"},
+                 "#002": {"name": "手工巧克力", "content": "一盒手工黑巧克力，每颗形状都不一样"},
+                 "#003": {"name": "银怀表", "content": "古旧的银色怀表，指针停在三点十五"},
+                 "#004": {"name": "星星瓶", "content": "装满纸折星星的玻璃瓶"},
+                 "#005": {"name": "黑胶唱片", "content": "一张绝版的爵士黑胶"}}
+        db.execute("INSERT INTO site_config (show_id, tenant_id, key, value) VALUES (?, ?, 'preset_gifts', ?)",
+                   (sid, tid, json.dumps(gifts, ensure_ascii=False)))
+    row = db.execute("SELECT snapshot FROM phone_sync WHERE show_id=?", (sid,)).fetchone()
+    if row:
+        snap = json.loads(row["snapshot"] or "{}")
+        if "catalogs" not in snap:
+            snap.update(catalogs={}, displays={}, shop={"refresh_hours": 1, "catalog_on_receive": True})
+            snap["roster"] = [dict(r, npc=(r.get("name") == "沈知意")) for r in snap.get("roster", [])]
+            db.execute("UPDATE phone_sync SET snapshot=? WHERE show_id=?", (json.dumps(snap, ensure_ascii=False), sid))
+    db.commit()
+
 row = db.execute("SELECT id FROM tenants WHERE username='phone_demo'").fetchone()
 if row:
     tid = row["id"]
@@ -29,6 +48,7 @@ if row:
         db.commit()
     else:
         acode = arow["code"]
+    _demo_shop(db, tid, sid)
     print(f"演示团账号已存在。体验激活码：{code}\n入口：https://archive.changri.work/p/{code}")
     print(f"演示管理员手机码：{acode}\n入口：https://archive.changri.work/p/{acode}")
     sys.exit(0)
@@ -85,6 +105,7 @@ db.execute("""INSERT INTO song_requests (tenant_id, show_id, from_role, to_role,
               cover, fee, message, source, game_day, created_at, announced) VALUES (?, ?, '周屿', '体验者', '163', 186016, '', '晴天',
               '周杰伦', '叶惠美', '', 0, '送你一首歌', 'web', 'D1', ?, 1)""", (tid, sid, now - 100 * 60000))
 db.commit()
+_demo_shop(db, tid, sid)
 print("演示团账号已建好（跟真实数据完全隔开）。")
 print(f"体验激活码（一直有效）：{code}")
 print(f"入口：https://archive.changri.work/p/{code}")
