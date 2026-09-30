@@ -241,6 +241,7 @@ a { color: var(--link); text-decoration: none; }
 }
 .stickers button.emoji { font-size: 22px; padding: 4px 6px; border-color: transparent; background: none; }
 .stickers button:active { background: var(--theirs); }
+.avatar.song-avatar { background: linear-gradient(135deg, #f58ab0, #8b7cf6) !important; filter: none; font-size: 20px; color: #fff; }
 .public-avatar { background: var(--theirs) !important; font-size: 19px; filter: grayscale(.7); }
 .public-row { border-bottom: 6px solid var(--theirs); }
 #scroll .public-feed { margin-top: 0; padding: 12px 16px 32px; gap: 10px; }
@@ -1692,6 +1693,11 @@ a { color: var(--link); text-decoration: none; }
 <script>
   // 头像底色按名字固定，同一个人每次颜色一样
   var palette = ['#8b7cf6','#e0719b','#e89a4a','#4fb38a','#4a9fe0','#b07cd8','#d4636b','#5aa9a3'];
+  // 「点歌台」是系统联系人，固定用音符头像（渐变底），不按名字配色
+  window.songAvatar = function () {
+    document.querySelectorAll('.avatar[data-name="点歌台"]').forEach(function (el) { el.classList.add('song-avatar'); el.textContent = '🎵'; el.removeAttribute('data-name'); });
+  };
+  songAvatar();
   document.querySelectorAll('.avatar[data-name]').forEach(function (el) {
     var s = el.dataset.name, h = 0;
     for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
@@ -1926,6 +1932,7 @@ a { color: var(--link); text-decoration: none; }
   }
   var revision = {{ (revision or '')|tojson }}, busy = false;
   function avatars() {
+    if (window.songAvatar) songAvatar();
     document.querySelectorAll('.avatar[data-name]').forEach(function (el) {
       var h = 0, s = el.dataset.name;
       for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
