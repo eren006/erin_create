@@ -55,7 +55,7 @@ lin, zy, sz = player("LINWAN0001"), player("ZHOUYU0001"), player("SHENZY0001")
 # 旧版插件（快照里没有 rules.lovemail）：页面提示升级，收件箱不显示入口，投不了
 sync(rules=None)
 ok("等机器人升级" in page(lin, "write"), "needs plugin upgrade")
-ok("心动信箱" not in lin.get("/p/me").get_data(as_text=True), "no inbox row before upgrade")
+ok('href="/p/me/lovemail"' in lin.get("/p/me").get_data(as_text=True), "nav tab always there")
 ok("升级" in send(lin, "周屿", "你好"), "cannot send before upgrade")
 
 # 新版快照：林晚今天群里已投 1 封（上限 2），信池里有她群里投的一封
@@ -64,7 +64,6 @@ POOL = [{"from": "林晚", "to": "沈知意", "content": "群里投的信", "sig
 sync(rules=RULES, lovemail={"counts": {"林晚": 1}, "pending": POOL})
 w = page(lin, "write")
 ok("已投 1/2" in w and "22:00 派送" in w and "投进信箱" in w and "disabled" not in w.split("投进信箱")[0].split("<button")[-1], "write page open")
-ok("心动信箱" in lin.get("/p/me").get_data(as_text=True) and "今天还能投 1 封" in lin.get("/p/me").get_data(as_text=True), "inbox row")
 ok("群里投的信" in page(lin, "sent") and "群里投的信" not in page(sz, "sent"), "pending only for sender")
 
 # 校验：收件人必须在名单里、不能空、字数、署名字数、违禁词、CQ 码
@@ -119,7 +118,9 @@ ev = {"type": "lovemail", "from_role": "林晚", "from_custom_name": "不告诉�
 ok(app.test_client().post("/api/event", headers={"X-Archive-Token": TOKEN}, json=ev).get_json()["ok"], "event")
 zb = body(page(zy))
 ok("今晚的月亮很好看" in zb and "不告诉你" in zb and "林晚" not in zb and "飘落到了公告区" in zb, "recipient anonymous")
-ok("收到 1 封" in zy.get("/p/me").get_data(as_text=True), "recipient inbox count")
+_nav = zy.get("/p/me").get_data(as_text=True)
+ok('data-other="__lovemail__" data-received-ts="' in _nav and 'data-received-ts="0"' not in _nav, "unread marker on nav tab")
+ok("收到的 1" in page(zy), "recipient count")
 ok("寄给 周屿" in page(lin, "sent") and "已派送" in page(lin, "sent"), "sender history")
 ok("今晚的月亮很好看" not in body(page(sz)) and "今晚的月亮很好看" not in page(sz, "sent"), "bystander sees nothing")
 

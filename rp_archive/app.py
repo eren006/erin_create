@@ -5151,7 +5151,7 @@ def player_phone_inbox():
     db = get_db()
     return render_template("phone.html", mode="inbox", owner=owner, sid=sid,
                            threads=_phone_threads(db, sid, owner), status=_phone_status(db, sid, owner),
-                           public=_phone_public_summary(db, sid), lovemail=_lm_summary(db, sid, owner),
+                           public=_phone_public_summary(db, sid),
                            moments_latest=db.execute(
                                "SELECT role_name, content, created_at, game_day, (SELECT COUNT(*) FROM moment_images i "
                                "WHERE i.moment_id=m.id) AS n FROM moments m WHERE show_id=? AND deleted=0 "
@@ -6424,8 +6424,11 @@ def inject_phone_avatars():
         who = _phone_current()
         if not who:
             return {}
-        rows = get_db().execute("SELECT role_name, updated_at FROM phone_avatars WHERE show_id=?", (who[0],)).fetchall()
-        return {"phone_avatars": {r["role_name"]: r["updated_at"] for r in rows}}
+        db = get_db()
+        rows = db.execute("SELECT role_name, updated_at FROM phone_avatars WHERE show_id=?", (who[0],)).fetchall()
+        # 底部导航「心动信」的未读点：收到的最新一封心动信的存档 id（进过信箱就记成已读）
+        last = db.execute("SELECT MAX(id) FROM extra_events WHERE show_id=? AND type='lovemail' AND to_role=?", who).fetchone()[0]
+        return {"phone_avatars": {r["role_name"]: r["updated_at"] for r in rows}, "lovemail_last": last or 0}
     except Exception:
         return {}
 
@@ -6889,16 +6892,6 @@ def _lm_history(db, sid, owner):
         if r["from_role"] == owner:
             sent.append(dict(item, to=r["to_role"]))
     return recv, sent
-
-def _lm_summary(db, sid, owner):
-    """收件箱那一行：收到几封、最新一封的 id（当未读标记用）；功能没接上、也没收过信就不显示"""
-    row = db.execute("SELECT COUNT(*) AS n, MAX(id) AS last FROM extra_events WHERE show_id=? AND type='lovemail' AND to_role=?",
-                     (sid, owner)).fetchone()
-    st = _lm_state(db, sid, owner)
-    if not st["ready"] and not row["n"]:
-        return None
-    return {"received": row["n"], "last": row["last"] or 0, "can": st["can"],
-            "left": max(st["limit"] - st["used"], 0), "pending": len(st["pending"])}
 
 def _lm_for_bot(db, sid, done_ids, revoke_done):
     """同步用：标掉机器人回报已放进信池的 / 已处理的撤回，再给出还没交出去的信和撤回请求"""
