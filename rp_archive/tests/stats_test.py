@@ -98,6 +98,16 @@ spoof = lin.get("/p/me/stats?view=interact&owner=周屿&role=周屿").get_data(a
 ok(spoof == after, "query parameters cannot switch interaction identity")
 ok("林晚 · 本季与我的往来" in after and "我发 <b>" in after, "personal scope is explicit")
 
+# 数量仅输出本人一行，保留自定义类型和真实零值；格式异常不能伪装成零。
+ok(A._phone_personal_counts("👤 我今天：私约 1 次｜自定义约战 2 次|电话 0 次\n🌐 全员今天：私约 999 次") == [
+    {"label":"私约", "count":1}, {"label":"自定义约战", "count":2}, {"label":"电话", "count":0}], "personal count parsing")
+ok(A._phone_personal_counts("🌐 全员今天：私约 999 次") == [], "never use global counts")
+ok(A._phone_personal_counts("我今天：私约 未知 次") == [], "unknown is not zero")
+REP["林晚"]["counts"] += "\n🌐 全员今天：秘密活动 999 次"
+sync(REP)
+count_page = page(lin, "counts")
+ok("秘密活动" not in count_page and "全员今天" not in count_page and "私约 1 次" in count_page, "global counts excluded from HTML")
+
 # 管理身份、没登录
 adm = app.test_client(); adm.get("/p/ADMINCODE1")
 ok(adm.get("/p/me/stats").status_code == 302 and app.test_client().get("/p/me/stats").status_code == 302, "access")

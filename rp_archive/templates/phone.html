@@ -848,7 +848,7 @@ a { color: var(--link); text-decoration: none; }
     {% elif view == 'timeline' %}
       {% include '_phone_timeline.html' %}
     {% elif view == 'counts' %}
-      <article class="lm-letter lm-sent"><div class="lm-body">{{ report.counts }}</div></article>
+      {% include '_phone_counts.html' %}
     {% elif view == 'arc' %}
       <article class="lm-letter lm-sent"><div class="lm-body">{{ report.arc }}</div></article>
     {% elif view == 'pending' %}
@@ -875,7 +875,7 @@ a { color: var(--link); text-decoration: none; }
     {% else %}
       {% include '_phone_interactions.html' %}
     {% endif %}
-    {% if report and stale %}<p class="song-note">⚠️ 机器人有一阵子没同步了，上面可能不是最新的。</p>{% elif report and view != 'interact' %}<p class="song-note">机器人每 2 分钟更新一次，跟群里发同名指令看到的是同一份数据。</p>{% endif %}
+    {% if report and stale %}<p class="song-note">⚠️ 机器人有一阵子没同步了，上面可能不是最新的。</p>{% elif report and view == 'counts' %}<p class="song-note">约每 2 分钟更新，最近同步时间见顶部。</p>{% elif report and view != 'interact' %}<p class="song-note">机器人每 2 分钟更新一次，跟群里发同名指令看到的是同一份数据。</p>{% endif %}
   </div>
 
 {% elif mode == 'group_new' %}

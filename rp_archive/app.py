@@ -6910,6 +6910,22 @@ def _song_pending_for_bot(db, sid, done_ids):
 # 短信礼物照「对话」归人（误投/换落款照玩家看到的算），心动信只算寄出的去向、收到的只给总数（来信是匿名的）。
 _STATS_VIEWS = ("timeline", "counts", "pending", "arc", "interact")
 
+def _phone_personal_counts(text):
+    """只解析报告中明确属于本人的一行，不把全员数量带入玩家页面。"""
+    for line in (text or "").splitlines():
+        match = re.fullmatch(r"\s*(?:👤\s*)?我今天[：:]\s*(.*?)\s*", line)
+        if not match:
+            continue
+        items = []
+        for part in re.split(r"[｜|]", match.group(1)):
+            item = re.fullmatch(r"\s*(.+?)\s+(\d+)\s*次\s*", part)
+            if not item:
+                return []
+            items.append({"label": item.group(1), "count": int(item.group(2))})
+        return items
+    return []
+
+
 def _phone_interactions(db, sid, owner):
     rows = {}
     for m in _phone_views(db, sid, owner):
@@ -6950,7 +6966,8 @@ def player_stats():
     return render_template("phone.html", mode="stats", owner=owner, sid=sid, view=view, report=report, days=days,
                            updated=(_phone_time(row["updated_at"]) if row else ""),
                            stale=bool(row) and int(time.time() * 1000) - row["updated_at"] > 10 * 60 * 1000,
-                           inter=inter, lm_recv=lm_recv)
+                           inter=inter, lm_recv=lm_recv,
+                           personal_counts=_phone_personal_counts((report or {}).get("counts")) if view == "counts" else [])
 
 # ── 网页群聊 ─────────────────────────────────────────────────────────────────────
 # 玩家自己拉人建群（至少再拉 2 个人），任何成员都能拉人、改群名，谁都可以退群；只在网页上，不进 QQ。
