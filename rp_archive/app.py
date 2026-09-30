@@ -6266,6 +6266,9 @@ def api_phone_sync():
     if isinstance(reports, dict):  # 插件每 2 分钟带一次；单人太大的丢掉，防异常数据撑爆库
         for role, rep_ in list(reports.items())[:300]:
             blob = json.dumps(rep_, ensure_ascii=False)
+            if len(blob) > 64000 and isinstance(rep_, dict) and "rpg" in rep_:  # 背包太大时只丢背包快照，别连累时间线/统计
+                rep_ = {k: v for k, v in rep_.items() if k != "rpg"}
+                blob = json.dumps(rep_, ensure_ascii=False)
             if isinstance(role, str) and role and isinstance(rep_, dict) and len(blob) <= 64000:
                 db.execute("""INSERT INTO phone_reports (show_id, role, data, updated_at) VALUES (?,?,?,?)
                               ON CONFLICT(show_id, role) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at""",
