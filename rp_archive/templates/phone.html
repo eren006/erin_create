@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'thread' %}{{ other.partition('＠')[0] }} · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -333,6 +333,14 @@ a { color: var(--link); text-decoration: none; }
 .song-form textarea { min-height: 70px; resize: vertical; }
 .song-submit { padding: 11px; font-weight: 600; }
 .song-submit:disabled { opacity: .45; }
+.group-avatar { background: var(--theirs) !important; color: var(--text) !important; font-weight: 600; }
+.group-sys { font-size: 12px; margin: 10px 24px 4px; }
+.inbox-flash { margin: 10px auto 4px; }
+.group-alias { flex-basis: 100%; min-width: 0; font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 14px; border: 1px dashed var(--line); background: var(--bg); color: var(--text); }
+.group-pick { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.group-pick-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; font-size: 15px !important; color: var(--text) !important; border-bottom: 1px solid var(--line); cursor: pointer; }
+.group-pick-row:last-child { border-bottom: 0; }
+.group-pick-row input { width: 18px; height: 18px; }
 .lm-tabs a { flex: 1; text-align: center; border: 1px solid var(--line); border-radius: 10px; padding: 7px; font-size: 13px; background: var(--bg); color: var(--text); }
 .lm-tabs a[aria-current] { border-color: var(--text); box-shadow: inset 0 0 0 1px var(--text); font-weight: 600; }
 .lm-flash { margin: 12px auto 0; }
@@ -464,7 +472,17 @@ a { color: var(--link); text-decoration: none; }
       <div class="avatar public-avatar">📱</div>
       <div class="body"><div class="top"><span class="name">小手机</span></div><div class="preview">使用指南：怎么发、怎么点歌、哪些不能发</div></div>
     </a>{% endif %}
+    {% if flash %}<div class="notice inbox-flash">{{ flash }}</div>{% endif %}
     {% for t in threads %}
+    {% if t.group %}
+    <a class="row" data-other="{{ t.other }}" data-received-ts="{{ t.received_ts }}" href="{{ url_for('player_group_thread', gid=t.group.id) }}">
+      <div class="avatar group-avatar">{{ t.group.name[:1] }}</div>
+      <div class="body">
+        <div class="top"><span class="name">{{ t.group.name }}<span class="alias-tag">群 · {{ t.group.n }}人</span></span><span class="time">{{ t.last.game_day }} {{ t.time }}</span></div>
+        <div class="preview">{{ t.preview }}</div>
+      </div>
+    </a>
+    {% else %}
     {% set _who, _at, _alias = t.other.partition('＠') %}
     <a class="row" data-other="{{ t.other }}" data-received-ts="{{ t.received_ts }}" href="{{ purl('player_phone_thread', other=t.other, _as=admin_as) }}">
       <div class="avatar" data-name="{{ _who }}">{{ _who[:1] }}</div>
@@ -473,6 +491,7 @@ a { color: var(--link); text-decoration: none; }
         <div class="preview">{{ t.preview }}</div>
       </div>
     </a>
+    {% endif %}
     {% else %}
     <div class="empty">这里还很安静。开季后，群里的短信往来和收到的礼物会留在这里。{% if status.can %}<br>也可以点下方「新信息」开始对话。{% endif %}</div>
     {% endfor %}
@@ -797,6 +816,28 @@ a { color: var(--link); text-decoration: none; }
   })();
   </script>
 
+{% elif mode == 'group_new' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_phone_new') }}">取消</a>
+    <div class="title">发起群聊</div>
+    <div class="right"></div>
+  </header>
+  <form class="scroll song-form group-new" method="post" action="{{ url_for('player_group_new') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    {% if why %}<div class="song-note">❌ {{ why }}</div>{% endif %}
+    {% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
+    <label for="groupName">群名（选填，{{ name_max }} 字内，不写就用成员名）</label>
+    <input id="groupName" name="name" maxlength="{{ name_max }}" autocomplete="off" placeholder="比如：天台小分队">
+    <label>拉谁进群（至少 2 个，最多 {{ max_members - 1 }} 个）</label>
+    <div class="group-pick">
+      {% for n in contacts %}
+      <label class="group-pick-row"><input type="checkbox" name="member" value="{{ n }}"><span class="avatar sm" data-name="{{ n }}">{{ n[:1] }}</span>{{ n }}{{ npc(n) }}</label>
+      {% else %}<div class="empty">还没有可以拉的人</div>{% endfor %}
+    </div>
+    <button type="submit" class="song-submit"{% if why %} disabled{% endif %}>建群</button>
+    <p class="song-note">群聊只在网页手机里，群里的人都能看到你发的话。一条消息算 1 次短信，不能送礼。可以用化名发言。</p>
+  </form>
+
 {% elif mode == 'lovemail' %}
   <header class="bar">
     <a class="back" href="{{ url_for('player_phone_inbox') }}">信息</a>
@@ -954,6 +995,10 @@ a { color: var(--link); text-decoration: none; }
     {% if flash %}<p class="alias-err">{{ flash }}</p>{% endif %}
   </form>
   <div class="scroll list">
+    <a class="row group-entry" href="{{ url_for('player_group_new') }}">
+      <div class="avatar sm group-avatar">群</div>
+      <div class="body"><div class="top"><span class="name">发起群聊</span></div></div>
+    </a>
     {% for n in contacts %}
     <a class="row" data-contact="{{ n }}" href="{{ url_for('player_phone_thread', other=n) }}">
       <div class="avatar sm" data-name="{{ n }}">{{ n[:1] }}</div>
@@ -982,7 +1027,8 @@ a { color: var(--link); text-decoration: none; }
 {% else %}
   <header class="bar">
     <a class="back" href="{{ purl('player_phone_inbox', _as=admin_as) }}">信息</a>
-    {% if alias_thread == 'out' %}<div class="title">{% set _w = other.partition('＠')[0] %}<div class="avatar head" data-name="{{ _w }}">{{ _w[:1] }}</div>{{ _w }}<small>你的化名：{{ other.partition('＠')[2] }}</small></div>
+    {% if group %}<div class="title"><div class="avatar head group-avatar">{{ group.name[:1] }}</div>{{ group.name }}<small>群聊 · {{ group.n }} 人</small></div>
+    {% elif alias_thread == 'out' %}<div class="title">{% set _w = other.partition('＠')[0] %}<div class="avatar head" data-name="{{ _w }}">{{ _w[:1] }}</div>{{ _w }}<small>你的化名：{{ other.partition('＠')[2] }}</small></div>
     {% elif alias_thread == 'back' %}<div class="title"><div class="avatar head public-avatar">?</div>{{ other }}<small>匿名</small></div>
     {% else %}<div class="title"><div class="avatar head" data-name="{{ other }}">{{ other[:1] }}</div>{{ other }}{{ npc(other) }}{% if admin_as %}<small>管理 · 以 {{ owner }} 的视角</small>{% endif %}</div>{% endif %}
     <div class="right">{% if alias_state and alias_state.party and not alias_state.blocked and not phone_admin %}
@@ -998,9 +1044,12 @@ a { color: var(--link); text-decoration: none; }
     <div class="chat" data-received-ts="{{ msgs|rejectattr('mine')|map(attribute='ts')|max|default(0) }}">
       {% for m in msgs %}
         {% if m.show_time %}<div class="stamp">{% if m.day_break %}<b>{{ m.day_break }}</b> {% endif %}{{ m.time }}</div>{% endif %}
+        {% if m.kind == 'sys' %}<div class="stamp group-sys">{{ m.text }}</div>{% else %}
         <div class="msg {{ 'mine' if m.mine else 'theirs' }}" id="message-{{ [sid, owner, m.id]|phone_message_key }}">
           {% if m.sig_above %}<div class="sig">{{ m.sig_above }}</div>{% endif %}
-          {% if m.mine and my_alias %}<div class="avatar bav public-avatar" title="你的化名">{{ my_alias[:1] }}</div>
+          {% if group and m.mine and m.alias %}<div class="avatar bav public-avatar" title="你的化名">{{ m.alias[:1] }}</div>
+          {% elif group and not m.mine %}{% if m.av %}<div class="avatar bav" data-name="{{ m.av }}">{{ m.av[:1] }}</div>{% else %}<div class="avatar bav public-avatar">{{ m.av_initial }}</div>{% endif %}
+          {% elif m.mine and my_alias %}<div class="avatar bav public-avatar" title="你的化名">{{ my_alias[:1] }}</div>
           {% elif m.mine %}<div class="avatar bav" data-name="{{ owner }}">{{ owner[:1] }}</div>
           {% elif their_av %}<div class="avatar bav" data-name="{{ their_av }}">{{ their_av[:1] }}</div>
           {% else %}<div class="avatar bav public-avatar">?</div>{% endif %}
@@ -1020,8 +1069,10 @@ a { color: var(--link); text-decoration: none; }
           {% endif %}
           {% if phone_admin %}<div class="admin-note">{{ m.admin_note }} <button type="button" class="admin-del" data-admin-del="{{ m.admin_del }}" data-desc="删除这条{{ {'sms': '短信', 'gift': '礼物', 'song': '点歌'}.get(m.kind, '') }}？发件人和收件人的手机里都会消失，无法恢复。">管理删除</button></div>
           {% elif m.kind in ('sms', 'gift') %}<button type="button" class="save-message" data-save-key="{{ [sid, owner, m.id]|phone_message_key }}" aria-pressed="false" aria-label="收藏这条{{ '礼物' if m.kind == 'gift' else '短信' }}">☆ 收藏</button>{% endif %}
+          {% if group and m.mine and m.alias %}<div class="tag">以化名「{{ m.alias }}」发送</div>{% endif %}
           {% if m.public %}<div class="tag">📢 被公开播报过</div>{% endif %}
         </div>
+        {% endif %}
       {% else %}
         {% if not flash %}<div class="empty">没有往来记录</div>{% endif %}
       {% endfor %}
@@ -1029,9 +1080,10 @@ a { color: var(--link); text-decoration: none; }
     </div>
   </div>
   <div class="new-message-anchor"><button class="new-message" id="newMessage" type="button" hidden>有新信息 ↓</button></div>
-  {% if alias_thread %}{% set status = dict(status, gift=None) %}{% endif %}
+  {% if alias_thread or group %}{% set status = dict(status, gift=None) %}{% endif %}
   {% if can_reply and (status.sms or status.gift) %}
-  <form class="compose{{ ' gift-mode' if draft_kind == 'gift' and status.gift else '' }}" id="compose" method="post" action="{{ url_for('player_phone_send') }}">
+  <form class="compose{{ ' gift-mode' if draft_kind == 'gift' and status.gift else '' }}" id="compose" method="post" action="{{ url_for('player_group_send', gid=group.id) if group else url_for('player_phone_send') }}">
+  {% if group %}<input class="group-alias" name="alias" id="groupAlias" maxlength="{{ alias_len }}" autocomplete="off" placeholder="化名发言（选填，不填就用真名）" value="{{ group_alias }}">{% endif %}
   {% if stickers %}
   <div class="stickers" id="stickers" hidden>
     {% for st in stickers %}<button type="button" class="{{ 'emoji' if st|length <= 2 else '' }}" data-s="{{ st }}">{{ st }}</button>{% endfor %}
@@ -1220,7 +1272,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new') %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -1316,7 +1368,7 @@ a { color: var(--link); text-decoration: none; }
     b.remove();
   });
 </script>
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new') %}
 <script>
 (function () {
   var scope = {{ ([sid, owner]|tojson) }};

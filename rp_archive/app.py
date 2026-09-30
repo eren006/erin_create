@@ -1623,6 +1623,54 @@ def _migrate(conn):
         )
     """)
 
+    # ── 26. 网页群聊：玩家自己拉人建群；只在网页上（不进 QQ），跟网页发送一起开关；一条消息算 1 次短信 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_groups (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            show_id    INTEGER NOT NULL,
+            name       TEXT    NOT NULL,
+            created_by TEXT    NOT NULL,
+            created_at INTEGER NOT NULL
+        )
+    """)
+    # left_at=0 表示还在群里；重新被拉进来就把 joined_at 更新成那一刻（之前的消息看不到）
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_group_members (
+            group_id  INTEGER NOT NULL,
+            role      TEXT    NOT NULL,
+            joined_at INTEGER NOT NULL,
+            left_at   INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (group_id, role)
+        )
+    """)
+    # kind: msg=玩家发言 / sys=「谁拉了谁」这类提示（不占次数、不公开）。content 是原文（发件人自己看），
+    # delivered 是混乱效果之后大家看到的；signature 是大家看到的名字（化名，或被换了的落款）
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_group_msgs (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id  INTEGER NOT NULL,
+            show_id    INTEGER NOT NULL,
+            group_id   INTEGER NOT NULL,
+            kind       TEXT    NOT NULL DEFAULT 'msg',
+            from_role  TEXT    NOT NULL DEFAULT '',
+            alias      TEXT    NOT NULL DEFAULT '',
+            signature  TEXT    NOT NULL DEFAULT '',
+            content    TEXT    NOT NULL,
+            delivered  TEXT    NOT NULL DEFAULT '',
+            is_public  INTEGER NOT NULL DEFAULT 0,
+            hide_receiver INTEGER NOT NULL DEFAULT 0,
+            show_effect INTEGER NOT NULL DEFAULT 0,
+            game_day   TEXT    NOT NULL DEFAULT '',
+            day_key    TEXT    NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            deleted    INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_phone_group_msgs ON phone_group_msgs(group_id, id)")
+    if "group_cursor" not in _col_names(conn, "phone_sync"):  # 插件已经取走、计过次数的群消息 id
+        conn.execute("ALTER TABLE phone_sync ADD COLUMN group_cursor INTEGER NOT NULL DEFAULT 0")
+
     # ── 25. 网页上的实名拉黑/解除：先在这里立刻对网页生效，机器人同步时取走写进 sys_blocklist（群里也生效），回报 done ──
     conn.execute("""
         CREATE TABLE IF NOT EXISTS phone_block_ops (
@@ -4978,8 +5026,11 @@ def _phone_msgs(db, sid, owner, other):
         if m and m["other"] == other:
             m["time"] = _phone_time(m["ts"])
             msgs.append(m)
-    # 按游戏日插分隔条；同一天内隔了 1 小时以上再补一个时间戳，像真手机那样
-    # 落款写在气泡上方（像群聊的发言人名字）：连续几条同一落款的来信只在第一条上面写一次
+    return _phone_mark_breaks(msgs)
+
+def _phone_mark_breaks(msgs):
+    """按游戏日插分隔条；同一天内隔了 1 小时以上再补一个时间戳，像真手机那样。
+    落款写在气泡上方（像群聊的发言人名字）：连续几条同一落款的来信只在第一条上面写一次"""
     prev_day, prev_ts, prev_sig = None, 0, None
     for m in msgs:
         m["day_break"] = m["game_day"] if m["game_day"] != prev_day else None
@@ -5164,13 +5215,15 @@ def player_phone_inbox():
         return redirect(url_for("admin_phone_index"))
     db = get_db()
     return render_template("phone.html", mode="inbox", owner=owner, sid=sid,
-                           threads=_phone_threads(db, sid, owner), status=_phone_status(db, sid, owner),
+                           threads=sorted(_phone_threads(db, sid, owner) + _group_threads(db, sid, owner),
+                                          key=lambda t: -t["last"]["ts"]),
+                           status=_phone_status(db, sid, owner), flash=session.pop("phone_flash", None),
                            public=_phone_public_summary(db, sid),
                            moments_latest=db.execute(
                                "SELECT role_name, content, created_at, game_day, (SELECT COUNT(*) FROM moment_images i "
                                "WHERE i.moment_id=m.id) AS n FROM moments m WHERE show_id=? AND deleted=0 "
                                "ORDER BY id DESC LIMIT 1", (sid,)).fetchone(),
-                           revision=_phone_revision(_phone_views(db, sid, owner)), csrf=_phone_csrf())
+                           revision=_phone_revision(_phone_all_views(db, sid, owner)), csrf=_phone_csrf())
 
 def _phone_views(db, sid, owner):
     return [m for e in _phone_events(db, sid) if (m := _phone_view_of(e, owner)) and m["other"]]
@@ -5187,7 +5240,7 @@ def player_phone_poll():
     if not who:
         return jsonify(error="手机登录已失效"), 401
     sid, owner = who
-    views = _phone_views(get_db(), sid, owner)
+    views = _phone_all_views(get_db(), sid, owner)
     revision = _phone_revision(views)
     incoming = {}
     for m in views:
@@ -5206,7 +5259,7 @@ def player_phone_public():
     return render_template("phone.html", mode="public", owner=owner, sid=sid,
                            phone_admin=(owner == PHONE_ADMIN), csrf=_phone_csrf(),
                            items=_phone_public_items(db, sid),
-                           revision=_phone_revision(_phone_views(db, sid, owner)))
+                           revision=_phone_revision(_phone_all_views(db, sid, owner)))
 
 @app.route("/p/me/<other>")
 def player_phone_thread(other):
@@ -5225,7 +5278,7 @@ def player_phone_thread(other):
                            alias_thread=(alias[2] if alias else None), alias_state=astate,
                            block_state=None if alias else _phone_block_state(db, sid, owner, other),
                            msgs=_phone_msgs(db, sid, owner, other), status=st, can_reply=can_reply,
-                           revision=_phone_revision(_phone_views(db, sid, owner)),
+                           revision=_phone_revision(_phone_all_views(db, sid, owner)),
                            stickers=_phone_stickers(db, sid) if can_reply else [],
                            my_presets=([{"id": i, **g} for i, g in _preset_gifts(db, sid).items()
                                         if i in _shop_catalog(db, sid, _phone_sync_row(db, sid), owner)] if can_reply else []),
@@ -5308,6 +5361,12 @@ def _phone_public_items(db, sid):
         else:
             item.update(gift_name=info.get("giftName") or "礼物", text=e["content"] or "")
         items.append(item)
+    for g in db.execute("""SELECT m.*, g.name AS group_name FROM phone_group_msgs m JOIN phone_groups g ON g.id=m.group_id
+                           WHERE m.show_id=? AND m.kind='msg' AND m.is_public=1 AND m.deleted=0""", (sid,)):
+        items.append({"kind": "sms", "from": g["signature"], "to": "某个群" if g["hide_receiver"] else f"群聊「{g['group_name']}」",
+                      "text": g["delivered"] if g["show_effect"] else g["content"],
+                      "ts": g["created_at"], "time": _phone_time(g["created_at"]), "game_day": g["game_day"],
+                      "admin_note": f"群聊「{g['group_name']}」· 实际发件人：{g['from_role']}", "admin_del": f"group:{g['id']}"})
     for sg in _song_rows(db, sid):
         items.append({"kind": "song", "from": "有人", "to": sg["to_role"] or "大家", "text": sg["message"],
                       "admin_note": f"点歌人：{sg['from_role']}", "admin_del": f"song:{sg['id']}",
@@ -5381,7 +5440,8 @@ def _phone_sync_row(db, sid):
         snap = json.loads(row["snapshot"] or "{}")
     except Exception:
         snap = {}
-    return {"snap": snap, "cursor": row["cursor"], "synced_at": row["synced_at"]}
+    return {"snap": snap, "cursor": row["cursor"], "synced_at": row["synced_at"],
+            "group_cursor": row["group_cursor"] if "group_cursor" in row.keys() else 0}
 
 def _phone_roster(sync):
     return [r["name"] for r in (sync["snap"].get("roster") or []) if r.get("name")] if sync else []
@@ -5419,6 +5479,13 @@ def _phone_usage(db, sid, sync, role, kind, now_ms):
         if fresh and r["id"] and r["id"] <= cursor:
             continue
         used += 1
+    if kind == "sms":  # 群聊一条算 1 次短信；插件取走的（id<=group_cursor）已含在上报的次数里
+        gcur = (sync or {}).get("group_cursor") or 0
+        for r in db.execute("SELECT id, created_at, day_key FROM phone_group_msgs WHERE show_id=? AND from_role=? AND kind='msg'",
+                            (sid, role)):
+            last = max(last, int(r["created_at"] or 0))
+            if r["day_key"] == day_key and not (fresh and r["id"] <= gcur):
+                used += 1
     return used, last
 
 def _phone_status(db, sid, role):
@@ -6022,10 +6089,15 @@ def api_phone_sync():
         after = 0
     db  = get_db()
     now = int(time.time() * 1000)
+    try:
+        group_after = int(data.get("group_after") or 0)
+    except (TypeError, ValueError):
+        group_after = 0
     db.execute("""
-        INSERT INTO phone_sync (show_id, tenant_id, snapshot, cursor, synced_at) VALUES (?,?,?,?,?)
-        ON CONFLICT(show_id) DO UPDATE SET snapshot=excluded.snapshot, cursor=excluded.cursor, synced_at=excluded.synced_at
-    """, (show["id"], tid, json.dumps(snap, ensure_ascii=False), after, now))
+        INSERT INTO phone_sync (show_id, tenant_id, snapshot, cursor, synced_at, group_cursor) VALUES (?,?,?,?,?,?)
+        ON CONFLICT(show_id) DO UPDATE SET snapshot=excluded.snapshot, cursor=excluded.cursor, synced_at=excluded.synced_at,
+                                           group_cursor=excluded.group_cursor
+    """, (show["id"], tid, json.dumps(snap, ensure_ascii=False), after, now, group_after))
     db.commit()
     rows = db.execute("""
         SELECT id, type, from_role, to_role, timestamp, game_day, extra_info FROM extra_events
@@ -6050,7 +6122,12 @@ def api_phone_sync():
     return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "events": events, "shop_events": shop_events,
                     "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done")),
                     "lovemails": lovemails, "lovemail_revokes": lm_revokes,
-                    "block_ops": _block_ops_for_bot(db, show["id"], data.get("block_ops_done"))})
+                    "block_ops": _block_ops_for_bot(db, show["id"], data.get("block_ops_done")),
+                    # 群消息：插件照短信计当日次数和冷却（不记互动统计），游标 phone_group_cursor
+                    "group_events": [{"id": r["id"], "from_role": r["from_role"], "timestamp": r["created_at"], "day_key": r["day_key"]}
+                                     for r in db.execute("SELECT id, from_role, created_at, day_key FROM phone_group_msgs "
+                                                         "WHERE show_id=? AND kind='msg' AND id>? ORDER BY id LIMIT 200",
+                                                         (show["id"], group_after))]})
 
 @app.route("/p/<code>")
 def player_phone_enter(code):
@@ -6807,6 +6884,330 @@ def _song_pending_for_bot(db, sid, done_ids):
             for r in db.execute("SELECT * FROM song_requests WHERE show_id=? AND announced=0 AND deleted=0 ORDER BY id LIMIT 20",
                                 (sid,))]
 
+# ── 网页群聊 ─────────────────────────────────────────────────────────────────────
+# 玩家自己拉人建群（至少再拉 2 个人），任何成员都能拉人、改群名，谁都可以退群；只在网页上，不进 QQ。
+# 跟网页发送一起开关（关着时能看不能发、不能建群拉人，退群随时可以）。一条消息算 1 次短信，跟短信共用上限和冷却，
+# 插件同步时照短信计次数。规则照短信：违禁词、个人功能权限、混乱效果（内容侵蚀 + 落款错乱；误投/撕信在群里没意义不做）、
+# 公开播报（开关和概率同短信）。拉黑：你拉黑的人用真名发的群消息你看不到；化名发言不受实名拉黑影响（同匿名对话，防反查）。
+# 发件人自己永远看到原文；化名不能跟角色名单里的人重名。群聊不能送礼。
+_GROUP_MAX_MEMBERS  = 20
+_GROUP_NAME_MAX     = 20
+_GROUP_DAILY_CREATE = 5
+
+def _group_key(gid):
+    return f"__group__{gid}"
+
+def _group_get(db, sid, owner, gid):
+    """owner 还在群里才返回 (群, 我的成员行)，否则 None"""
+    g = db.execute("SELECT * FROM phone_groups WHERE id=? AND show_id=?", (gid, sid)).fetchone()
+    if not g:
+        return None
+    me = db.execute("SELECT * FROM phone_group_members WHERE group_id=? AND role=? AND left_at=0", (gid, owner)).fetchone()
+    return (g, me) if me else None
+
+def _group_members(db, gid):
+    return [r["role"] for r in db.execute(
+        "SELECT role FROM phone_group_members WHERE group_id=? AND left_at=0 ORDER BY joined_at, role", (gid,))]
+
+def _group_sys(db, g, text, now):
+    sync = _phone_sync_row(db, g["show_id"])
+    game_day = (sync["snap"].get("game_day") or "") if sync else ""
+    db.execute("INSERT INTO phone_group_msgs (tenant_id, show_id, group_id, kind, content, delivered, game_day, created_at) VALUES (?,?,?,?,?,?,?,?)",
+               (g["tenant_id"], g["show_id"], g["id"], "sys", text, text, game_day, now))
+
+def _group_msgs(db, sid, owner, g, me, roster=None, blocked=None):
+    """某个群在 owner 眼里的消息（入群之后的；被我拉黑的人用真名发的看不到），格式跟私聊的 view 一样"""
+    if roster is None or blocked is None:
+        sync = _phone_sync_row(db, sid)
+        snap = sync["snap"] if sync else {}
+        roster = set(_phone_roster(sync))
+        blocked = {b.get("blocked") for b in _phone_effective_blocks(db, sid, snap) if b.get("blocker") == owner}
+    key, out = _group_key(g["id"]), []
+    for r in db.execute("SELECT * FROM phone_group_msgs WHERE group_id=? AND created_at>=? AND deleted=0 ORDER BY id",
+                        (g["id"], me["joined_at"])):
+        base = {"id": f"g{r['id']}", "other": key, "ts": r["created_at"], "game_day": r["game_day"] or "", "public": False}
+        if r["kind"] == "sys":
+            out.append(dict(base, kind="sys", mine=False, text=r["content"], signature=""))
+            continue
+        mine = r["from_role"] == owner
+        if not mine and not r["alias"] and r["from_role"] in blocked:
+            continue
+        shown = r["signature"] or r["from_role"]
+        out.append(dict(base, kind="gsms", mine=mine, text=r["content"] if mine else r["delivered"],
+                        signature="" if mine else shown, alias=r["alias"] if mine else "", public=bool(r["is_public"]),
+                        av=None if (r["alias"] or shown not in roster) else shown, av_initial=shown[:1],
+                        admin_del=f"group:{r['id']}"))
+    return out
+
+def _group_list(db, sid, owner):
+    return db.execute("""SELECT g.*, m.joined_at FROM phone_groups g JOIN phone_group_members m ON m.group_id=g.id
+                         WHERE g.show_id=? AND m.role=? AND m.left_at=0 ORDER BY g.id""", (sid, owner)).fetchall()
+
+def _group_views(db, sid, owner):
+    """所有群的消息（给「有新消息」指纹和轮询用）"""
+    sync = _phone_sync_row(db, sid)
+    snap = sync["snap"] if sync else {}
+    roster = set(_phone_roster(sync))
+    blocked = {b.get("blocked") for b in _phone_effective_blocks(db, sid, snap) if b.get("blocker") == owner}
+    out = []
+    for g in _group_list(db, sid, owner):
+        out += _group_msgs(db, sid, owner, g, {"joined_at": g["joined_at"]}, roster, blocked)
+    return out
+
+def _group_threads(db, sid, owner):
+    """收件箱里的群聊行，格式跟私聊行一样，多一个 group"""
+    sync = _phone_sync_row(db, sid)
+    snap = sync["snap"] if sync else {}
+    roster = set(_phone_roster(sync))
+    blocked = {b.get("blocked") for b in _phone_effective_blocks(db, sid, snap) if b.get("blocker") == owner}
+    out = []
+    for g in _group_list(db, sid, owner):
+        msgs = _group_msgs(db, sid, owner, g, {"joined_at": g["joined_at"]}, roster, blocked)
+        n = len(_group_members(db, g["id"]))
+        last = msgs[-1] if msgs else {"ts": g["joined_at"], "game_day": "", "mine": False, "kind": "sys", "text": "群聊已创建"}
+        if last["kind"] == "sys":
+            preview = last["text"]
+        else:
+            preview = ("我：" if last["mine"] else f"{last['signature']}：") + last["text"].replace("\n", " ")
+        out.append({"other": _group_key(g["id"]), "group": {"id": g["id"], "name": g["name"], "n": n}, "last": last,
+                    "received_ts": max([m["ts"] for m in msgs if not m["mine"]] or [0]),
+                    "preview": preview, "time": _phone_time(last["ts"])})
+    return out
+
+def _phone_all_views(db, sid, owner):
+    return _phone_views(db, sid, owner) + _group_views(db, sid, owner)
+
+def _group_can_act(db, sid, owner):
+    """建群/发言/拉人/改名的共同前提：跟网页发送一样"""
+    st = _phone_status(db, sid, owner)
+    if not st["can"]:
+        return st["why"] or "网页发送没有开放"
+    if not st["sms"]:
+        return "寄信功能已关闭"
+    return ""
+
+def _group_check_name(sid, owner, name):
+    if len(name) > _GROUP_NAME_MAX:
+        return f"❌ 群名最多 {_GROUP_NAME_MAX} 字"
+    if _CQ_CODE.search(name) or _blocked_hit(sid, owner, "群名", name):
+        return BLOCKED_MSG
+    return ""
+
+def _group_create(db, sid, tid, owner, name, members):
+    why = _group_can_act(db, sid, owner)
+    if why:
+        return False, "❌ " + why, None
+    roster = _phone_roster(_phone_sync_row(db, sid))
+    members = [m for m in dict.fromkeys(members) if m and m != owner]
+    if any(m not in roster for m in members):
+        return False, "❌ 只能拉角色名单里的人", None
+    if len(members) < 2:
+        return False, "❌ 至少再选 2 个人才能建群（两个人直接发短信就好）", None
+    if len(members) + 1 > _GROUP_MAX_MEMBERS:
+        return False, f"❌ 一个群最多 {_GROUP_MAX_MEMBERS} 人", None
+    name = (name or "").strip()
+    if not name:  # 没起名就用成员名，太长截掉
+        name = ("、".join([owner] + members[:2]) + ("等" if len(members) > 2 else ""))[:_GROUP_NAME_MAX]
+    err = _group_check_name(sid, owner, name)
+    if err:
+        return False, err, None
+    now = int(time.time() * 1000)
+    day_start = int(datetime.now(TZ_BEIJING).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    if db.execute("SELECT COUNT(*) FROM phone_groups WHERE show_id=? AND created_by=? AND created_at>=?",
+                  (sid, owner, day_start)).fetchone()[0] >= _GROUP_DAILY_CREATE:
+        return False, f"❌ 今天已经建了 {_GROUP_DAILY_CREATE} 个群，明天再来", None
+    gid = db.execute("INSERT INTO phone_groups (tenant_id, show_id, name, created_by, created_at) VALUES (?,?,?,?,?)",
+                     (tid, sid, name, owner, now)).lastrowid
+    for m in [owner] + members:
+        db.execute("INSERT INTO phone_group_members (group_id, role, joined_at) VALUES (?,?,?)", (gid, m, now))
+    g = db.execute("SELECT * FROM phone_groups WHERE id=?", (gid,)).fetchone()
+    _group_sys(db, g, f"{owner} 发起了群聊，拉了 {'、'.join(members)}", now)
+    db.commit()
+    return True, "", gid
+
+def _group_send(db, sid, owner, gid, text, alias):
+    """群里发一条：返回 (ok, 提示)；调用方持有 _phone_send_lock"""
+    got = _group_get(db, sid, owner, gid)
+    if not got:
+        return False, "❌ 你不在这个群里了"
+    g, _ = got
+    why = _group_can_act(db, sid, owner)
+    if why:
+        return False, "❌ " + why
+    sync = _phone_sync_row(db, sid)
+    snap, now = sync["snap"], int(time.time() * 1000)
+    rules = snap.get("rules") or {}
+    roster = _phone_roster(sync)
+    if owner not in roster:
+        return False, "❌ 找不到你的角色，等机器人下一次同步后再试"
+    if "sms" in set((snap.get("feature_off") or {}).get(owner) or []):
+        return False, "🕊️ 你被限制使用寄信功能。"
+    text, alias = (text or "").strip(), (alias or "").strip()
+    if not text:
+        return False, "❌ 内容不能为空"
+    if len(text) > _PHONE_MAX_LEN:
+        return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
+    if alias:
+        if len(alias) > _ALIAS_MAX_LEN:
+            return False, f"❌ 化名最多 {_ALIAS_MAX_LEN} 字"
+        if alias in roster or alias in _ALIAS_RESERVED or "＠" in alias:
+            return False, "❌ 这个化名不能用，换一个"
+    if _CQ_CODE.search(text + alias) or _blocked_hit(sid, owner, "群聊", text, alias):
+        return False, BLOCKED_MSG
+    chaos = rules.get("chaos") or {}
+    limit = int(chaos.get("dailyLimit", 5))
+    cooldown_ms = max(int(rules.get("mail_cooldown_min", 60)) * 60000, _PHONE_MIN_GAP_MS)
+    used, last = _phone_usage(db, sid, sync, owner, "sms", now)
+    if now - last < cooldown_ms:
+        return False, f"⏳ 鸽子正在休息，请 {math.ceil((cooldown_ms - (now - last)) / 60000)} 分钟后再试"
+    if used >= limit:
+        return False, f"🕊️ 今日寄信次数已达上限({limit})"
+    rnd = secrets.SystemRandom()
+    delivered = _chaos_erode(text, chaos)
+    signature = alias or owner
+    if not alias and rnd.random() < float(chaos.get("mistakenSignature", 0)) / 100:
+        others = [n for n in roster if n != owner]
+        if others:
+            signature = rnd.choice(others)
+    is_public = bool(rules.get("sms_public")) and rnd.randint(1, 100) <= int(chaos.get("publicChance", 50))
+    day_key, game_day, _ = _phone_day(sync, now)
+    db.execute("""INSERT INTO phone_group_msgs (tenant_id, show_id, group_id, kind, from_role, alias, signature, content, delivered,
+                  is_public, hide_receiver, show_effect, game_day, day_key, created_at) VALUES (?,?,?,'msg',?,?,?,?,?,?,?,?,?,?,?)""",
+               (g["tenant_id"], sid, gid, owner, alias, signature, text, delivered, 1 if is_public else 0,
+                1 if is_public and rules.get("hide_receiver") else 0, 1 if chaos.get("publicShowEffect") else 0,
+                game_day, day_key, now))
+    db.commit()
+    return True, f"💬 已发到群聊「{g['name']}」。今日已发 {used + 1}/{limit}。"
+
+def _group_manage(db, sid, owner, gid, action, value):
+    got = _group_get(db, sid, owner, gid)
+    if not got:
+        return False, "❌ 你不在这个群里了"
+    g, _ = got
+    now = int(time.time() * 1000)
+    if action == "leave":
+        db.execute("UPDATE phone_group_members SET left_at=? WHERE group_id=? AND role=?", (now, gid, owner))
+        _group_sys(db, g, f"{owner} 退出了群聊", now)
+        db.commit()
+        return True, f"已退出群聊「{g['name']}」"
+    why = _group_can_act(db, sid, owner)
+    if why:
+        return False, "❌ " + why
+    value = (value or "").strip()
+    if action == "rename":
+        if not value:
+            return False, "❌ 群名不能为空"
+        err = _group_check_name(sid, owner, value)
+        if err:
+            return False, err
+        db.execute("UPDATE phone_groups SET name=? WHERE id=?", (value, gid))
+        _group_sys(db, g, f"{owner} 把群名改成了「{value}」", now)
+        db.commit()
+        return True, "✅ 群名已修改"
+    if action == "add":
+        members = _group_members(db, gid)
+        if value not in _phone_roster(_phone_sync_row(db, sid)):
+            return False, "❌ 只能拉角色名单里的人"
+        if value in members:
+            return False, f"「{value}」已经在群里了"
+        if len(members) >= _GROUP_MAX_MEMBERS:
+            return False, f"❌ 一个群最多 {_GROUP_MAX_MEMBERS} 人"
+        db.execute("""INSERT INTO phone_group_members (group_id, role, joined_at) VALUES (?,?,?)
+                      ON CONFLICT(group_id, role) DO UPDATE SET joined_at=excluded.joined_at, left_at=0""", (gid, value, now))
+        _group_sys(db, g, f"{owner} 拉 {value} 进了群", now)
+        db.commit()
+        return True, f"✅ 已把「{value}」拉进群"
+    return False, "❌ 不认识的操作"
+
+@app.route("/p/me/g/new", methods=["GET", "POST"])
+def player_group_new():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_index"))
+    db = get_db()
+    if request.method == "POST":
+        if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+            session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+            return redirect(url_for("player_group_new"))
+        tid = db.execute("SELECT tenant_id FROM shows WHERE id=?", (sid,)).fetchone()["tenant_id"]
+        with _phone_send_lock:
+            ok, msg, gid = _group_create(db, sid, tid, owner, request.form.get("name", ""), request.form.getlist("member"))
+        if ok:
+            return redirect(url_for("player_group_thread", gid=gid))
+        session["phone_flash"] = msg
+        return redirect(url_for("player_group_new"))
+    return render_template("phone.html", mode="group_new", owner=owner, sid=sid, csrf=_phone_csrf(),
+                           why=_group_can_act(db, sid, owner), flash=session.pop("phone_flash", None),
+                           contacts=sorted(n for n in _phone_roster(_phone_sync_row(db, sid)) if n != owner),
+                           name_max=_GROUP_NAME_MAX, max_members=_GROUP_MAX_MEMBERS)
+
+@app.route("/p/me/g/<int:gid>")
+def player_group_thread(gid):
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_index"))
+    db = get_db()
+    got = _group_get(db, sid, owner, gid)
+    if not got:
+        session["phone_flash"] = "你不在这个群里"
+        return redirect(url_for("player_phone_inbox"))
+    g, me = got
+    st = _phone_status(db, sid, owner)
+    members = _group_members(db, gid)
+    return render_template("phone.html", mode="thread", owner=owner, sid=sid, other=_group_key(gid),
+                           group={"id": gid, "name": g["name"], "members": members, "n": len(members)},
+                           addable=sorted(n for n in _phone_roster(_phone_sync_row(db, sid)) if n not in members),
+                           alias_thread=None, alias_state=None, block_state=None,
+                           msgs=_phone_mark_breaks([dict(m, time=_phone_time(m["ts"])) for m in _group_msgs(db, sid, owner, g, me)]),
+                           status=st, can_reply=st["can"], revision=_phone_revision(_phone_all_views(db, sid, owner)),
+                           stickers=_phone_stickers(db, sid) if st["can"] else [], my_presets=[],
+                           csrf=_phone_csrf(), sent=session.pop("phone_sent", False), flash=session.pop("phone_flash", None),
+                           draft=session.pop("phone_draft", ""), draft_kind="sms", draft_gift="",
+                           group_alias=session.pop("group_alias", ""), alias_len=_ALIAS_MAX_LEN)
+
+@app.route("/p/me/g/<int:gid>/send", methods=["POST"])
+def player_group_send(gid):
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    back = url_for("player_group_thread", gid=gid)
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        ok, msg = False, "❌ 页面过期了，刷新后再发"
+    elif owner == PHONE_ADMIN:
+        ok, msg = False, "❌ 管理身份不能发"
+    else:
+        with _phone_send_lock:
+            ok, msg = _group_send(get_db(), sid, owner, gid, request.form.get("text", ""), request.form.get("alias", ""))
+    session["phone_flash"], session["phone_sent"] = msg, ok
+    session["group_alias"] = (request.form.get("alias", "") or "")[:_ALIAS_MAX_LEN]  # 化名留着，连发不用重填
+    if not ok:
+        session["phone_draft"] = request.form.get("text", "")[:_PHONE_MAX_LEN]
+    return redirect(back)
+
+@app.route("/p/me/g/<int:gid>/manage", methods=["POST"])
+def player_group_manage(gid):
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+        return redirect(url_for("player_group_thread", gid=gid))
+    action = request.form.get("action", "")
+    with _phone_send_lock:
+        ok, msg = _group_manage(get_db(), sid, owner, gid, action, request.form.get("value", ""))
+    session["phone_flash"] = msg
+    if ok and action == "leave":
+        return redirect(url_for("player_phone_inbox"))
+    return redirect(url_for("player_group_thread", gid=gid))
+
 @app.route("/p/me/block", methods=["POST"])
 def player_phone_block():
     """对话页「⋯」里的实名拉黑/解除：规则同群里「拉黑 角色名 [静默]」「取消拉黑 角色名」"""
@@ -7172,6 +7573,13 @@ def admin_phone_delete():
             return _moment_json(False, "已经不在了")
         db.execute("DELETE FROM extra_events WHERE id=?", (tid_,))
         what = f"{'短信' if row['type'] == 'sms' else '礼物'} {row['from_role']}→{row['to_role']}：{row['content']}"
+    elif kind == "group":
+        row = db.execute("SELECT from_role, content FROM phone_group_msgs WHERE id=? AND show_id=? AND deleted=0",
+                         (tid_, sid)).fetchone()
+        if not row:
+            return _moment_json(False, "已经不在了")
+        db.execute("UPDATE phone_group_msgs SET deleted=1 WHERE id=?", (tid_,))
+        what = f"群消息 {row['from_role']}：{row['content']}"
     elif kind == "silent":
         if not db.execute("SELECT 1 FROM phone_silent WHERE id=? AND show_id=?", (tid_, sid)).fetchone():
             return _moment_json(False, "已经不在了")

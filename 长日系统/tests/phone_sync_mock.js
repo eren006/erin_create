@@ -27,10 +27,12 @@ let BOPS = [{ id: 1, blocker: "林晚", target: "周屿", action: "block", silen
             { id: 2, blocker: "沈知意", target: "林晚", action: "block", silent: false, ts: 2222 },   // 已拉黑过：换成不静默，不重新计时
             { id: 3, blocker: "周屿", target: "沈知意", action: "unblock", silent: false, ts: 3333 },  // 满 2 小时：解除
             { id: 4, blocker: "周屿", target: "林晚", action: "unblock", silent: false, ts: 4444 }];   // 不满 2 小时：不动
+let GEV = [{ id: 7, from_role: "林晚", timestamp: 9700, day_key: "D2" },           // 群消息：计林晚 D2 一次、刷新冷却
+           { id: 8, from_role: "周屿", timestamp: 9800, day_key: "D1" }];          // 别的游戏日：不计次数，只刷新冷却
 let LM = [{ id: 5, from_role: "周屿", to_role: "林晚", content: "网页投的", signature: "匿名", game_day: "D2", timestamp: 888 }],
     LMREV = [{ id: 9, from_role: "林晚", ts: 777 }, { id: 10, from_role: "林晚", ts: 12345 }];
 global.fetch = async (url, opt) => { sent = { url, body: JSON.parse(opt.body) }; return { ok: true, json: async () => ({ web_send: true,
-  lovemails: LM, lovemail_revokes: LMREV, block_ops: BOPS, shop_events: [
+  lovemails: LM, lovemail_revokes: LMREV, block_ops: BOPS, group_events: GEV, shop_events: [
   { id: 7, role: "林晚", unlocked: ["#002", "#001"], display: { giftId: "#002", refreshedAt: 99 } },
   { id: 8, role: "周屿", unlocked: ["#003"], display: null } ], events: [
   { id: 41, type: "sms", from_role: "林晚", to_role: "周屿", timestamp: 9000, day_key: "D2", lost: false },
@@ -57,10 +59,11 @@ eval(fnSrc + "\n;globalThis.phoneWebSync = phoneWebSync; globalThis.phoneWebSend
   assert.deepEqual(snap.counts.sms, { "林晚": 2 });           // 周屿的是 D1 的，不算
   assert.equal(snap.last.sms["林晚"], 5000); assert.equal(snap.last.gift["林晚"], 1000);
   assert.equal(snap.rules.chaos.misdelivery, 10); assert.equal(snap.rules.chaos.tornPage, 0); assert.equal(snap.rules.mail_cooldown_min, 60);
-  assert.equal(KV.global_chaos_letter_counts["QQ:111"].count, 3);   // +1 (D2)
+  assert.equal(KV.global_chaos_letter_counts["QQ:111"].count, 4);   // +1 群消息 +1 网页短信 (D2)
   assert.equal(KV.global_chaos_letter_counts["QQ:222"].count, 4);   // 日期 key 不计，D1 旧记录不动
   assert.equal(KV.global_gift_stats["QQ:111"].count, 1);
-  assert.equal(CACHE["chaos_letter_cooldown_QQ:111"], "9000"); assert.equal(CACHE["chaos_letter_cooldown_QQ:222"], "9600");
+  assert.equal(CACHE["chaos_letter_cooldown_QQ:111"], "9700"); assert.equal(CACHE["chaos_letter_cooldown_QQ:222"], "9800");
+  assert.equal(CACHE.phone_group_cursor, "8"); assert.equal(sent.body.group_after, 0);
   assert.equal(KV.global_gift_cooldowns["QQ:111"], 9500);
   assert.equal(CACHE.phone_web_cursor, "43");
   assert.deepEqual(stats, [["QQ","林晚","周屿","sms"],["QQ","林晚","周屿","gift",true],["QQ","周屿","林晚","sms"]]);
@@ -86,7 +89,8 @@ eval(fnSrc + "\n;globalThis.phoneWebSync = phoneWebSync; globalThis.phoneWebSend
   assert.equal(sent.body.snapshot.lovemail.pending[0].web_id, 5);
   assert.equal(KV.lovemail_pool.length, 1); assert.equal(KV.lovemail_day_counts["222"].D2, 1);
   assert.deepEqual(KV.phone_lovemail_done, [5]); assert.deepEqual(KV.phone_lovemail_revoke_done, [9, 10]);
-  LM = []; LMREV = []; BOPS = []; await phoneWebSync(); assert.deepEqual(KV.phone_block_ops_done, []);
+  assert.equal(sent.body.group_after, 8);
+  LM = []; LMREV = []; BOPS = []; GEV = []; await phoneWebSync(); assert.deepEqual(KV.phone_block_ops_done, []);
   assert.deepEqual(KV.phone_lovemail_done, []); assert.deepEqual(KV.phone_lovemail_revoke_done, []);
   KV.feature_user_blocklist["111"] = { enable_lovemail: false }; await phoneWebSync();
   assert.deepEqual(sent.body.snapshot.feature_off["林晚"], ["lovemail"]);

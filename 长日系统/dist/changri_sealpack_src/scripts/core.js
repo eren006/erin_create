@@ -12638,11 +12638,12 @@ async function phoneWebSyncCore(base, token) {
     const songsDone = kvGet("phone_songs_done", []);
     const lmDone = kvGet("phone_lovemail_done", []), lmRevokeDone = kvGet("phone_lovemail_revoke_done", []);
     const blockOpsDone = kvGet("phone_block_ops_done", []);
+    const groupAfter = parseInt(cachedGet("phone_group_cursor") || "0") || 0;
     const resp = await fetch(base + "/api/phone/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Archive-Token": token },
         body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
-            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone,
+            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone, group_after: groupAfter,
             // block_write：告诉存档站这个版本会处理网页上的实名拉黑，网页才显示拉黑按钮
             snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, block_write: true,
                         counts, last, catalogs, displays, shop, lovemail } })
@@ -12659,6 +12660,7 @@ async function phoneWebSyncCore(base, token) {
     phoneApplyLoveMails(platform, data.lovemails || [], data.lovemail_revokes || []);
     if (blockOpsDone.length) kvSet("phone_block_ops_done", kvGet("phone_block_ops_done", []).filter(id => !blockOpsDone.includes(id)));
     phoneApplyBlockOps(platform, data.block_ops || []);
+    phoneApplyGroupEvents(platform, data.group_events || [], gameDay, groupAfter);
     kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
 
     const events = data.events || [];
@@ -12738,6 +12740,29 @@ function phoneApplyLoveMails(platform, mails, revokes) {
     kvSet("phone_lovemail_seen", seen.slice(-300));
     kvSet("phone_lovemail_done", done.slice(-300));
     kvSet("phone_lovemail_revoke_done", revDone.slice(-300));
+}
+
+// 网页群聊：一条算 1 次短信（只算当前游戏日的），也刷新短信冷却；不记互动统计（群里没有单一收件人）。
+// 游标 phone_group_cursor（存档站 phone_group_msgs.id）只往前走，同一条不会计两次。
+function phoneApplyGroupEvents(platform, evs, gameDay, after) {
+    if (!evs.length) return;
+    const smsC = kvGet("global_chaos_letter_counts", {});
+    let cursor = after;
+    for (const ev of evs) {
+        cursor = Math.max(cursor, ev.id);
+        const rawUid = getUidByRoleName(platform, ev.from_role);
+        if (!rawUid) continue;
+        const key = `${platform}:${getPrimaryUid(platform, rawUid)}`;
+        if (ev.day_key === gameDay) {
+            const rec = smsC[key]?.day === gameDay ? smsC[key] : { day: gameDay, count: 0 };
+            rec.count += 1;
+            smsC[key] = rec;
+        }
+        const ck = `chaos_letter_cooldown_${key}`;
+        if ((ev.timestamp || 0) > (parseInt(cachedGet(ck) || "0") || 0)) cachedSet(ck, String(ev.timestamp));
+    }
+    kvSet("global_chaos_letter_counts", smsC);
+    cachedSet("phone_group_cursor", String(cursor));
 }
 
 // 网页上的实名拉黑/解除写进 sys_blocklist，规则同「拉黑」「取消拉黑」：再拉一次不重新计时，满 BLOCK_UNDO_COOLDOWN_H 小时才能解除

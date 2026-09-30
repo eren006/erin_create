@@ -15,10 +15,26 @@
 <nav class="thread-tools" aria-label="对话操作"><button type="button" id="threadMenuOpen" aria-haspopup="dialog">更多操作</button></nav>
 {% endif %}
 <dialog class="appearance action-sheet" id="threadMenu" aria-labelledby="threadMenuTitle">
-  <div class="heading"><h2 id="threadMenuTitle">{{ other }}</h2><button class="quiet-button" id="threadMenuClose" type="button">完成</button></div>
+  <div class="heading"><h2 id="threadMenuTitle">{{ group.name if group else other }}</h2><button class="quiet-button" id="threadMenuClose" type="button">完成</button></div>
+  {% if group %}
+  <p class="block-note">成员：{{ group.members|join('、') }}</p>
+  {% if status.can %}
+  <form method="post" action="{{ url_for('player_group_manage', gid=group.id) }}" class="group-manage">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="rename">
+    <input name="value" maxlength="20" placeholder="新群名" aria-label="新群名" required><button type="submit" class="quiet-button">改群名</button>
+  </form>
+  {% if addable %}
+  <form method="post" action="{{ url_for('player_group_manage', gid=group.id) }}" class="group-manage">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="add">
+    <select name="value" aria-label="拉谁进群" required><option value="">拉人进群…</option>{% for n in addable %}<option>{{ n }}</option>{% endfor %}</select><button type="submit" class="quiet-button">拉进来</button>
+  </form>
+  {% endif %}
+  {% endif %}
+  {% else %}
   <a class="profile-item" href="{{ url_for('player_phone_library', other=other) }}">检索此对话 <span>›</span></a>
+  {% endif %}
   <button type="button" class="profile-item" id="pinContact" aria-pressed="false">置顶</button>
-  <a class="profile-item" href="{{ url_for('player_phone_library', view='saved', other=other) }}">查看本机收藏 <span>›</span></a>
+  {% if not group %}<a class="profile-item" href="{{ url_for('player_phone_library', view='saved', other=other) }}">查看本机收藏 <span>›</span></a>{% endif %}
   <a class="profile-item" href="{{ url_for('player_phone_library', view='profile') }}">外观与字号 <span>›</span></a>
   {% if block_state %}
   {% if block_state.blocked %}
@@ -39,7 +55,13 @@
   <p class="block-note">拉黑后 TA 发起的短信、礼物、私约、电话、微信、漂流瓶回信都不会送达你，群里同样生效；满 2 小时后才能解除。静默拉黑时 TA 察觉不到。</p>
   {% endif %}
   {% endif %}
+  {% if group %}
+  <form method="post" action="{{ url_for('player_group_manage', gid=group.id) }}" onsubmit="return confirm('退出群聊「{{ group.name }}」？之后看不到这个群，除非有人再把你拉进来（只能看到那之后的消息）。')">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="leave">
+    <button type="submit" class="profile-item block-danger">退出群聊 <span>›</span></button>
+  </form>
+  {% endif %}
 </dialog>
-{% elif mode == 'new' %}
+{% elif mode in ('new', 'group_new') %}
 <nav class="thread-tools" aria-label="返回"><a href="{{ url_for('player_phone_inbox') }}">‹ 返回消息</a></nav>
 {% endif %}
