@@ -16,6 +16,28 @@ A.init_db()  # 保证表都在（跟服务启动时做的一样）
 db = sqlite3.connect(A.DB_PATH)
 db.row_factory = sqlite3.Row
 
+DEMO_ROLES = ["体验者", "林晚", "周屿", "沈知意"]
+
+def _demo_codes(db, tid, sid):
+    """演示季每个角色都有激活码（方便两边都登录试匿名对话、送礼等）；已有的不动。返回 {角色: 码}"""
+    codes = {r["role_name"]: r["code"] for r in db.execute("SELECT role_name, code FROM phone_codes WHERE show_id=?", (sid,))}
+    for role in DEMO_ROLES:
+        if role not in codes:
+            while True:
+                code = "".join(secrets.choice(A._PHONE_CODE_ALPHABET) for _ in range(A._PHONE_CODE_LEN))
+                if not db.execute("SELECT 1 FROM phone_codes WHERE code=? UNION SELECT 1 FROM phone_admin_codes WHERE code=?",
+                                  (code, code)).fetchone():
+                    break
+            db.execute("INSERT INTO phone_codes (tenant_id, show_id, role_name, code, created_at) VALUES (?, ?, ?, ?, ?)",
+                       (tid, sid, role, code, int(time.time() * 1000)))
+            codes[role] = code
+    db.commit()
+    return codes
+
+def _print_codes(codes):
+    for role in DEMO_ROLES:
+        print(f"  {role}：{codes[role]}  https://archive.changri.work/p/{codes[role]}")
+
 def _demo_shop(db, tid, sid):
     """演示季的礼品店：几件预设礼物 + 快照里补上图鉴/货架字段（没有机器人，只能在这里写好）；已经有就不动"""
     if not db.execute("SELECT 1 FROM site_config WHERE show_id=? AND key='preset_gifts'", (sid,)).fetchone():
@@ -49,7 +71,8 @@ if row:
     else:
         acode = arow["code"]
     _demo_shop(db, tid, sid)
-    print(f"演示团账号已存在。体验激活码：{code}\n入口：https://archive.changri.work/p/{code}")
+    print("演示团账号已存在。各角色激活码（一直有效）：")
+    _print_codes(_demo_codes(db, tid, sid))
     print(f"演示管理员手机码：{acode}\n入口：https://archive.changri.work/p/{acode}")
     sys.exit(0)
 
@@ -63,7 +86,7 @@ tid = cur.lastrowid
 cur = db.execute("INSERT INTO shows (tenant_id, name, is_current, created_at) VALUES (?, '演示季', 1, ?)", (tid, now))
 sid = cur.lastrowid
 
-roles = ["体验者", "林晚", "周屿", "沈知意"]
+roles = DEMO_ROLES
 for r in roles:
     db.execute("INSERT INTO players (show_id, tenant_id, qq, role_name, sessions_count, total_replies, total_words, last_updated) "
                "VALUES (?, ?, ?, ?, 0, 0, 0, ?)", (sid, tid, "demo-" + r, r, now))
@@ -106,7 +129,8 @@ db.execute("""INSERT INTO song_requests (tenant_id, show_id, from_role, to_role,
               '周杰伦', '叶惠美', '', 0, '送你一首歌', 'web', 'D1', ?, 1)""", (tid, sid, now - 100 * 60000))
 db.commit()
 _demo_shop(db, tid, sid)
-print("演示团账号已建好（跟真实数据完全隔开）。")
+print("演示团账号已建好（跟真实数据完全隔开）。各角色激活码（一直有效）：")
+_print_codes(_demo_codes(db, tid, sid))
 print(f"体验激活码（一直有效）：{code}")
 print(f"入口：https://archive.changri.work/p/{code}")
 print(f"演示管理员手机码：{acode}（入口 https://archive.changri.work/p/{acode}）")
