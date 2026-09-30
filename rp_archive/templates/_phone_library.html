@@ -34,10 +34,10 @@
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <label for="nickInput">微信名</label>
     <div class="nick-row">
-      <input id="nickInput" name="nick" maxlength="{{ nick_max }}" value="{{ my_nick }}" placeholder="不设就只显示「{{ owner }}」" autocomplete="off">
+      <input id="nickInput" name="nick" maxlength="{{ nick_max }}" value="{{ my_nick }}" placeholder="不填就显示「{{ owner }}」" autocomplete="off">
       <button type="submit" class="quiet-button">保存</button>
     </div>
-    <p class="nick-hint">别人在消息列表、对话和朋友圈里会看到「{{ my_nick or '微信名' }}（{{ owner }}）」，真名永远跟在括号里。留空保存就是清除。</p>
+    <p class="nick-hint">别人会看到「{{ my_nick or '微信名' }}（{{ owner }}）」。想去掉就清空再保存。</p>
   </form>
   <a class="profile-item" href="{{ url_for('player_stats') }}">时间线与统计 <span>›</span></a>
   <button class="profile-item" id="appearanceOpen" type="button" aria-haspopup="dialog">外观与阅读字号 <span>›</span></button>
