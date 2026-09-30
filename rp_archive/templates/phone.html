@@ -123,6 +123,17 @@ a { color: var(--link); text-decoration: none; }
 .msg { display: flex; flex-direction: column; max-width: 78%; margin-top: 3px; }
 .msg.mine { align-self: flex-end; align-items: flex-end; }
 .msg.theirs { align-self: flex-start; align-items: flex-start; }
+/* 气泡旁的头像：头像占一列，其余内容都在另一列；有署名时头像跟气泡对齐而不是跟署名 */
+#scroll .msg { display: grid; column-gap: 8px; max-width: 86%; }
+#scroll .msg.theirs { grid-template-columns: 32px minmax(0, auto); justify-items: start; }
+#scroll .msg.mine { grid-template-columns: minmax(0, auto) 32px; justify-items: end; }
+#scroll .msg.theirs > * { grid-column: 2; }
+#scroll .msg.mine > * { grid-column: 1; }
+#scroll .msg.theirs > .bav { grid-column: 1; }
+#scroll .msg.mine > .bav { grid-column: 2; }
+#scroll .msg > .sig ~ .bav { grid-row: 2; }
+#scroll .msg > .bav:not(.sig ~ .bav) { grid-row: 1; }
+.bav { width: 32px; height: 32px; font-size: 13px; align-self: start; }
 .bubble {
   font-size: var(--reading-size, 16px); line-height: 1.6;
   padding: 8px 13px; border-radius: 19px; white-space: pre-wrap; word-break: break-word;
@@ -892,11 +903,15 @@ a { color: var(--link); text-decoration: none; }
     {% include "_phone_quota.html" %}
   </header>
   <div class="scroll" id="scroll">
+    {% set their_av = none if alias_thread == 'back' else other.partition('＠')[0] %}
     <div class="chat" data-received-ts="{{ msgs|rejectattr('mine')|map(attribute='ts')|max|default(0) }}">
       {% for m in msgs %}
         {% if m.show_time %}<div class="stamp">{% if m.day_break %}<b>{{ m.day_break }}</b> {% endif %}{{ m.time }}</div>{% endif %}
         <div class="msg {{ 'mine' if m.mine else 'theirs' }}" id="message-{{ [sid, owner, m.id]|phone_message_key }}">
           {% if m.sig_above %}<div class="sig">{{ m.sig_above }}</div>{% endif %}
+          {% if m.mine %}<div class="avatar bav" data-name="{{ owner }}">{{ owner[:1] }}</div>
+          {% elif their_av %}<div class="avatar bav" data-name="{{ their_av }}">{{ their_av[:1] }}</div>
+          {% else %}<div class="avatar bav public-avatar">?</div>{% endif %}
           {% if m.kind == 'song' %}
           <div class="song-msg">
             <div class="sm-title">{% if m.mine %}你匿名点给 {{ m.to or '大家' }}{% else %}有人为你点了一首歌{% endif %}</div>
@@ -1404,6 +1419,7 @@ a { color: var(--link); text-decoration: none; }
         }
       }
       avatars();
+      if (window.applyAvatars) applyAvatars();
       document.dispatchEvent(new Event('phone:updated'));
       revision = data.revision;
     } catch (_) {
