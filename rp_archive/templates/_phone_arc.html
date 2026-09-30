@@ -15,7 +15,7 @@
 .arc-who { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arc-chip { flex-shrink: 0; font-size: 12px; line-height: 20px; padding: 0 8px; border-radius: 10px; background: var(--theirs); color: var(--muted); white-space: nowrap; }
 .arc-chip.is-due { background: #fff0eb; color: #9b3520; font-weight: 600; }
-.arc-line2 { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.arc-line2 { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 1px; font-size: 13px; line-height: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .arc-line2 b { color: var(--text); font-weight: 600; }
 .arc-detail { margin-top: 2px; font-size: 13px; line-height: 20px; color: var(--muted); }
 .arc-note { font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); margin: 12px 2px; }
@@ -34,15 +34,16 @@
   {% for item in arc_view.sessions %}
     {% set due = item.waiting.startswith('你还没回：') %}
     {% set parts = item.waiting.split('；', 1) %}
+    {# 对方：双人场是「我x对方」，去掉我自己；多人场是「我所在多人场（共N人）」，去掉「我所在」#}
+    {% set who = (item.participants.split('x')|reject('equalto', owner)|join('、')) if 'x' in item.participants else (item.participants|replace(owner ~ '所在', '')) %}
+    {% set pg = item.progress.split('v') if item.progress else [] %}
     <li class="arc-row">
       <div class="arc-line1">
-        <span class="arc-title">{{ item.title }}</span><span class="arc-who">{{ item.participants }}</span>
+        <span class="arc-title">{{ item.title }}</span><span class="arc-who">{{ who }}</span>
         {% if due %}<span class="arc-chip is-due">待你回复 {{ parts[0][5:] }}</span>{% else %}<span class="arc-chip">{{ parts[0] }}</span>{% endif %}
       </div>
-      <div class="arc-line2">
-        {% if item.progress %}<span>写帖 我 / 对方 <b>{{ item.progress|replace('v',' / ') }}</b></span>{% endif %}
-        <span>本场平均 <b>{{ item.average }}</b> 分钟</span><span>{{ item.sample }}</span>
-      </div>
+      {% if pg|length == 2 %}<div class="arc-line2"><span>本场回复　你 <b>{{ pg[0] }}</b> · {{ who }} <b>{{ pg[1] }}</b></span></div>{% endif %}
+      <div class="arc-line2"><span>平均回复 <b>{{ item.average }}</b> 分钟{% if item.sample %} · 基于 {{ item.sample }}{% endif %}</span></div>
       {% if parts|length > 1 %}<div class="arc-detail">{{ parts[1]|replace('；', '\n') }}</div>{% endif %}
     </li>
   {% endfor %}
