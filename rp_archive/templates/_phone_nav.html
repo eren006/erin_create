@@ -1,5 +1,6 @@
 {% if mode in ('inbox', 'moments', 'public', 'library', 'profile') %}
 <div class="bottom-dock">
+  <a class="shop-fab" href="{{ url_for('player_shop', view='book') }}" aria-label="礼品店" title="礼品店">🎁</a>
   {% if mode == 'inbox' and status.can %}<div class="dock-action"><a class="primary-action" href="{{ url_for('player_phone_new') }}">＋ 新信息</a></div>{% endif %}
   {% if mode == 'moments' and not why %}<div class="dock-action" id="momentDock"></div>{% endif %}
   <nav class="phone-nav" aria-label="手机导航">
