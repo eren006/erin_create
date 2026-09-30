@@ -32,13 +32,18 @@
 .profile-item span { color: var(--muted); }
 .tools-toast { position: fixed; bottom: 130px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 40px); padding: 10px 16px; border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 13px; border-radius: 18px; box-shadow: 0 4px 24px #0002; z-index: 20; }
 
-.bottom-dock { position: sticky; bottom: 0; z-index: 7; flex-shrink: 0; background: var(--bar); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); margin-top: auto; backdrop-filter: blur(20px); }
-.phone-nav { display: grid; grid-template-columns: repeat(4, 1fr); padding: 3px 6px; }
-.phone-nav a { min-height: 54px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 1px; color: var(--muted); font-size: 12px; border-radius: 12px; }
-.phone-nav a.unread span::after { content: ""; position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); top: 1px; right: -6px; }
+.bottom-dock { position: sticky; bottom: 0; z-index: 7; flex-shrink: 0; padding: 0 14px calc(env(safe-area-inset-bottom) + 10px); margin-top: auto; pointer-events: none; }
+.phone-nav { pointer-events: auto; display: grid; grid-template-columns: 1fr 1fr 78px 1fr 1fr; align-items: center; height: 62px; padding: 0 8px; border-radius: 31px; background: #1c1c21; border: 1px solid rgba(255,255,255,.08); box-shadow: 0 10px 26px rgba(0,0,0,.24); }
+.phone-nav a { min-height: 46px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: #8e8e9a; font-size: 0; border-radius: 16px; margin: 0 4px; }
 .phone-nav a span { position: relative; font-size: 20px; line-height: 24px; }
-.phone-nav a[aria-current] { background: var(--theirs); color: var(--text); font-weight: 600; }
-.shop-fab { position: absolute; right: 14px; bottom: calc(100% + 14px); width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--bg); border-radius: 50%; font-size: 20px; line-height: 1; box-shadow: 0 3px 14px #0002; text-decoration: none; }
+.phone-nav svg { width: 22px; height: 22px; display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.phone-nav a.unread span::after { content: ""; position: absolute; width: 7px; height: 7px; border-radius: 50%; background: #ff6f88; top: -2px; right: -5px; box-shadow: 0 0 0 2px #1c1c21; }
+.phone-nav a[aria-current] { background: rgba(255,255,255,.12); color: #fff; }
+.phone-nav a.dock-plus { justify-self: center; width: 56px; height: 56px; min-height: 0; margin: -28px 0 0; border-radius: 50%; background: #fff; color: #111; box-shadow: 0 0 0 7px var(--chat-bg, var(--bg)), 0 8px 18px rgba(0,0,0,.28); transition: transform .12s; }
+.bar #mcOpen { display: none; }   /* 发朋友圈由底栏中间的「+」触发 */
+.phone-nav a.dock-plus:active { transform: scale(.94); }
+.phone-nav a.dock-plus svg { width: 24px; height: 24px; stroke-width: 2.4; }
+.shop-fab { position: absolute; right: 14px; bottom: calc(100% + 18px); width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--bg); border-radius: 50%; font-size: 20px; line-height: 1; box-shadow: 0 3px 14px #0002; text-decoration: none; }
 .shop-fab:active { transform: scale(.94); }
 .dock-action { display: flex; justify-content: flex-end; padding: 8px 16px 4px; }
 .primary-action { display: inline-flex; min-height: 44px; justify-content: center; align-items: center; padding: 0 20px; border: 1px solid var(--line); background: var(--bg); color: var(--text); border-radius: 24px; font: inherit; font-size: 14px; cursor: pointer; }
@@ -175,6 +180,8 @@
       if (innerWidth<600) window.scrollTo(0,document.scrollingElement.scrollHeight);
     });
   }
+  const plus=document.getElementById('dockPlus'), mcOpen=document.getElementById('mcOpen');
+  if(plus && plus.dataset.moments==='1' && mcOpen) plus.addEventListener('click',e=>{ e.preventDefault(); mcOpen.click(); });
   const momentDock=document.getElementById('momentDock'), publish=document.getElementById('mcOpen');
   if(momentDock && publish) {
     publish.className='primary-action'; publish.removeAttribute('style'); publish.textContent='＋ 发朋友圈';

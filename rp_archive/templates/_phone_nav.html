@@ -1,11 +1,10 @@
 {% if mode in ('inbox', 'moments', 'public', 'library', 'profile', 'lovemail', 'char', 'discover') %}
 <div class="bottom-dock">
   <a class="shop-fab" href="{{ url_for('player_shop', view='book') }}" aria-label="礼品店" title="礼品店">🎁</a>
-  {% if mode == 'inbox' and status.can %}<div class="dock-action"><a class="primary-action" href="{{ url_for('player_phone_new') }}">＋ 新信息</a></div>{% endif %}
-  {% if mode == 'moments' and not why %}<div class="dock-action" id="momentDock"></div>{% endif %}
   <nav class="phone-nav" aria-label="手机导航">
     <a href="{{ url_for('player_phone_inbox') }}"{% if mode in ('inbox', 'public') or (mode == 'library' and library_view == 'search') %} aria-current="page"{% endif %}><span aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 3v-3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 9h10M7 13h7"/></svg></span>消息</a>
     <a href="{{ url_for('player_discover') }}" data-other="__moments__" data-also="__lovemail__"{% if lovemail_last %} data-also-ts="{{ lovemail_last }}"{% endif %}{% if moments_latest is defined and moments_latest %} data-received-ts="{{ moments_latest['created_at'] }}"{% endif %}{% if mode in ('discover', 'moments', 'lovemail') %} aria-current="page"{% endif %}><span aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg></span>发现</a>
+    <a class="dock-plus" id="dockPlus" href="{{ url_for('player_phone_new') }}" aria-label="{{ '发朋友圈' if mode == 'moments' and not why else '新信息' }}" data-moments="{{ 1 if mode == 'moments' and not why else 0 }}"><svg viewBox="0 0 24 24" focusable="false"><path d="M12 5v14M5 12h14"/></svg></a>
     <a href="{{ url_for('player_character') }}"{% if mode == 'char' %} aria-current="page"{% endif %}><span aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M8 7a4 4 0 0 1 8 0v1H8V7Z"/><rect x="5" y="8" width="14" height="13" rx="3"/><path d="M9 14h6M9 17.5h3"/></svg></span>角色</a>
     <a href="{{ url_for('player_phone_library', view='profile') }}"{% if mode == 'profile' %} aria-current="page"{% endif %}><span aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></span>我的</a>
   </nav>
