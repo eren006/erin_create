@@ -637,7 +637,7 @@ a { color: var(--link); text-decoration: none; }
   <header class="bar">
     <a class="back" href="{{ url_for('player_phone_inbox') }}">信息</a>
     <div class="title">公开播报</div>
-    <div class="right">{% if not phone_admin %}<a class="quiet-button" href="{{ url_for('player_song') }}">🎵 点歌</a>{% endif %}</div>
+    <div class="right"></div>
   </header>
   {% include '_phone_public_ticker.html' %}
   <div class="scroll" id="scroll">
@@ -935,7 +935,7 @@ a { color: var(--link); text-decoration: none; }
 {% include '_phone_games.html' %}
 {% elif mode == 'song' %}
   <header class="bar">
-    <a class="back" href="{{ url_for('player_phone_public') }}">公开播报</a>
+    <a class="back" href="{{ url_for('player_phone_inbox') }}">消息</a>
     <div class="title">点歌<small>匿名 · 今日 {{ used }}/{{ cap }}</small></div>
     <div class="right"></div>
   </header>
