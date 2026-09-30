@@ -21,7 +21,16 @@ if row:
     tid = row["id"]
     sid = db.execute("SELECT id FROM shows WHERE tenant_id=? AND is_current=1", (tid,)).fetchone()["id"]
     code = db.execute("SELECT code FROM phone_codes WHERE show_id=? AND role_name='体验者'", (sid,)).fetchone()["code"]
+    arow = db.execute("SELECT code FROM phone_admin_codes WHERE show_id=?", (sid,)).fetchone()
+    if not arow:  # 旧版脚本建的演示账号没有管理员码，补一个
+        acode = "".join(secrets.choice(A._PHONE_CODE_ALPHABET) for _ in range(A._PHONE_CODE_LEN))
+        db.execute("INSERT INTO phone_admin_codes (show_id, tenant_id, code, created_at) VALUES (?, ?, ?, ?)",
+                   (sid, tid, acode, int(time.time() * 1000)))
+        db.commit()
+    else:
+        acode = arow["code"]
     print(f"演示团账号已存在。体验激活码：{code}\n入口：https://archive.changri.work/p/{code}")
+    print(f"演示管理员手机码：{acode}\n入口：https://archive.changri.work/p/{acode}")
     sys.exit(0)
 
 now = int(time.time() * 1000)
@@ -40,6 +49,8 @@ for r in roles:
                "VALUES (?, ?, ?, ?, 0, 0, 0, ?)", (sid, tid, "demo-" + r, r, now))
 code = "".join(secrets.choice(A._PHONE_CODE_ALPHABET) for _ in range(A._PHONE_CODE_LEN))
 db.execute("INSERT INTO phone_codes (tenant_id, show_id, role_name, code, created_at) VALUES (?, ?, '体验者', ?, ?)", (tid, sid, code, now))
+acode = "".join(secrets.choice(A._PHONE_CODE_ALPHABET) for _ in range(A._PHONE_CODE_LEN))
+db.execute("INSERT INTO phone_admin_codes (show_id, tenant_id, code, created_at) VALUES (?, ?, ?, ?)", (sid, tid, acode, now))
 
 # 网页发送打开 + 一份规则快照（宽松的上限、没有混乱效果），没有机器人也能发
 db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, 1)", (sid,))
@@ -77,4 +88,5 @@ db.commit()
 print("演示团账号已建好（跟真实数据完全隔开）。")
 print(f"体验激活码（一直有效）：{code}")
 print(f"入口：https://archive.changri.work/p/{code}")
+print(f"演示管理员手机码：{acode}（入口 https://archive.changri.work/p/{acode}）")
 print(f"演示团账号后台：账号 phone_demo，查看密码 {view_pw}，后台密钥 {admin_pw}（只打印这一次，自己记下）")
