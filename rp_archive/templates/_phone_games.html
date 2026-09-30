@@ -195,10 +195,11 @@
         snake.unshift(h);
         if (h.x === food.x && h.y === food.y) { setScore(score + 10); place(); } else snake.pop();
         draw();
+        if (running) timer = setTimeout(tick, Math.max(100, 260 - score / 10 * 6));  // 每吃一个快 6ms，最快 100ms
       }
       function start() {
         snake = [{ x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }]; dir = next = 'r'; setScore(0); place(); draw(); running = true;
-        timer = setInterval(tick, 230); stop = function () { clearInterval(timer); };
+        timer = setTimeout(tick, 260); stop = function () { clearTimeout(timer); };
       }
       onDir = turn; swipe(board, turn);
       document.querySelectorAll('.gm-pad button').forEach(function (b) { b.addEventListener('click', function () { if (running) turn(b.dataset.d); }); });
