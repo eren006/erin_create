@@ -2486,11 +2486,13 @@ def _book_prep_defaults(db, tid):
     return {"group_set": last["group_set"] or "", "groups": {k: flat.get(k, "") for k, _ in BOOK_GROUP_KEYS}}
 
 # 预订时「复制配置」不带的键：天数/同步时间戳是运行态；物品注册表走通用库按需挑；
-# 待上载队列和 place_keys/battle_attrs/player_skills 是上一季的玩家数据
+# 待上载队列和 place_keys/battle_attrs/player_skills 是上一季的玩家数据；
+# 地点列表和地图（available_places / place_maps）每季重新录入、重新拼，不跟着整套配置走（2026-10-01 用户要求）
 _BOOK_COPY_EXCLUDE = frozenset({
     "global_days", "_last_bot_sync",
     "item_registry", "reward_item_registry", "item_registry_pending", "equipment_registry_pending",
     "place_keys", "battle_attrs", "player_skills",
+    "available_places", "place_maps",
 })
 
 def _book_copy_config(db, tid, sid, src):
