@@ -41,6 +41,7 @@
         <button data-tool="mark">🌳 放装饰</button>
         <select id="pmIcon"></select>
         <select id="pmSize" title="装饰大小"><option value="1">小 1格</option><option value="2">中 2格</option><option value="3">大 3格</option></select>
+        <button data-tool="erase">🧽 擦除</button>
         <span class="sp"></span>
         <button id="pmUndo">↩ 撤销</button>
       </div>
@@ -48,7 +49,7 @@
         <span style="font-size:12px;color:var(--muted);padding-top:6px;">已录入的地点（点一下放进地图）：</span>
         <span id="pmPlaceChips" style="display:flex;gap:6px;flex-wrap:wrap;flex:1;"></span>
       </div>
-      <div class="pm-bar" id="pmSel" style="display:none;">
+      <div class="pm-bar" id="pmSel" style="visibility:hidden;">
         <span style="font-size:12px;color:var(--muted);">选中：</span>
         <input type="text" id="pmName" maxlength="20" placeholder="名称（如 客厅）">
         <select id="pmSelKind"></select>
@@ -70,7 +71,7 @@
         <button id="pmRemove" class="del">删除这张地图</button>
       </div>
       <div class="pm-tip">
-        <b>怎么拼：</b>选「画区块」，在格子上拖出一个矩形（房间、建筑、广场、草地、水域、道路）；选中后改名字或类型，拖动移动，拖右下角缩放。
+        <b>怎么拼：</b>选「画区块」，在格子上拖出一个矩形（房间、建筑、广场、草地、水域、道路）；选中后改名字或类型，拖动移动，拖右下角缩放；想删掉东西：选中后点「删除」（或按 Delete 键），或者用「🧽 擦除」点哪个删哪个。
         「门」点在两个房间之间的墙边；「画路径」选石板路、土路、河流、围栏、城墙后在格子上按住拖一笔；「放装饰」选树、花、石头、帐篷、长椅等图标和大小，点一下放一个（可以连着点）。房屋就用「房间」拼，城市就用「建筑」+「路径」+「广场」+装饰拼。
       </div>
     </div>
@@ -158,7 +159,7 @@
 
   function sync() {   // 选中项 → 属性栏
     var it = sel >= 0 ? cfg.items[sel] : null, bar = $('pmSel');
-    bar.style.display = it && (it.t === 'rect' || it.t === 'mark' || it.t === 'path') ? '' : 'none';
+    bar.style.visibility = it && (it.t === 'rect' || it.t === 'mark' || it.t === 'path') ? 'visible' : 'hidden';   // 占位不挤动地图
     if (!it) return;
     var isRect = it.t === 'rect', isMark = it.t === 'mark', isPath = it.t === 'path';
     $('pmSelKind').style.display = isRect ? '' : 'none';
@@ -214,7 +215,14 @@
       if (ex >= 0) cfg.items.splice(ex, 1); else { door.t = 'door'; cfg.items.push(door); }
       sel = -1; sync(); draw(); return;
     }
+    if (tool === 'erase') {
+      var ei = hit(p.cx, p.cy);
+      if (ei >= 0) { snap(); cfg.items.splice(ei, 1); sel = -1; sync(); draw(); }
+      return;
+    }
     if (tool === 'mark') {
+      var onMark = cfg.items.findIndex(function (m) { var z = m.s || 1; return m.t === 'mark' && p.cx >= m.x && p.cx < m.x + z && p.cy >= m.y && p.cy < m.y + z; });
+      if (onMark >= 0) { sel = onMark; sync(); draw(); return; }      // 点到已有的装饰：选中它（想删就点「删除」或切到「擦除」），不叠放
       var ms = +$('pmSize').value || 1;
       snap(); cfg.items.push({ t: 'mark', x: Math.min(p.cx, cfg.w - ms), y: Math.min(p.cy, cfg.h - ms), s: ms, icon: $('pmIcon').value, label: '' });
       sel = cfg.items.length - 1; sync(); draw(); return;      // 装饰可以连着点，不退出工具
@@ -292,6 +300,13 @@
   }
   document.querySelectorAll('#pmTools [data-tool]').forEach(function (b) { b.onclick = function () { setTool(b.dataset.tool); if (tool !== 'select') { sel = -1; sync(); draw(); } }; });
   $('pmUndo').onclick = undo;
+  document.addEventListener('keydown', function (e) {
+    if (!cfg || !$('pmBack').classList.contains('open')) return;
+    var tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0) { e.preventDefault(); $('pmDel').click(); }
+    else if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
+  });
   $('pmName').oninput = function () {
     var it = cfg.items[sel]; if (!it) return;
     if (it.t === 'rect') it.name = this.value; else it.label = this.value; draw();
