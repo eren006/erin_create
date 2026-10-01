@@ -79,7 +79,7 @@ ok(app.test_client().get(f"/p/me/moments/img/{img_id}").status_code == 404, "img
 ok(zy.get("/p/me/moments").headers["Cache-Control"] == "no-store", "page no-store")
 inbox_page = lin.get("/p/me").get_data(as_text=True)
 latest_ts = c.execute("SELECT MAX(created_at) FROM moments WHERE deleted=0").fetchone()[0]
-ok('aria-label="手机导航"' in inbox_page and 'href="/p/me/moments" data-other="__moments__"' in inbox_page
+ok('aria-label="手机导航"' in inbox_page and 'href="/p/me/discover" data-other="__moments__"' in inbox_page   # 底栏现在是「发现」入口（朋友圈 + 心动信箱合并）
    and f'data-received-ts="{latest_ts}"' in inbox_page, "bottom navigation entry and unread timestamp")
 
 # 点赞（切换）/ 评论 / 回复（只能回复楼主或评论过的人）

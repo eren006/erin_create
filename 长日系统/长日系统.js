@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.10.3
+// @version      1.10.7
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.10.3");
+    ext = seal.ext.new("changri", "长日将尽", "1.10.7");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -2055,6 +2055,8 @@ const changriApi = {
     // 存储（带缓存，卫星读写主存储必须走这两对函数；JSON key 用 kvGet/kvSet，裸串用 kvGetRaw/kvSetRaw）
     kvGetRaw: cachedGet,
     kvSetRaw: cachedSet,
+    isTooRepetitive,   // 社交插件送礼留言用（函数声明会提升；提示文案是后面才定义的 const，不能在这里直接引用，用 getter 读取时再取）
+    get TOO_REPEAT_MSG() { return TOO_REPEAT_MSG; },
     kvGet,
     kvSet,
     getStorageInt,
@@ -5927,10 +5929,10 @@ function buildAppointmentGuide(gid, day, { includeEnd = false } = {}) {
 
 // 建群前置：分配群号+算好过期时间。私约/电话/官约/官电/独自踩点共用，
 // 避免"暂无可调用的群号"这条错误文案和过期时间的计算方式散落在多处、改一处忘一处。
-async function beginGroupCreation(platform, ctx, msg) {
+async function beginGroupCreation(platform, ctx, msg, reply) {
     const gid = await allocateGroup(platform, ctx, msg);
     if (!gid) {
-        seal.replyToSender(ctx, msg, "❌ 暂无可调用的群号，请联系管理员扩容群池。");
+        (reply || (t => seal.replyToSender(ctx, msg, t)))("❌ 暂无可调用的群号，请联系管理员扩容群池。");
         return null;
     }
     const expireHours = getStorageInt("group_expire_hours", 48);
@@ -6256,8 +6258,6 @@ cmd_maintenance_tools.solve = (ctx, msg) => {
         "以下均为诊断/修复类指令，不是日常玩法指令，仅在确认对应数据出现异常时才需要使用，正常运营请勿随意调用：",
         "",
         "• 。约会数据体检 [修复] —— 核对约会相关四份存储是否一致（长日系统）",
-        "• 。修复耗时统计 [角色名] —— 清除异常回复耗时统计（长日社交）",
-        "• 。修复商城货币 —— 修正商城/二手市场挂单的货币 code（长日RPG）",
         "",
         "如无法确定是否需要执行，请先用不带参数的诊断/报告模式查看情况，或联系开发者确认后再操作。"
     ].join("\n");
@@ -7225,6 +7225,16 @@ ext.cmdMap["查看功能权限"] = cmd_view_user_feature;
 // ========================
 // 🕊️ 寄信与关系线系统
 // ========================
+// 一条消息里刷重复：同一个字连续 12 遍以上、2~20 字的一小段连续 3 遍以上（小段要含 2 种以上不同的字，「哈哈哈哈哈哈」不算）、
+// 长文本里不同的字太少。跟存档站网页手机的 _too_repetitive 同一套规则。寄信 / 送礼留言 / 心动信共用
+const TOO_REPEAT_MSG = "❌ 内容里重复太多了，精简一下再发";
+function isTooRepetitive(text) {
+    const t = String(text || "").replace(/\s+/g, "");
+    if (/(\S)\1{11,}/.test(t)) return true;
+    for (const m of t.matchAll(/(\S[\s\S]{1,19}?)\1{2,}/g)) if (new Set(m[1]).size >= 2) return true;
+    return t.length >= 60 && new Set(t).size / t.length < 0.12;
+}
+
 // ── 寄信 · 前置校验：功能开关/自寄/收件人存在/冷却/每日上限 ──
 // 全部通过返回投递所需状态对象；任一项拦截时已回复玩家并返回 null
 function chaosLetterPrecheck(ctx, msg, platform, sendname, toname) {
@@ -7365,6 +7375,7 @@ function pickTornPage(chaosConfig, a_private_group, platform, senderUid, trueRec
 
 // ── 寄信 · 主流程：校验 → 侵蚀 → 落款/误投/残页 → 投递/存档/计数/公开 ──
 async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, contentOriginal) {
+    if (isTooRepetitive(contentOriginal)) return seal.replyToSender(ctx, msg, TOO_REPEAT_MSG);
     const st = chaosLetterPrecheck(ctx, msg, platform, sendname, toname);
     if (!st) return;
     const { realSendname, a_private_group, toUidForLetter, chaosConfig, uid, cooldownKey, now, gameDay, globalChaosCounts, userKey, userRec } = st;
@@ -7524,6 +7535,68 @@ async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, co
 // 🏢 官约与目击系统
 // ========================
 
+// 官约 / 官电建群核心：QQ 指令和网页小手机（管理版）共用。reply(text) 接收提示和结果文案；返回 true=群已建成
+async function createOfficialGroup(kind, platform, ctx, msg, reply, day, time, place, participantsRaw) {
+  const isCall = kind === "官电";
+  if (!day || !time || !participantsRaw || (!isCall && !place)) {
+    reply(isCall ? `格式：。发起官电 D1 14:00-15:00 参与者1/参与者2/...` : `格式：。发起官约 D1 14:00-15:00 地点 参与者1/参与者2/...`);
+    return false;
+  }
+  if (!isValidTimeFormat(time)) { reply(describeBadTimeInput(time)); return false; }
+
+  const participants = participantsRaw.replace(/，/g, "/").split("/").map(n => n.trim()).filter(Boolean);
+  const dupNames = [...new Set(participants.filter((n, i) => participants.indexOf(n) !== i))];
+  if (dupNames.length > 0) { reply(`参与者列表中有重复的名字：${dupNames.join("、")}，请检查后重新发送`); return false; }
+
+  const a_private_group = kvGet("a_private_group", {});
+  const a_lockedSlots = kvGet("a_lockedSlots", {});
+  const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
+  if (!a_private_group[platform]) { reply(`当前平台没有绑定任何角色`); return false; }
+
+  const validParticipants = participants.filter(name => getUidByRoleName(platform, name));
+  const invalidParticipants = participants.filter(name => !getUidByRoleName(platform, name));
+  if (invalidParticipants.length > 0) { reply(`以下参与者未找到：${invalidParticipants.join("、")}`); return false; }
+
+  const conflictParticipants = [];
+  for (const name of validParticipants) {
+    const key = `${platform}:${getUidByRoleName(platform, name)}`;
+    const locked = a_lockedSlots[key]?.[day] || [];
+    if (locked.some(slot => timeOverlap(slot, time))) { conflictParticipants.push(`${name}（被锁定）`); continue; }
+    const schedule = b_confirmedSchedule[key] || [];
+    if (schedule.some(ev => ev.day === day && timeOverlap(ev.time, time))) conflictParticipants.push(`${name}（已有安排）`);
+  }
+  if (conflictParticipants.length > 0) { reply(`以下参与者时间冲突：\n${conflictParticipants.join("\n")}`); return false; }
+
+  // 分配群号+建群公共副作用（写日程/过期信息/公告改名/目击检测/互动计数/计时器，见 finishGroupCreation）
+  const alloc = await beginGroupCreation(platform, ctx, msg, reply);
+  if (!alloc) return false;
+  const { gid, expireTime, timeStr } = alloc;
+
+  const groupData = isCall ? { day, time, place: "电话", subtype: "电话" } : { day, time, place, subtype: "官约" };
+  const groupNameTag = validParticipants.length > 2 ? "多人" : validParticipants.join("、");
+  const guide = buildAppointmentGuide(gid, day);
+  let finalGroupName, groupAnnouncement, noticeText;
+  if (isCall) {
+    finalGroupName = `官电 ${day} ${time} ${groupNameTag}`;
+    groupAnnouncement = `📞 官电已确认\n\n📅 ${day} ${time}\n👥 参与者：${validParticipants.join("、")}\n\n群号：${gid}\n有效至 ${timeStr}${guide}`;
+    noticeText = `📞 官电通知\n\n📅 ${day} ${time}\n👥 参与者：${validParticipants.join("、")}\n\n💬 官电群号：${gid}`;
+  } else {
+    finalGroupName = `${getCustomTypeLabel("官约")} ${day} ${time} ${place} ${groupNameTag}`;
+    groupAnnouncement = `🎖️ 官约已确认\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${validParticipants.join("、")}\n\n群号：${gid}\n有效至 ${timeStr}${guide}`;
+    noticeText = `🎖️ 官约通知\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${validParticipants.join("、")}\n\n💬 官约群号：${gid}`;
+  }
+
+  finishGroupCreation({
+      platform, ctx, msg, gid, expireTime, groupData,
+      participants: validParticipants,
+      groupAnnouncement, finalGroupName, noticeText,
+      partnerFor: () => `${kind}（${validParticipants.join("、")}）`
+  });
+
+  reply(`✅ ${kind}创建成功！群号：${gid}`);
+  return true;
+}
+
 let cmd_create_official_appointment = seal.ext.newCmdItemInfo();
 cmd_create_official_appointment.name = "发起官约";
 cmd_create_official_appointment.help = "。发起官约 D1 14:00-15:00 地点 参与者1/参与者2/...（管理员专用，自动创建官方约会群组）";
@@ -7533,100 +7606,10 @@ cmd_create_official_appointment.solve = async (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `只有管理员可以发起官约`);
     return seal.ext.newCmdExecuteResult(true);
   }
-
   const formArgs = maybeParseAppointmentForm((msg.rawMessage || msg.message || "").trim(), "官约");
   if (formArgs) cmdArgs = formArgs;
-
-  const day = cmdArgs.getArgN(1);
-  const time = cmdArgs.getArgN(2);
-  const place = cmdArgs.getArgN(3);
-  const participantsRaw = cmdArgs.getArgN(4);
-
-  if (!day || !time || !place || !participantsRaw) {
-    seal.replyToSender(ctx, msg, `格式：。发起官约 D1 14:00-15:00 地点 参与者1/参与者2/...`);
-    return seal.ext.newCmdExecuteResult(true);
-  }
-
-  if (!isValidTimeFormat(time)) {
-    seal.replyToSender(ctx, msg, describeBadTimeInput(time));
-    return seal.ext.newCmdExecuteResult(true);
-  }
-
-  const participants = participantsRaw.replace(/，/g, "/").split("/").map(n => n.trim()).filter(Boolean);
-
-  const dupNames = [...new Set(participants.filter((n, i) => participants.indexOf(n) !== i))];
-  if (dupNames.length > 0) {
-    seal.replyToSender(ctx, msg, `参与者列表中有重复的名字：${dupNames.join("、")}，请检查后重新发送`);
-    return seal.ext.newCmdExecuteResult(true);
-  }
-  const platform = msg.platform;
-  const a_private_group = kvGet("a_private_group", {});
-  const a_lockedSlots = kvGet("a_lockedSlots", {});
-  const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
-
-  if (!a_private_group[platform]) {
-    seal.replyToSender(ctx, msg, `当前平台没有绑定任何角色`);
-    return seal.ext.newCmdExecuteResult(true);
-  }
-
-  let validParticipants = [];
-  let invalidParticipants = [];
-
-  for (let name of participants) {
-    if (getUidByRoleName(platform, name)) {
-      validParticipants.push(name);
-    } else {
-      invalidParticipants.push(name);
-    }
-  }
-
-  if (invalidParticipants.length > 0) {
-    seal.replyToSender(ctx, msg, `以下参与者未找到：${invalidParticipants.join("、")}`);
-    return seal.ext.newCmdExecuteResult(true);
-  }
-
-  // 检查时间冲突逻辑
-  let conflictParticipants = [];
-  for (let name of validParticipants) {
-    const uid = getUidByRoleName(platform, name);
-    const key = `${platform}:${uid}`;
-    const locked = a_lockedSlots[key]?.[day] || [];
-    if (locked.some(slot => timeOverlap(slot, time))) {
-      conflictParticipants.push(`${name}（被锁定）`);
-      continue;
-    }
-    const schedule = b_confirmedSchedule[key] || [];
-    if (schedule.some(ev => ev.day === day && timeOverlap(ev.time, time))) {
-      conflictParticipants.push(`${name}（已有安排）`);
-      continue;
-    }
-  }
-
-  if (conflictParticipants.length > 0) {
-    seal.replyToSender(ctx, msg, `以下参与者时间冲突：\n${conflictParticipants.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-  }
-
-  // 分配群号+建群公共副作用（写日程/过期信息/公告改名/目击检测/互动计数/计时器，见 finishGroupCreation）
-  const alloc = await beginGroupCreation(platform, ctx, msg);
-  if (!alloc) return seal.ext.newCmdExecuteResult(true);
-  const { gid, expireTime, timeStr } = alloc;
-
-  const groupData = { day, time, place, subtype: "官约" };
-  const groupNameTag = validParticipants.length > 2 ? "多人" : validParticipants.join("、");
-  const finalGroupName = `${getCustomTypeLabel("官约")} ${day} ${time} ${place} ${groupNameTag}`;
-  const officialGuide = buildAppointmentGuide(gid, day);
-  const groupAnnouncement = `🎖️ 官约已确认\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${validParticipants.join("、")}\n\n群号：${gid}\n有效至 ${timeStr}${officialGuide}`;
-  const noticeText = `🎖️ 官约通知\n\n📅 ${day} ${time}\n📍 ${place}\n👥 参与者：${validParticipants.join("、")}\n\n💬 官约群号：${gid}`;
-
-  finishGroupCreation({
-      platform, ctx, msg, gid, expireTime, groupData,
-      participants: validParticipants,
-      groupAnnouncement, finalGroupName, noticeText,
-      partnerFor: () => `官约（${validParticipants.join("、")}）`
-  });
-
-  seal.replyToSender(ctx, msg, `✅ 官约创建成功！群号：${gid}`);
+  await createOfficialGroup("官约", msg.platform, ctx, msg, t => seal.replyToSender(ctx, msg, t),
+      cmdArgs.getArgN(1), cmdArgs.getArgN(2), cmdArgs.getArgN(3), cmdArgs.getArgN(4));
   return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -7645,91 +7628,10 @@ cmd_create_official_call.solve = async (ctx, msg, cmdArgs) => {
     seal.replyToSender(ctx, msg, `只有管理员可以发起官电`);
     return seal.ext.newCmdExecuteResult(true);
   }
-
   const formArgs = maybeParseAppointmentForm((msg.rawMessage || msg.message || "").trim(), "官电");
   if (formArgs) cmdArgs = formArgs;
-
-  const day = cmdArgs.getArgN(1);
-  const time = cmdArgs.getArgN(2);
-  const participantsRaw = cmdArgs.getArgN(3);
-
-  if (!day || !time || !participantsRaw) {
-    seal.replyToSender(ctx, msg, `格式：。发起官电 D1 14:00-15:00 参与者1/参与者2/...`);
-    return seal.ext.newCmdExecuteResult(true);
-  }
-
-  if (!isValidTimeFormat(time)) {
-    seal.replyToSender(ctx, msg, describeBadTimeInput(time));
-    return seal.ext.newCmdExecuteResult(true);
-  }
-
-  const participants = participantsRaw.replace(/，/g, "/").split("/").map(n => n.trim()).filter(Boolean);
-  const platform = msg.platform;
-  const a_private_group = kvGet("a_private_group", {});
-  const a_lockedSlots = kvGet("a_lockedSlots", {});
-  const b_confirmedSchedule = kvGet("b_confirmedSchedule", {});
-
-  if (!a_private_group[platform]) {
-    seal.replyToSender(ctx, msg, `当前平台没有绑定任何角色`);
-    return seal.ext.newCmdExecuteResult(true);
-  }
-
-  let validParticipants = [];
-  let invalidParticipants = [];
-
-  for (let name of participants) {
-    if (getUidByRoleName(platform, name)) {
-      validParticipants.push(name);
-    } else {
-      invalidParticipants.push(name);
-    }
-  }
-
-  if (invalidParticipants.length > 0) {
-    seal.replyToSender(ctx, msg, `以下参与者未找到：${invalidParticipants.join("、")}`);
-    return seal.ext.newCmdExecuteResult(true);
-  }
-
-  let conflictParticipants = [];
-  for (let name of validParticipants) {
-    const uid = getUidByRoleName(platform, name);
-    const key = `${platform}:${uid}`;
-    const locked = a_lockedSlots[key]?.[day] || [];
-    if (locked.some(slot => timeOverlap(slot, time))) {
-      conflictParticipants.push(`${name}（被锁定）`);
-      continue;
-    }
-    const schedule = b_confirmedSchedule[key] || [];
-    if (schedule.some(ev => ev.day === day && timeOverlap(ev.time, time))) {
-      conflictParticipants.push(`${name}（已有安排）`);
-      continue;
-    }
-  }
-
-  if (conflictParticipants.length > 0) {
-    seal.replyToSender(ctx, msg, `以下参与者时间冲突：\n${conflictParticipants.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-  }
-
-  const alloc = await beginGroupCreation(platform, ctx, msg);
-  if (!alloc) return seal.ext.newCmdExecuteResult(true);
-  const { gid, expireTime, timeStr } = alloc;
-
-  const groupData = { day, time, place: "电话", subtype: "电话" };
-  const groupNameTag = validParticipants.length > 2 ? "多人" : validParticipants.join("、");
-  const finalGroupName = `官电 ${day} ${time} ${groupNameTag}`;
-  const callGuide = buildAppointmentGuide(gid, day);
-  const groupAnnouncement = `📞 官电已确认\n\n📅 ${day} ${time}\n👥 参与者：${validParticipants.join("、")}\n\n群号：${gid}\n有效至 ${timeStr}${callGuide}`;
-  const noticeText = `📞 官电通知\n\n📅 ${day} ${time}\n👥 参与者：${validParticipants.join("、")}\n\n💬 官电群号：${gid}`;
-
-  finishGroupCreation({
-      platform, ctx, msg, gid, expireTime, groupData,
-      participants: validParticipants,
-      groupAnnouncement, finalGroupName, noticeText,
-      partnerFor: () => `官电（${validParticipants.join("、")}）`
-  });
-
-  seal.replyToSender(ctx, msg, `✅ 官电创建成功！群号：${gid}`);
+  await createOfficialGroup("官电", msg.platform, ctx, msg, t => seal.replyToSender(ctx, msg, t),
+      cmdArgs.getArgN(1), cmdArgs.getArgN(2), "", cmdArgs.getArgN(3));
   return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -9545,7 +9447,8 @@ function handleReply(platform, groupId, roleName, message) {
         // 官约群里管理员经常发旁白，但管理员不在邀请对象内、进不了 timerStatus，正常会被上面这条拦掉。
         // 官约单独放行：只要开着复盘就整条原样存档，不要求「角色名+分隔符+正文」的握手格式（旁白不是台词），
         // 也不跑下面参与者专属的轮流状态/字数统计/写帖进度（那些是给邀请对象本人用的，旁白不该污染）。
-        if (timer.subtype === "官约" && isArchiveEnabled() && getSeasonMode() !== "no_review") {
+        // NPC 账号（如「*」旁白）不在邀请名单里，非官约群也要原样存档，否则只会报"不在参与者名单"。
+        if ((timer.subtype === "官约" || kvGet("a_npc_list", []).includes(roleName)) && isArchiveEnabled() && getSeasonMode() !== "no_review") {
             const _narratorContent = stripImageTags(stripOocParens((message || "").trim()));
             if (_narratorContent) {
                 const _narratorSS = getSessionStats()[groupId] || {};
@@ -9563,7 +9466,7 @@ function handleReply(platform, groupId, roleName, message) {
                     timestamp:  Date.now(),
                     content:    _narratorContent
                 });
-                console.log(`[存档] 官约旁白 | ${roleName} | ${_narratorContent.slice(0,30)}…`);
+                console.log(`[存档] 旁白/NPC | ${roleName} | ${_narratorContent.slice(0,30)}…`);
             }
         } else {
             console.warn(`[监听系统] 处理失败: 角色 [${roleName}] 不在参与者名单中`);
@@ -12089,6 +11992,11 @@ cmd_send_lovemail.solve =(ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    if (isTooRepetitive(content)) {
+        seal.replyToSender(ctx, msg, TOO_REPEAT_MSG);
+        return seal.ext.newCmdExecuteResult(true);
+    }
+
     if (!receiver) {
         seal.replyToSender(ctx, msg, `⚠️ 格式错误！请指定发送对象。`);
         seal.replyToSender(ctx, msg, `发送心动信\n【发送对象】角色名\n【内容】想说的话\n【署名】自定义昵称（选填）`);
@@ -12786,6 +12694,7 @@ async function phoneWebSyncCore(base, token) {
     const songsDone = kvGet("phone_songs_done", []);
     const lmDone = kvGet("phone_lovemail_done", []), lmRevokeDone = kvGet("phone_lovemail_revoke_done", []);
     const blockOpsDone = kvGet("phone_block_ops_done", []);
+    const adminOpsDone = kvGet("phone_admin_ops_done", []);
     const groupAfter = parseInt(cachedGet("phone_group_cursor") || "0") || 0;
     const reports = Date.now() - _phoneReportsAt >= 120 * 1000 ? buildPhoneReports(platform) : null;
     if (reports) _phoneReportsAt = Date.now();
@@ -12793,11 +12702,12 @@ async function phoneWebSyncCore(base, token) {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Archive-Token": token },
         body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
-            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone, group_after: groupAfter,
+            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone, admin_ops_done: adminOpsDone, group_after: groupAfter,
             ...(reports ? { reports } : {}),
             // block_write：告诉存档站这个版本会处理网页上的实名拉黑，网页才显示拉黑按钮
             snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, block_write: true,
-                        counts, last, catalogs, displays, shop, lovemail } })
+                        counts, last, catalogs, displays, shop, lovemail,
+                        plugin: { version: ext.version || "", params: buildPhoneAdminParams() } } })
     });
     if (!resp.ok) return;
     const data = await resp.json();
@@ -12811,6 +12721,11 @@ async function phoneWebSyncCore(base, token) {
     phoneApplyLoveMails(platform, data.lovemails || [], data.lovemail_revokes || []);
     if (blockOpsDone.length) kvSet("phone_block_ops_done", kvGet("phone_block_ops_done", []).filter(id => !blockOpsDone.includes(id)));
     phoneApplyBlockOps(platform, data.block_ops || []);
+    if (adminOpsDone.length) {
+        const sent = new Set(adminOpsDone.map(d => d.id));
+        kvSet("phone_admin_ops_done", kvGet("phone_admin_ops_done", []).filter(d => !sent.has(d.id)));
+    }
+    phoneApplyAdminOps(platform, data.admin_ops || []);
     phoneApplyGroupEvents(platform, data.group_events || [], gameDay, groupAfter);
     kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
 
@@ -12937,6 +12852,239 @@ function phoneApplyBlockOps(platform, ops) {
     }
     kvSet("sys_blocklist", bl);
     kvSet("phone_block_ops_done", done.slice(-300));
+}
+
+// 网页「设置」页能改的参数白名单：id → 读写方式。读写规则跟「。设置 信件与礼品 / 互动参数」同一套存储，
+// 网页只暴露寄信 / 礼物 / 心动信这几项；num 类带上下限，bool 类用 on/off。
+const PHONE_ADMIN_PARAMS = (() => {
+    const chaos = (id, label, note) => ({ id, label, section: "寄信混乱", type: "num", min: 0, max: 100, unit: "%", note, web: `chaos_letter_config__${id}`,
+        get: () => parseInt(kvGet("chaos_letter_config", {})[id] ?? 0) || 0,
+        set: (v) => { const c = kvGet("chaos_letter_config", {}); c[id] = v; kvSet("chaos_letter_config", c); } });
+    const chaosNum = (id, label, section, def, min, max, unit, note) => ({ id, label, section, type: "num", min, max, unit, note, web: `chaos_letter_config__${id}`,
+        get: () => parseInt(kvGet("chaos_letter_config", {})[id] ?? def), set: (v) => { const c = kvGet("chaos_letter_config", {}); c[id] = v; kvSet("chaos_letter_config", c); } });
+    const store = (id, label, section, def, min, max, unit, note) => ({ id, label, section, type: "num", min, max, unit, note, web: id === "giftMode" ? null : id,
+        get: () => getStorageInt(id, def), set: (v) => cachedSet(id, String(v)) });
+    const toggle = (id, label, section, key, def) => ({ id, label, section, type: "bool", web: `global_feature_toggle__${key}`,
+        get: () => kvGet("global_feature_toggle", {})[key] ?? def, set: (v) => { const t = kvGet("global_feature_toggle", {}); t[key] = v; kvSet("global_feature_toggle", t); } });
+    return [
+        toggle("t_sms", "寄信功能", "总开关", "enable_chaos_letter", true),
+        toggle("t_gift", "礼物功能", "总开关", "enable_general_gift", true),
+        toggle("t_lovemail", "心动信功能", "总开关", "enable_lovemail", false),
+        chaosNum("dailyLimit", "寄信每日上限", "寄信", 5, 0, 999, "封", "每个角色每个游戏日最多寄几封"),
+        store("mailCooldown", "寄信冷却", "寄信", 60, 0, 1440, "分钟"),
+        { id: "letter_public_send", label: "寄信公开播报", section: "寄信", type: "bool", web: "letter_public_send", get: () => !!kvGet("letter_public_send", false), set: (v) => kvSet("letter_public_send", v) },
+        chaosNum("publicChance", "寄信公开概率", "寄信", 50, 0, 100, "%", "开启公开播报后，每封信被公开的概率"),
+        chaos("misdelivery", "送错人", "误投到别人手里"), chaos("blackoutText", "涂改", "部分内容被涂黑"),
+        chaos("loseContent", "丢失", "内容被截掉一段"), chaos("antonymReplace", "反义 / 错字", "一部分字被换掉"),
+        chaos("reverseOrder", "乱序", "内容顺序被打乱"), chaos("mistakenSignature", "署名混淆", "落款被换成别人"),
+        chaos("tornPage", "残页", "信被撕成残页"),
+        store("giftCooldown", "送礼冷却", "礼物", 30, 0, 1440, "分钟"),
+        store("giftDailyLimit", "每日礼物上限", "礼物", 100, 0, 9999, "个"),
+        store("giftMode", "送礼模式", "礼物", 0, 0, 1, "", "0=任意礼物，1=只能送图鉴里的预设礼物"),
+        { id: "gift_public_send", label: "礼物公开播报", section: "礼物", type: "bool", web: "gift_public_send", get: () => !!kvGet("gift_public_send", false), set: (v) => kvSet("gift_public_send", v) },
+        store("giftPublicChance", "礼物公开概率", "礼物", 50, 0, 100, "%"),
+        chaosNum("giftLost", "礼物丢失", "礼物", 0, 0, 100, "%"), chaosNum("giftMisdelivery", "礼物送错人", "礼物", 0, 0, 100, "%"),
+        { id: "drop_hide_receiver", label: "掉落曝光隐藏收件人", section: "礼物", type: "bool", web: "drop_hide_receiver",
+          get: () => cachedGet("drop_hide_receiver") === "true", set: (v) => cachedSet("drop_hide_receiver", v ? "true" : "false") },
+        { id: "lovemail_default_limit", label: "心动信每日上限", section: "心动信", type: "num", web: "lovemail_default_limit", min: 0, max: 99, unit: "封",
+          get: () => parseInt(cachedGet("lovemail_default_limit") || "3"), set: (v) => cachedSet("lovemail_default_limit", String(v)) },
+        { id: "lovemail_delivery_time", label: "心动信派送时间", section: "心动信", type: "time", web: "lovemail_delivery_time",
+          get: () => (cachedGet("lovemail_delivery_time") || "22:00").replace(/"/g, "").trim() || "22:00", set: (v) => cachedSet("lovemail_delivery_time", v) },
+    ];
+})();
+function buildPhoneAdminParams() {
+    return PHONE_ADMIN_PARAMS.map(p => {
+        let value; try { value = p.get(); } catch (e) { value = null; }
+        return { id: p.id, label: p.label, section: p.section, type: p.type, value, min: p.min ?? null, max: p.max ?? null, unit: p.unit || "", note: p.note || "" };
+    });
+}
+
+// 管理员在网页角色页的快速设置：改属性值 / 加扣道具货币 / 功能开关。规则跟对应的 QQ 指令一致（属性按 min/max 夹住，
+// 道具货币按注册表名称或代码找，开关写 feature_user_blocklist）。每条都回报 {id, ok, msg} 给存档站显示；
+// 同一条重复收到时（回报还没送达）不重复执行，靠 phone_admin_ops_done 里的 id 判断。
+// 网页「发起官约 / 官电」：建群要等群号分配和群成员检查（异步、几秒），所以不走下面同步的逐条执行，单独跑，跑完自己把结果记进 phone_admin_ops_done。
+// 重复收到同一条（回报还没送达）靠内存里的「执行中」判断；插件在中途被重载时 id 已记在 phone_admin_ops_started 里，
+// 重新收到就不再自动重跑（免得重复建群），直接回报「状态不明」让管理员核对。
+const _phoneOfficialRunning = new Set();
+async function phoneRunOfficialOp(platform, op) {
+    if (_phoneOfficialRunning.has(op.id)) return;
+    _phoneOfficialRunning.add(op.id);
+    await null;   // 让出一拍：下面任何一条路径（包括立刻失败）写回报时，phoneApplyAdminOps 已经写完它那份，不会被它的旧副本盖掉
+    const finish = (ok, msg) => {
+        console.log(`[网页官约] #${op.id} ${ok ? "成功" : "失败"}：${msg}`);
+        const d = kvGet("phone_admin_ops_done", []);
+        d.push({ id: op.id, ok, msg: String(msg).slice(0, 200) });
+        kvSet("phone_admin_ops_done", d.slice(-200));
+        _phoneOfficialRunning.delete(op.id);
+    };
+    const started = kvGet("phone_admin_ops_started", []);
+    if (started.includes(op.id)) { return finish(false, "上次执行被中断，状态不明：请到群里核对有没有建成，需要的话重新发起"); }
+    started.push(op.id);
+    kvSet("phone_admin_ops_started", started.slice(-200));
+    console.log(`[网页官约] #${op.id} 开始：${op.kind} ${op.value}`);
+    const msgs = [];
+    try {
+        const v = JSON.parse(op.value);
+        const ep = getSafeEndPoint(platform);
+        if (!ep) return finish(false, "找不到可用的机器人账号");
+        const m = seal.newMessage();
+        m.messageType = "group";
+        m.groupId = `${platform}-Group:${String(kvGet("adminAnnounceGroupId", "") || "0").replace(/\D/g, "") || "0"}`;
+        const ctx = seal.createTempCtx(ep, m);
+        const kind = op.kind === "official_call" ? "官电" : "官约";
+        const ok = await createOfficialGroup(kind, platform, ctx, m, t => msgs.push(t), v.day, v.time, v.place || "", (v.participants || []).join("/"));
+        finish(ok, msgs[msgs.length - 1] || (ok ? "已创建" : "没有创建"));
+    } catch (e) { finish(false, "执行出错：" + (e.message || e)); }
+}
+
+// 网页「催回」：小手机上的「被催」标记网页自己已经打好，这里只负责在那个群里 @ 对方发一条（跟「。提醒超时」群里那条同一句话）。
+// 只在对方还停在网页看到的那一次等待上才发（startTime 对得上）；对方已经回了就不再打扰。
+function phoneApplyUrge(platform, op) {
+    try {
+        const v = JSON.parse(op.value), gid = String(v.gid || ""), name = v.role;
+        const timer = kvGet("group_timers", {})[gid];
+        const st = timer && timer.timerStatus && timer.timerStatus[name];
+        if (!timer || timer.platform !== platform) return { ok: false, msg: "这个群的计时已经结束" };
+        if (!st || st.status !== "timing") return { ok: false, msg: `${name} 已经回复了，没有再发` };
+        if (v.since && st.startTime !== v.since) return { ok: false, msg: `${name} 已经回过一轮，没有再发` };
+        const ep = getSafeEndPoint(platform);
+        if (!ep) return { ok: false, msg: "找不到可用的机器人账号" };
+        const elapsed = Date.now() - st.startTime, h = Math.floor(elapsed / 3600000), mi = Math.floor((elapsed % 3600000) / 60000);
+        sendOverdueGroupNotice({ endPoint: ep }, timer, gid, name, h > 0 ? `${h}h${mi}m` : `${mi}m`);
+        return { ok: true, msg: `已在群 ${gid} @ ${name}` };
+    } catch (e) { return { ok: false, msg: "执行出错：" + (e.message || e) }; }
+}
+
+function phoneApplyAdminOps(platform, ops) {
+    // 自动拉取正在跑时它手里可能是后台的旧快照，落地时会把刚改的参数盖回去：这一轮先不执行参数修改，留到下次同步（操作还在队列里）
+    if (typeof globalThis.__changriAutoPullBusy === "function" && globalThis.__changriAutoPullBusy()) ops = ops.filter(op => op.kind !== "param");
+    if (!ops.length) return;
+    const done = kvGet("phone_admin_ops_done", []), seen = new Set(done.map(d => d.id));
+    const FEATURE_KEY = { sms: "enable_chaos_letter", gift: "enable_general_gift", lovemail: "enable_lovemail" };
+    for (const op of ops) {
+        if (seen.has(op.id)) continue;
+        if (op.kind === "official_appt" || op.kind === "official_call") { phoneRunOfficialOp(platform, op); continue; }
+        if (op.kind === "urge") { const r = phoneApplyUrge(platform, op); done.push({ id: op.id, ok: r.ok, msg: r.msg }); continue; }
+        let ok = false, msg = "";
+        try {
+            const rawUid = op.kind === "param" || op.kind === "bulk_item" || op.kind === "bulk_attr" ? null : getUidByRoleName(platform, op.role);
+            if (op.kind === "param") {
+                const p = PHONE_ADMIN_PARAMS.find(x => x.id === op.name);
+                if (!p) { msg = `不认识的参数「${op.name}」`; }
+                else {
+                    let v;
+                    if (p.type === "bool") v = op.value === "on";
+                    else if (p.type === "time") { if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(op.value)) v = undefined; else v = op.value; }
+                    else { v = parseInt(op.value); if (isNaN(v) || v < p.min || v > p.max) v = undefined; }
+                    if (v === undefined) { msg = `「${p.label}」的值不合法：${op.value}`; }
+                    else { const old = p.get(); p.set(v); ok = true; msg = `${p.label}：${old === true ? "开" : old === false ? "关" : old} → ${v === true ? "开" : v === false ? "关" : v}`; }
+                }
+            } else if (op.kind === "bulk_item" || op.kind === "bulk_attr") {
+                // role 为 *player（不含 NPC）或 *all；每个账号只算一次（多个角色号共用主账号时不重复发）
+                const priv = kvGet("a_private_group", {})[platform] || {};
+                const npcSet = new Set([...kvGet("a_npc_list", []), ...kvGet("a_generic_npc_list", [])]);
+                const seenP = new Set(), targets = [];
+                for (const [roleId, info] of Object.entries(priv)) {
+                    const nm = info && info[0]; if (!nm) continue;
+                    if (op.role === "*player" && npcSet.has(nm)) continue;
+                    const pr = getPrimaryUid(platform, roleId); if (seenP.has(pr)) continue;
+                    seenP.add(pr); targets.push({ nm, pr });
+                }
+                const n = parseInt(op.value);
+                if (isNaN(n) || n === 0) { msg = "数量不合法"; }
+                else if (!targets.length) { msg = "没有可发放的角色"; }
+                else if (op.kind === "bulk_item") {
+                    const reg = getRegistry_rpg(), q = String(op.name).trim();
+                    const code = Object.keys(reg).find(c => c.toUpperCase() === q.toUpperCase()) || Object.keys(reg).find(c => reg[c].name === q);
+                    if (!code) { msg = `找不到「${q}」，请填注册的名称或代码`; }
+                    else {
+                        let cnt = 0;
+                        for (const t of targets) {
+                            const rk = `${platform}:${t.pr}`;
+                            if (n > 0) { if (addToInv_system(rk, code, n)) cnt++; }
+                            else { const take = Math.min(getInvCount_rpg(rk, code), -n); if (take > 0) { removeFromInv_rpg(rk, code, take); cnt++; } }
+                        }
+                        ok = cnt > 0; msg = `${reg[code].name} ${n > 0 ? "+" : ""}${n}：${cnt}/${targets.length} 人生效`;
+                    }
+                } else {
+                    const defs = kvGet("rpg_attr_defs", {}), def = defs[op.name];
+                    if (!def) { msg = `属性「${op.name}」不存在`; }
+                    else {
+                        const all = kvGet("sys_character_attrs", {});
+                        for (const t of targets) {
+                            if (!all[t.pr]) all[t.pr] = {};
+                            let v = (parseInt(all[t.pr][op.name] ?? (def.default ?? 0)) || 0) + n;
+                            if (def.min != null && v < def.min) v = def.min;
+                            if (def.max != null && v > def.max) v = def.max;
+                            all[t.pr][op.name] = v;
+                        }
+                        kvSet("sys_character_attrs", all);
+                        ok = true; msg = `${op.name} ${n > 0 ? "+" : ""}${n}：${targets.length} 人（按上下限夹住）`;
+                    }
+                }
+            } else if (!rawUid) { msg = `找不到角色「${op.role}」`; }
+            else {
+                const primary = getPrimaryUid(platform, rawUid), roleKey = `${platform}:${primary}`;
+                if (op.kind === "attr") {
+                    const defs = kvGet("rpg_attr_defs", {}), def = defs[op.name];
+                    if (!def) { msg = `属性「${op.name}」不存在`; }
+                    else {
+                        let v = parseInt(op.value);
+                        if (def.min != null && v < def.min) v = def.min;
+                        if (def.max != null && v > def.max) v = def.max;
+                        const all = kvGet("sys_character_attrs", {});
+                        if (!all[primary]) all[primary] = {};
+                        const old = parseInt(all[primary][op.name] ?? (def.default ?? 0)) || 0;
+                        all[primary][op.name] = v;
+                        kvSet("sys_character_attrs", all);
+                        ok = true; msg = `${op.name} ${old} → ${v}`;
+                    }
+                } else if (op.kind === "item") {
+                    const reg = getRegistry_rpg(), q = String(op.name).trim();
+                    const code = Object.keys(reg).find(c => c.toUpperCase() === q.toUpperCase()) || Object.keys(reg).find(c => reg[c].name === q);
+                    const n = parseInt(op.value);
+                    if (!code) { msg = `找不到「${q}」，请填注册的名称或代码`; }
+                    else if (n > 0) { ok = addToInv_system(roleKey, code, n); msg = ok ? `${reg[code].name} +${n}` : "添加失败"; }
+                    else {
+                        const have = getInvCount_rpg(roleKey, code), take = Math.min(have, -n);
+                        if (take <= 0) { msg = `${reg[code].name} 背包里没有`; }
+                        else { removeFromInv_rpg(roleKey, code, take); ok = true; msg = `${reg[code].name} -${take}${take < -n ? `（只有 ${have} 个）` : ""}`; }
+                    }
+                } else if (op.kind === "feature") {
+                    const key = FEATURE_KEY[op.name];
+                    if (!key) { msg = `不认识的开关「${op.name}」`; }
+                    else {
+                        const map = kvGet("feature_user_blocklist", {});
+                        if (!map[rawUid]) map[rawUid] = {};
+                        map[rawUid][key] = op.value === "on";
+                        kvSet("feature_user_blocklist", map);
+                        ok = true; msg = `${op.name} 已${op.value === "on" ? "开启" : "关闭"}`;
+                    }
+                } else { msg = `不认识的操作「${op.kind}」`; }
+            }
+        } catch (e) { msg = `执行出错：${e.message || e}`; }
+        done.push({ id: op.id, ok, msg });
+    }
+    // 回报以最新的为准：本函数开头读到的 done 只是副本，期间若别处（异步建群）已追加了回报，不能被旧副本盖掉
+    { const have = new Set(done.map(d => d.id)); for (const d of kvGet("phone_admin_ops_done", [])) if (!have.has(d.id)) done.push(d); }
+    kvSet("phone_admin_ops_done", done.slice(-200));
+    // 参数改在机器人本地，网页后台那份还是旧值；不推回去的话，后台下次有任何改动，自动拉取会整体覆盖把新值盖回旧的。
+    // 只推这一轮新改成功的那几项（不推整份配置，免得盖掉后台刚改的别的项）；也不刷新自动拉取基准，后台别处的改动下次照常拉下来。
+    const payload = {};
+    for (const op of ops) {
+        if (op.kind !== "param" || seen.has(op.id) || !done.some(d => d.id === op.id && d.ok)) continue;
+        const p = PHONE_ADMIN_PARAMS.find(x => x.id === op.name);
+        if (!p || !p.web) continue;
+        const v = p.get();
+        payload[p.web] = v === true ? "true" : v === false ? "false" : String(v);
+    }
+    if (Object.keys(payload).length) {
+        const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+        const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
+        if (base) fetch(base + "/api/sync_config", { method: "POST", headers: { "Content-Type": "application/json", "X-Archive-Token": token }, body: JSON.stringify(payload) })
+            .then(r => { if (!r.ok) console.error("[网页设置] 推回后台失败: sync_config 返回 " + r.status); })
+            .catch(e => console.error("[网页设置] 推回后台失败: " + (e.message || e)));
+    }
 }
 
 // 网页礼品店的变化写回图鉴：新收的礼物加进 gift_sightings，货架比本地新就覆盖 shop_personal_display。

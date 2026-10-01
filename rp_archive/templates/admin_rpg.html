@@ -378,6 +378,7 @@
     <button type="button" data-tab="items">📦 物品 · 装备 · 货币</button>
     <button type="button" data-tab="attrs">📊 属性 · 加点</button>
     <button type="button" data-tab="craft">🧪 合成配方</button>
+    <button type="button" data-tab="level">⬆️ 升级</button>
     <button type="button" data-tab="trade">💱 交易白名单</button>
     <button type="button" data-tab="battle">⚔️ 战斗</button>
   </div>
@@ -835,6 +836,53 @@
     </div>
   </div>
 
+  <!-- ══ 升级 ══ -->
+  <div style="margin-top:18px;" data-rpg-tab="level">
+    <div class="rpg-layout" style="grid-template-columns:360px 1fr;">
+
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">⬆️ 升级系统设置</div>
+        <div class="info-bar">玩家发「。升级」时按这里配置的等级规则消耗材料、给奖励。每一级可以单独配置，也可以用范围一次配一批；改完保存后机器人 2 分钟内自动同步。</div>
+        <label style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:13px;">
+          <input type="checkbox" id="lv-enabled"> 开启升级系统
+        </label>
+        <div class="attr-picker-row" style="margin-bottom:10px;">
+          <span style="font-size:13px;white-space:nowrap;">最大等级</span>
+          <input class="rpg-input" id="lv-max" type="number" min="1" style="width:100px;">
+          <button class="attr-picker-add" onclick="LEVEL.saveSettings()">保存设置</button>
+        </div>
+
+        <details class="bulk-box" open>
+          <summary>📋 批量粘贴录入（升级规则）</summary>
+          <div class="bulk-body">
+            <div class="bulk-hint">一行一条：<code>等级或范围 * 描述 * 消耗品 * 奖励品 [* 成功率]</code><br>
+              · 等级可以是 <code>5</code> 或范围 <code>1-10</code>；描述里的 <code>{等级}</code> 会替换成具体等级<br>
+              · 消耗品：<code>物品名:数量</code> 或 <code>物品名:基础+增幅</code>（第 N 级 = 基础 + (N-1)×增幅），无消耗填 <code>-</code><br>
+              · 奖励品：<code>属性名+数值</code>（也可 <code>属性名+基础+增幅</code>）或 <code>物品名:数量</code>，无奖励填 <code>-</code><br>
+              · 成功率 0-100，写范围时从 100% 线性递减到该值；已有的同等级会被覆盖<br>
+              例：<code>1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5</code>　<code>20 * 传奇战士 * 金币:1000,晶体:3 * ATK+20,DEF+10 * 80</code></div>
+            <textarea class="bulk-text" id="bulk-level" rows="6" placeholder="1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5&#10;20 * 传奇战士 * 金币:1000,晶体:3 * ATK+20,DEF+10 * 80"></textarea>
+            <div class="bulk-actions">
+              <button type="button" class="bulk-go" onclick="LEVEL.bulkLevels()">一键录入</button>
+              <button type="button" class="bulk-clear" onclick="RPG.bulkClear('level')">清空</button>
+            </div>
+            <div class="bulk-out" id="bulk-out-level"></div>
+          </div>
+        </details>
+      </div>
+
+      <div class="rpg-panel">
+        <div class="rpg-panel-title">
+          📋 已配置的等级
+          <span class="badge" id="lv-count">0</span>
+          <button type="button" class="pending-del" style="margin-left:auto;" onclick="LEVEL.clearAll()">清空全部</button>
+        </div>
+        <div id="lv-list"></div>
+      </div>
+
+    </div>
+  </div>
+
   <!-- ══ 战斗技能 ══ -->
   <div style="margin-top:18px;" data-rpg-tab="battle">
     <div class="rpg-layout" style="grid-template-columns:360px 1fr;">
@@ -1054,9 +1102,9 @@
 
 {% include "_bulk_help.html" %}
 <script>
-// 标签页：按 data-rpg-tab 显示/隐藏；#items / #attrs / #craft / #trade / #battle 可以直接链接，上次看的标签会记住
+// 标签页：按 data-rpg-tab 显示/隐藏；#items / #attrs / #craft / #level / #trade / #battle 可以直接链接，上次看的标签会记住
 (function() {
-  var TABS = ['items', 'attrs', 'craft', 'trade', 'battle'];
+  var TABS = ['items', 'attrs', 'craft', 'level', 'trade', 'battle'];
   var layout = document.querySelector('.rpg-layout');
   function show(t) {
     if (TABS.indexOf(t) < 0) t = 'items';
@@ -1110,6 +1158,7 @@ var tradeWhitelist = {{ trade_whitelist | tojson }};
 var attackDefenseCfg = {{ attack_defense_cfg | tojson }};
 var playerSkillsMap  = {{ player_skills      | tojson }};
 var battleLog        = {{ battle_log         | tojson }};
+var levelRules       = {{ level_rules        | tojson }};
 </script>
 
 <script>
@@ -2274,6 +2323,153 @@ var CRAFT = (function() {
     bulkRecipes:   bulkRecipes,
     deleteRecipe:  deleteRecipe,
   };
+})();
+</script>
+
+<script>
+var LEVEL = (function() {
+  function e(s) {
+    return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function t(msg, type) { RPG.toast(msg, type); }
+  if (!levelRules || typeof levelRules !== 'object') levelRules = {};
+  if (!levelRules.level_up_rules) levelRules.level_up_rules = {};
+  if (levelRules.max_level == null) levelRules.max_level = 100;
+  if (levelRules.enabled == null) levelRules.enabled = true;
+
+  // 「基础+增幅」：第 N 级 = 基础 + (N-1)×增幅（跟机器人原来的「。上传升级等级」同一算法）
+  function calcValue(str, level) {
+    if (str.indexOf('+') < 0) return parseInt(str, 10) || 0;
+    var p = str.split('+').map(function(x) { return parseFloat(x) || 0; });
+    return Math.floor(p[0] + (level - 1) * p[1]);
+  }
+  // 消耗品 / 奖励品：「:」→ 货币 / 物品 / 属性；「+」→ 属性增量（只用于奖励）
+  function parseConsumables(str, level) {
+    var result = {}, errors = [];
+    if (!str || !str.trim()) return { result: result, errors: errors };
+    var curByName = {}, itemByName = {};
+    Object.keys(itemReg).forEach(function(c) {
+      var info = itemReg[c]; if (!info) return;
+      if (info.type === 'currency') curByName[info.name] = c; else itemByName[info.name] = c;
+    });
+    str.split(/[,，]/).map(function(x) { return x.trim(); }).filter(Boolean).forEach(function(entry) {
+      var ci = entry.search(/[:：]/);
+      if (ci >= 0) {
+        var name = entry.slice(0, ci).trim(), val = calcValue(entry.slice(ci + 1).trim(), level);
+        if (curByName[name]) { (result.currencies = result.currencies || {})[curByName[name]] = val; }
+        else if (itemByName[name]) { (result.items = result.items || {})[itemByName[name]] = val; }
+        else if (attrDefs[name]) { (result.attributes = result.attributes || {})[name] = val; }
+        else errors.push('「' + name + '」不是已注册的物品、货币或属性');
+      } else if (entry.indexOf('+') > 0) {
+        var pi = entry.indexOf('+');
+        (result.attrs = result.attrs || {})[entry.slice(0, pi).trim()] = calcValue(entry.slice(pi + 1).trim(), level);
+      } else {
+        errors.push('「' + entry + '」格式无法识别（应为 名称:数量 或 属性名+数值）');
+      }
+    });
+    return { result: result, errors: errors };
+  }
+
+  function save(cb) {
+    fetch('/admin/rpg/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level_up_rules: levelRules }),
+    }).then(function(r) { return r.json(); })
+      .then(function(d) { if (d.ok) { if (cb) cb(); } else t('保存失败', 'err'); })
+      .catch(function() { t('网络错误', 'err'); });
+  }
+
+  function bulkLevels() {
+    var box = document.getElementById('bulk-level'), out = document.getElementById('bulk-out-level');
+    var lines = box.value.split(/\r?\n/).map(function(l) { return l.replace(/^\s*[。.]?\s*(升级\s*上传|上传升级等级)\s*/, '').trim(); }).filter(Boolean);
+    var rows = [], added = 0;
+    lines.forEach(function(line) {
+      var parts = line.split(/[*＊]/).map(function(x) { return x.trim(); });
+      if (parts.length < 4) { rows.push('<div class="err">❌ ' + e(line.slice(0, 30)) + '：参数不足，格式 等级 * 描述 * 消耗品 * 奖励品 [* 成功率]</div>'); return; }
+      var m = parts[0].match(/^(\d+)(?:\s*-\s*(\d+))?$/);
+      if (!m) { rows.push('<div class="err">❌ 等级「' + e(parts[0]) + '」无法解析（填 5 或 1-10）</div>'); return; }
+      var from = parseInt(m[1], 10), to = m[2] ? parseInt(m[2], 10) : from;
+      if (to < from || from < 1 || to - from > 999) { rows.push('<div class="err">❌ 等级范围「' + e(parts[0]) + '」不合法</div>'); return; }
+      var consumeStr = parts[2] === '-' ? '' : parts[2], rewardStr = parts[3] === '-' ? '' : parts[3];
+      var rate = parts[4] ? Math.max(0, Math.min(100, parseInt(parts[4], 10) || 100)) : 100;
+      var cc = parseConsumables(consumeStr, from), rc = parseConsumables(rewardStr, from);
+      var errs = cc.errors.map(function(x) { return '消耗品：' + x; })
+        .concat(rc.errors.map(function(x) { return '奖励品：' + x; }));
+      consumeStr.split(/[,，]/).map(function(x) { return x.trim(); }).forEach(function(x) {
+        if (x && x.indexOf('+') >= 0 && !/[:：]/.test(x)) errs.push('消耗品：「' + x + '」请用 名称:数量 格式，+格式仅限奖励品');
+      });
+      if (errs.length) { rows.push('<div class="err">❌ ' + e(parts[0]) + '：' + e(errs.join('；')) + '</div>'); return; }
+      var n = to - from + 1;
+      for (var lv = from; lv <= to; lv++) {
+        var rt = (rate < 100 && rate > 0 && n > 1) ? Math.floor(100 - (lv - from) * (100 - rate) / (n - 1)) : rate;
+        levelRules.level_up_rules[lv] = {
+          description: parts[1].replace(/{等级}/g, lv),
+          consume: parseConsumables(consumeStr, lv).result,
+          rewards: parseConsumables(rewardStr, lv).result,
+          success_rate: rt,
+        };
+      }
+      rows.push('<div class="ok">✅ 已配置 ' + n + ' 级（' + (n > 1 ? from + '-' + to : from) + '）</div>');
+      added++;
+    });
+    var show = function() {
+      out.innerHTML = '<div><b>共 ' + lines.length + ' 行，成功 ' + added + ' 行</b>' + (added ? '，已保存，机器人 2 分钟内自动同步' : '') + '</div>' + rows.join('');
+    };
+    if (!added) { show(); return; }
+    save(function() { render(); show(); });
+  }
+
+  function nameOf(code) { return itemReg[code] ? itemReg[code].name : code; }
+  function sumPart(o) {
+    if (!o) return '';
+    var ps = [];
+    Object.keys(o.currencies || {}).forEach(function(c) { ps.push(nameOf(c) + ' ×' + o.currencies[c]); });
+    Object.keys(o.items || {}).forEach(function(c) { ps.push(nameOf(c) + ' ×' + o.items[c]); });
+    Object.keys(o.attributes || {}).forEach(function(a) { ps.push(a + ' ' + o.attributes[a]); });
+    Object.keys(o.attrs || {}).forEach(function(a) { ps.push(a + (o.attrs[a] >= 0 ? '+' : '') + o.attrs[a]); });
+    return ps.join('、');
+  }
+  function render() {
+    document.getElementById('lv-enabled').checked = !!levelRules.enabled;
+    document.getElementById('lv-max').value = levelRules.max_level;
+    var lvs = Object.keys(levelRules.level_up_rules).sort(function(a, b) { return a - b; });
+    document.getElementById('lv-count').textContent = lvs.length;
+    var el = document.getElementById('lv-list');
+    if (!lvs.length) { el.innerHTML = '<div class="pending-empty">还没有配置任何等级，在左侧批量粘贴录入吧</div>'; return; }
+    el.innerHTML = lvs.map(function(lv) {
+      var r = levelRules.level_up_rules[lv] || {};
+      var rate = (r.success_rate != null && r.success_rate < 100) ? ' <span style="color:var(--gold);font-size:10px;">🎲 ' + r.success_rate + '%</span>' : '';
+      var cons = sumPart(r.consume), rew = sumPart(r.rewards);
+      return '<div class="pending-item" style="flex-wrap:wrap;gap:6px;">' +
+        '<div class="pending-info" style="min-width:0;flex:1;">' +
+          '<div class="pending-name"><span class="reg-code">Lv.' + e(lv) + '</span> ' + e(r.description || '') + rate + '</div>' +
+          '<div class="pending-meta" style="margin-top:3px;">' +
+            '<span style="color:var(--muted);">消耗：</span>' + (cons ? e(cons) : '无') +
+            '　<span style="color:var(--muted);">奖励：</span>' + (rew ? e(rew) : '无') +
+          '</div></div>' +
+        '<button class="pending-del" onclick="LEVEL.del(' + Number(lv) + ')">删除</button></div>';
+    }).join('');
+  }
+  function del(lv) {
+    if (!confirm('删除 Lv.' + lv + ' 的升级规则？')) return;
+    delete levelRules.level_up_rules[lv];
+    save(function() { t('已删除 Lv.' + lv); render(); });
+  }
+  function clearAll() {
+    if (!Object.keys(levelRules.level_up_rules).length) return;
+    if (!confirm('清空全部升级规则？（已有玩家等级不受影响，之后没有规则就升不了级）')) return;
+    levelRules.level_up_rules = {};
+    save(function() { t('已清空'); render(); });
+  }
+  function saveSettings() {
+    var n = parseInt(document.getElementById('lv-max').value, 10);
+    if (isNaN(n) || n < 1) { t('最大等级要填正整数', 'err'); return; }
+    levelRules.max_level = n;
+    levelRules.enabled = document.getElementById('lv-enabled').checked;
+    save(function() { t('已保存，机器人 2 分钟内自动同步'); });
+  }
+  render();
+  return { bulkLevels: bulkLevels, del: del, clearAll: clearAll, saveSettings: saveSettings };
 })();
 </script>
 

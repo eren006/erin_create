@@ -611,12 +611,9 @@ COMMAND_BLOCKS = [
         "",
         "【装备与升级】",
         "装备、槽位同样在网页端「资料库」注册（支持批量粘贴）",
-        "。上传升级等级 等级配置",
-        "  上传升级等级配置表",
-        "。查看升级配置",
-        "  查看当前升级配置详情",
-        "。升级列表",
-        "  查看所有升级等级列表",
+        "升级等级规则在网页端「资料库 → 升级」配置（支持批量粘贴）",
+        "  格式：等级或范围 * 描述 * 消耗品 * 奖励品 [* 成功率]",
+        "  例：1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5",
     ]},
     {"key": "adm_bonus", "label": "🎁 结戏加成", "category": "admin", "lines": [
         "。结戏加成 模版列表",
@@ -704,8 +701,6 @@ COMMAND_BLOCKS = [
         "。攻防 添加技能 技能名 ...",
         "  注册可用技能",
         "",
-        "。攻防 一键初始化",
-        "  重置攻防系统数据",
     ]},
 ]
 
@@ -968,7 +963,7 @@ def assemble_bot_config(flat):
                      "private_appointment_aliases", "sms_aliases", "gift_aliases",
                      "private_resources",
                      "equipment_registry", "equipment_slots", "equipment_slot_names",
-                     "craft_recipes",
+                     "craft_recipes", "level_up_rules",
                      "trade_whitelist",
                      "available_places",
                      "skill_defs",
@@ -1683,6 +1678,17 @@ def _migrate(conn):
         )
     """)
 
+    # ── 29. 管理员「催回」：key 同待回「暂不提醒」（s:群号:开始等的时间），对方回了一轮就是新的一次等待，催回自然失效 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_urges (
+            show_id    INTEGER NOT NULL,
+            role       TEXT    NOT NULL,
+            key        TEXT    NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (show_id, role, key)
+        )
+    """)
+
     # ── 27. 插件每 2 分钟随同步上报的每人报告（我的数量/弧长/时间线/待回），网页「时间线与统计」页只读 ──
     conn.execute("""
         CREATE TABLE IF NOT EXISTS phone_reports (
@@ -1753,6 +1759,22 @@ def _migrate(conn):
             silent     INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL,
             done       INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    # ── 26. 管理员在网页上对角色的快速设置（改属性值 / 加扣道具货币 / 功能开关）：机器人同步时取走执行，回报 done+结果 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_admin_ops (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id    INTEGER NOT NULL,
+            role       TEXT    NOT NULL,
+            kind       TEXT    NOT NULL,
+            name       TEXT    NOT NULL,
+            value      TEXT    NOT NULL,
+            created_at INTEGER NOT NULL,
+            done       INTEGER NOT NULL DEFAULT 0,
+            ok         INTEGER NOT NULL DEFAULT 0,
+            result     TEXT    NOT NULL DEFAULT ''
         )
     """)
 
@@ -5475,6 +5497,17 @@ def player_phone_logout():
 
 _PHONE_SYNC_FRESH_MS = 10 * 60 * 1000
 _PHONE_MAX_LEN       = 500
+_REPEAT_RUN   = re.compile(r"(\S)\1{11,}")                 # 同一个字/符号连着 12 次以上
+_REPEAT_CHUNK = re.compile(r"(\S.{1,19}?)\1{2,}", re.S)      # 一小段（2~20 字）连着重复 3 次以上
+
+def _too_repetitive(text):
+    """一条消息里刷重复：同一个字连续很多遍、同一小段连续重复很多遍、长文本里不同的字太少。「哈哈哈哈哈」这种正常长度的不算"""
+    t = re.sub(r"\s+", "", text or "")
+    if _REPEAT_RUN.search(t) or any(len(set(m.group(1))) >= 2 for m in _REPEAT_CHUNK.finditer(t)):
+        return True
+    return len(t) >= 60 and len(set(t)) / len(t) < 0.12
+
+_REPEAT_MSG = "❌ 内容里重复太多了，精简一下再发"
 _PHONE_MIN_GAP_MS    = 5000          # 冷却配置成 0 也至少隔 5 秒，防脚本刷屏
 _phone_send_lock     = threading.Lock()
 _CHAOS_CHAR_POOL     = ["梦", "影", "幻", "虚", "无", "断", "零", "终", "念", "尘", "迹", "雾", "嘘", "寂"]
@@ -5619,6 +5652,7 @@ PHONE_THEMES = {
     'classic': {'name':'中国古风', 'accent':'#934432', 'light':['#faf5e9','#eee4d2','#332b24','#796857'], 'dark':['#1d1915','#302820','#f0e5d0','#c0aa8e'], 'radius':'10px', 'font':'serif'},
     'scifi': {'name':'科幻', 'accent':'#196a88', 'light':['#edf6fa','#dcebf2','#163340','#516d7c'], 'dark':['#09161f','#142c3a','#dceff8','#90b4c6'], 'radius':'8px', 'font':'sans-serif'},
     'medieval': {'name':'欧洲中世纪', 'accent':'#793746', 'light':['#f7efdd','#eaddc2','#3c2d25','#7c6652'], 'dark':['#21191c','#38272c','#f1e2cb','#c2a58b'], 'radius':'12px', 'font':'serif'},
+    'cloudpost': {'name':'云絮邮局', 'accent':'#c4566e', 'light':['#f8eed7','#efdcc9','#2b1f1d','#86695f'], 'dark':['#231a1c','#382a2d','#f6e9d6','#c3a79c'], 'radius':'6px', 'font':'serif'},
     'republic': {'name':'民国', 'accent':'#315d50', 'light':['#f5f1e7','#e4e6dc','#24382f','#657266'], 'dark':['#141e1a','#26372e','#e7eee4','#a4b6a6'], 'radius':'6px', 'font':'serif'},
 }
 PHONE_COPY = {
@@ -5626,6 +5660,7 @@ PHONE_COPY = {
  'classic': {'messages':'尺素','public':'风闻','moments':'雅集','new':'寄尺素','brand':'长日尺素局','empty':'此间尚无来书，静候故人落笔。'},
  'scifi': {'messages':'通讯','public':'公共频道','moments':'动态频道','new':'建立通讯','brand':'长日通讯终端','empty':'暂无通讯记录，等待新的信号接入。'},
  'medieval': {'messages':'书信','public':'王国公告','moments':'旅人见闻','new':'寄出书信','brand':'长日信使公会','empty':'信匣尚空，信使仍在路上。'},
+ 'cloudpost': {'messages':'来信','public':'橱窗告示','moments':'窗外见闻','new':'落笔','brand':'云絮邮局','empty':'信箱里空空的，下一封还在路上。'},
  'republic': {'messages':'信件','public':'今日公报','moments':'街巷见闻','new':'写信','brand':'长日书信局','empty':'今日尚无来信，且候邮差叩门。'},
 }
 
@@ -5640,12 +5675,19 @@ def phone_theme(sid=None, override=None):
     visual = config.get('visual', 'modern'); copy = config.get('copy', 'modern')
     if visual not in PHONE_THEMES: visual = 'modern'
     if copy not in PHONE_COPY: copy = 'modern'
+    # 玩家自己在「我的手机 → 主题风格」选的外观（只换样子，不换用语），只存在这台设备的 cookie 里；后台预览不吃这个
+    picked = ''
+    if override is None:
+        try: picked = request.cookies.get('phone_skin', '')
+        except RuntimeError: picked = ''
+        if picked in PHONE_THEMES: visual = picked   # 只换样子；用语（copy）仍跟随后台设置，玩家不能改
+        else: picked = ''
     words = dict(PHONE_COPY[copy])
     custom = config.get('words', {})
     if not isinstance(custom, dict): custom = {}
     for key in words:
         if isinstance(custom.get(key), str) and custom[key].strip(): words[key] = custom[key].strip()[:100]
-    return {'visual':visual, 'copy':copy, 'style':PHONE_THEMES[visual], 'words':words, 'custom':custom}
+    return {'visual':visual, 'copy':copy, 'style':PHONE_THEMES[visual], 'words':words, 'custom':custom, 'picked':picked}
 
 app.jinja_env.globals.update(phone_theme=phone_theme, phone_themes=PHONE_THEMES, phone_copy=PHONE_COPY)
 
@@ -5885,6 +5927,8 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name="", preset_i
         return False, "❌ 内容不能为空"
     if len(text) > _PHONE_MAX_LEN:
         return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
+    if not preset and _too_repetitive(text):   # 预设礼物的内容是后台写好的，不查
+        return False, _REPEAT_MSG
     if not preset and _blocked_hit(sid, owner, "礼物" if kind == "gift" else "短信", gift_name, text):
         return False, BLOCKED_MSG
     if owner not in roster:
@@ -6162,6 +6206,8 @@ def _alias_send(db, sid, tid, owner, key, text):
         return False, "❌ 内容不能为空"
     if len(text) > _PHONE_MAX_LEN:
         return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
+    if _too_repetitive(text):
+        return False, _REPEAT_MSG
     if _blocked_hit(sid, owner, "匿名短信", text):
         return False, BLOCKED_MSG
     if not rules.get("sms_enabled", True):
@@ -6388,6 +6434,7 @@ def api_phone_sync():
                     "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done")),
                     "lovemails": lovemails, "lovemail_revokes": lm_revokes,
                     "block_ops": _block_ops_for_bot(db, show["id"], data.get("block_ops_done")),
+                    "admin_ops": _admin_ops_for_bot(db, show["id"], data.get("admin_ops_done")),
                     # 群消息：插件照短信计当日次数和冷却（不记互动统计），游标 phone_group_cursor
                     "group_events": [{"id": r["id"], "from_role": r["from_role"], "timestamp": r["created_at"], "day_key": r["day_key"]}
                                      for r in db.execute("SELECT id, from_role, created_at, day_key FROM phone_group_msgs "
@@ -6723,6 +6770,8 @@ def player_moment_post():
         return _moment_json(False, f"一条最多 {_MOMENT_MAX_IMAGES} 张图")
     if _blocked_hit(sid, owner, "朋友圈", text):
         return _moment_json(False, BLOCKED_MSG)
+    if _too_repetitive(text):
+        return _moment_json(False, "内容里重复太多了，精简一下再发")
     day_start = int(datetime.now(TZ_BEIJING).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
     if db.execute("SELECT COUNT(*) FROM moments WHERE show_id=? AND role_name=? AND created_at>=?",
                   (sid, owner, day_start)).fetchone()[0] >= _MOMENT_DAILY_POSTS:
@@ -6816,6 +6865,8 @@ def player_moment_comment(mid):
         return _moment_json(False, f"评论最多 {_MOMENT_MAX_COMMENT} 字")
     if _blocked_hit(sid, owner, "朋友圈评论", text):
         return _moment_json(False, BLOCKED_MSG)
+    if _too_repetitive(text):
+        return _moment_json(False, "内容里重复太多了，精简一下再发")
     reply_to = (request.form.get("reply_to") or "").strip()
     # 只能回复这条朋友圈下真的评论过的人（或楼主），不能随手写个名字
     if reply_to:
@@ -7265,6 +7316,8 @@ def _song_create(db, sid, tid, from_role, to_role, song, message, source):
         return False, f"❌ 寄语最多 {_SONG_MAX_MSG} 字", None
     if _blocked_hit(sid, from_role, "点歌寄语", to_role, message):
         return False, BLOCKED_MSG, None
+    if _too_repetitive(message):
+        return False, _REPEAT_MSG, None
     cap = _song_daily_cap(db, sid)
     used = _song_used_today(db, sid, from_role)
     if used >= cap:
@@ -7406,7 +7459,7 @@ def _song_pending_for_bot(db, sid, done_ids):
 # 短信礼物照「对话」归人（误投/换落款照玩家看到的算），心动信只算寄出的去向、收到的只给总数（来信是匿名的）。
 _STATS_VIEWS = ("timeline", "counts", "pending", "arc", "interact")
 
-def _phone_pending_items(report, dismissed=()):
+def _phone_pending_items(report, dismissed=(), urged=None):
     """待回各项 + 认「这一次提醒」的 key（旧插件没报开始时间时退化成按群/人认）+ 是否已「暂不提醒」"""
     pending = (report or {}).get("pending") or {}
     rel_n = pending.get("rel_n") or {}
@@ -7421,6 +7474,8 @@ def _phone_pending_items(report, dismissed=()):
         items.append({"kind": "relation", "minutes": None, "data": name, "key": f"r:{name}:{rel_n.get(name, '')}"})
     for item in items:
         item["dismissed"] = item["key"] in dismissed
+        item["urged_ts"] = (urged or {}).get(item["key"], 0)
+        item["urged_text"] = _phone_ago(item["urged_ts"]) if item["urged_ts"] else ""
     return sorted(items, key=lambda item: -(item["minutes"] if item["minutes"] is not None else -1))
 
 
@@ -7431,19 +7486,28 @@ def _phone_timeline_upcoming(db, sid, owner):
     return sum(1 for e in events if not e.get("wechat") and not str(e.get("tag") or "").startswith("已完结"))
 
 
+def _phone_ago(ts):
+    mins = max(0, int(time.time() * 1000) - ts) // 60000
+    return "刚刚" if mins < 1 else (f"{mins} 分钟前" if mins < 120 else f"{mins // 60} 小时前")
+
+
+def _phone_urged(db, sid, owner):
+    return {r["key"]: r["created_at"] for r in db.execute("SELECT key, created_at FROM phone_urges WHERE show_id=? AND role=?", (sid, owner))}
+
+
 def _phone_dismissed(db, sid, owner):
     return {r["key"] for r in db.execute("SELECT key FROM phone_pending_dismiss WHERE show_id=? AND role=?", (sid, owner))}
 
 
 def _phone_pending_summary(db, sid, owner):
     row = db.execute("SELECT data, updated_at FROM phone_reports WHERE show_id=? AND role=?", (sid, owner)).fetchone()
-    items = [i for i in (_phone_pending_items(json.loads(row["data"]), _phone_dismissed(db, sid, owner)) if row else [])
+    items = [i for i in (_phone_pending_items(json.loads(row["data"]), _phone_dismissed(db, sid, owner), _phone_urged(db, sid, owner)) if row else [])
              if not i["dismissed"]]
     longest = max((item["minutes"] for item in items if item["minutes"] is not None), default=None)
     duration = ""
     if longest is not None:
         duration = (f"{longest // 60} 小时 " if longest >= 60 else "") + f"{longest % 60} 分钟"
-    return {"count": len(items), "longest": duration,
+    return {"count": len(items), "longest": duration, "urged": sum(1 for i in items if i["urged_ts"]),
             "stale": bool(row and int(time.time()*1000) - row["updated_at"] > 10*60*1000)}
 
 
@@ -7583,7 +7647,7 @@ def player_stats():
                            updated=(_phone_time(row["updated_at"]) if row else ""),
                            stale=bool(row) and int(time.time() * 1000) - row["updated_at"] > 10 * 60 * 1000,
                            inter=inter, lm_recv=lm_recv,
-                           pending_items=_phone_pending_items(report, _phone_dismissed(db, sid, owner)) if view == "pending" else [],
+                           pending_items=_phone_pending_items(report, _phone_dismissed(db, sid, owner), _phone_urged(db, sid, owner)) if view == "pending" else [],
                            csrf=_phone_csrf(), flash=session.pop("phone_flash", None),
                            arc_view=_phone_arc_view((report or {}).get("arc")) if view == "arc" else None,
                            personal_counts=_phone_personal_counts((report or {}).get("counts")) if view == "counts" else [])
@@ -7760,6 +7824,8 @@ def _group_send(db, sid, owner, gid, text, alias):
         return False, "❌ 内容不能为空"
     if len(text) > _PHONE_MAX_LEN:
         return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
+    if _too_repetitive(text):
+        return False, _REPEAT_MSG
     if alias:
         if len(alias) > _ALIAS_MAX_LEN:
             return False, f"❌ 化名最多 {_ALIAS_MAX_LEN} 字"
@@ -8048,6 +8114,8 @@ def _lm_send(db, sid, tid, owner, to_role, content, signature):
         return False, "❌ 信里不能带 [CQ:…] 这样的代码"
     if _blocked_hit(sid, owner, "心动信", content, signature):
         return False, BLOCKED_MSG
+    if _too_repetitive(content):
+        return False, _REPEAT_MSG
     db.execute("""INSERT INTO phone_lovemails (tenant_id, show_id, from_role, to_role, content, signature, game_day, created_at)
                   VALUES (?,?,?,?,?,?,?,?)""",
                (tid, sid, owner, to_role, content, signature, st["game_day"], int(time.time() * 1000)))
@@ -8288,7 +8356,7 @@ def admin_phone_index():
                        (sid, name, name)).fetchone()[0]
         rows.append({"name": name, "count": n})
     return render_template("phone.html", mode="admin_index", owner="管理员", sid=sid, roles=rows, csrf=_phone_csrf(),
-                           phone_admin=True)
+                           phone_admin=True, plugin=_plugin_status(db, sid))
 
 @app.route("/p/admin/as/<role>")
 def admin_phone_inbox(role):
@@ -8300,6 +8368,270 @@ def admin_phone_inbox(role):
     return render_template("phone.html", mode="inbox", owner=role, sid=sid, admin_as=role, phone_admin=True,
                            threads=_phone_threads(db, sid, role), status={"can": False, "why": "", "sms": None, "gift": None},
                            public=None, moments_latest=None, revision="", csrf=_phone_csrf())
+
+@app.route("/p/admin/as/<role>/character")
+def admin_phone_character(role):
+    """管理视角：看某个角色的背包 / 属性（只读，同一份 rpg 快照）"""
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    row = get_db().execute("SELECT data, updated_at FROM phone_reports WHERE show_id=? AND role=?", (sid, role)).fetchone()
+    rpg = (json.loads(row["data"]).get("rpg") if row else None) or None
+    db = get_db()
+    snap = (_phone_sync_row(db, sid) or {}).get("snap") or {}
+    off = set((snap.get("feature_off") or {}).get(role) or [])
+    ops = [dict(r) for r in db.execute("SELECT * FROM phone_admin_ops WHERE show_id=? AND role=? ORDER BY id DESC LIMIT 8", (sid, role))]
+    return render_template("phone.html", mode="char", owner=role, sid=sid, csrf=_phone_csrf(), rpg=rpg, admin_as=role, phone_admin=True,
+                           features=[{"key": k, "name": n, "on": k not in off} for k, n in _ADMIN_FEATURES.items()],
+                           admin_ops=ops, flash=session.pop("phone_flash", None),
+                           rpg_time=(ts_to_str(row["updated_at"]) if row and rpg else ""),
+                           view="attrs" if request.args.get("view") == "attrs" else "bag")
+
+_ADMIN_FEATURES = {"sms": "寄信", "gift": "礼物", "lovemail": "心动信"}
+
+def _admin_ops_for_bot(db, sid, done):
+    """机器人回报 [{id, ok, msg}] 先落库，再把还没执行的快速设置交给它（每次最多 50 条）"""
+    if isinstance(done, list):
+        for d in done[:200]:
+            if isinstance(d, dict) and str(d.get("id", "")).isdigit():
+                db.execute("UPDATE phone_admin_ops SET done=1, ok=?, result=? WHERE show_id=? AND id=?",
+                           (1 if d.get("ok") else 0, str(d.get("msg") or "")[:200], sid, int(d["id"])))
+        db.commit()
+    return [{"id": r["id"], "role": r["role"], "kind": r["kind"], "name": r["name"], "value": r["value"]}
+            for r in db.execute("SELECT * FROM phone_admin_ops WHERE show_id=? AND done=0 ORDER BY id LIMIT 50", (sid,))]
+
+_PLUGIN_OFFICIAL_VERSION = (1, 10, 7)   # 网页发起官约 / 官电要这个版本以上的插件
+_PLUGIN_MIN_VERSION = (1, 10, 4)   # 网页快速设置 / 参数页 / 批量发放要这个版本以上的插件才会执行
+
+def _plugin_status(db, sid):
+    """插件状态：版本、最后同步多久前、能不能执行网页设置（旧插件快照里没有 plugin 字段）"""
+    sync = _phone_sync_row(db, sid)
+    if not sync or not sync["synced_at"]:
+        return {"known": False, "text": "还没有收到过插件同步", "level": "bad", "params": []}
+    snap = sync["snap"] or {}
+    plug = snap.get("plugin") or {}
+    ver = str(plug.get("version") or "")
+    try: vt = tuple(int(x) for x in ver.split(".")[:3])
+    except ValueError: vt = ()
+    ago = max(0, int(time.time() * 1000) - sync["synced_at"]) // 60000
+    fresh = ago * 60000 < _PHONE_SYNC_FRESH_MS
+    can = vt >= _PLUGIN_MIN_VERSION
+    can_official = vt >= _PLUGIN_OFFICIAL_VERSION
+    ago_txt = "刚刚" if ago < 1 else (f"{ago} 分钟前" if ago < 120 else f"{ago // 60} 小时前")
+    level, note = "ok", ""
+    if not can:
+        level, note = "warn", f"（{'插件版本太旧，' if ver else '插件还没带版本号，'}需要 ≥ {'.'.join(map(str, _PLUGIN_MIN_VERSION))} 才能在网页上设置）"
+    elif not fresh:
+        level, note = "bad", "（超过一段时间没同步，机器人可能掉线了）"
+    return {"known": True, "version": ver or "旧版（<1.10.4）", "ago": ago, "fresh": fresh, "can": can, "can_official": can_official, "level": level,
+            "text": f"插件 {ver or '旧版'} · 最后同步 {ago_txt}{note}", "params": plug.get("params") or []}
+
+@app.route("/p/admin/settings")
+def admin_phone_settings():
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    db = get_db()
+    st = _plugin_status(db, sid)
+    groups = {}
+    for p in st["params"]:
+        groups.setdefault(p.get("section") or "其他", []).append(p)
+    ops = [dict(r) for r in db.execute("SELECT * FROM phone_admin_ops WHERE show_id=? AND role LIKE '*%' ORDER BY id DESC LIMIT 10", (sid,))]
+    for o in ops:
+        if o["kind"] in ("official_appt", "official_call"):
+            try: v = json.loads(o["value"])
+            except (ValueError, TypeError): v = {}
+            o["value"] = " ".join(x for x in (v.get("day"), v.get("time"), v.get("place"), "、".join(v.get("participants") or [])) if x)
+    return render_template("phone.html", mode="admin_settings", owner="管理员", sid=sid, csrf=_phone_csrf(), phone_admin=True,
+                           plugin=st, param_groups=groups, admin_ops=ops, flash=session.pop("phone_flash", None),
+                           official_roles=_admin_role_list(db, sid))
+
+def _admin_urge_rows(db, sid, show_all=False):
+    """全体角色里「正在等回复」的场次（默认只列已超时的），带上次催回时间；数据来自插件每 2 分钟的报告"""
+    rows = []
+    for r in db.execute("SELECT role, data, updated_at FROM phone_reports WHERE show_id=?", (sid,)):
+        try: rep = json.loads(r["data"])
+        except (ValueError, TypeError): continue
+        urged = _phone_urged(db, sid, r["role"])
+        for it in (rep.get("pending") or {}).get("pending") or []:
+            if not show_all and not it.get("over"): continue
+            key = f"s:{it.get('gid')}:{it.get('since') or ''}"
+            ts = urged.get(key, 0)
+            rows.append({"role": r["role"], "gid": it.get("gid"), "type": it.get("type") or "", "minutes": it.get("elapsed_min") or 0,
+                         "over": bool(it.get("over")), "since": it.get("since") or 0, "key": key,
+                         "urged_text": _phone_ago(ts) if ts else "", "urged_ts": ts,
+                         "stale": int(time.time() * 1000) - r["updated_at"] > _PHONE_SYNC_FRESH_MS})
+    return sorted(rows, key=lambda x: -x["minutes"])
+
+_URGE_COOLDOWN_MS = 10 * 60 * 1000   # 同一次等待 10 分钟内不重复催，免得群里被连刷
+
+@app.route("/p/admin/urge")
+def admin_phone_urge():
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    db = get_db()
+    show_all = request.args.get("all") == "1"
+    ops = [dict(r) for r in db.execute("SELECT * FROM phone_admin_ops WHERE show_id=? AND kind='urge' ORDER BY id DESC LIMIT 10", (sid,))]
+    return render_template("phone.html", mode="admin_urge", owner="管理员", sid=sid, csrf=_phone_csrf(), phone_admin=True,
+                           plugin=_plugin_status(db, sid), urge_rows=_admin_urge_rows(db, sid, show_all), show_all=show_all,
+                           admin_ops=ops, flash=session.pop("phone_flash", None))
+
+@app.route("/p/admin/urge/op", methods=["POST"])
+def admin_phone_urge_op():
+    """催回：小手机上给玩家标「被催」（立刻生效、不用等机器人），同时排队让机器人在对应群里发一条 @ 提醒"""
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    f = request.form
+    back = url_for("admin_phone_urge", all="1" if f.get("show_all") == "1" else None)
+    if not hmac.compare_digest(f.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+        return redirect(back)
+    db = get_db()
+    now = int(time.time() * 1000)
+    st = _plugin_status(db, sid)
+    # 只认当前报告里真实存在的等待项，不信表单里自带的群号和时间
+    valid = {(x["role"], x["key"]): x for x in _admin_urge_rows(db, sid, show_all=True)}
+    if f.get("scope") == "overdue":
+        picks = [k for k, x in valid.items() if x["over"]]
+    else:
+        picks = []
+        for v in f.getlist("item")[:100]:
+            role, _, key = v.partition("|")
+            if (role, key) in valid: picks.append((role, key))
+    n_phone = n_group = n_skip = 0
+    for role, key in picks:
+        x = valid[(role, key)]
+        if x["urged_ts"] and now - x["urged_ts"] < _URGE_COOLDOWN_MS:
+            n_skip += 1
+            continue
+        db.execute("INSERT INTO phone_urges (show_id, role, key, created_at) VALUES (?,?,?,?) "
+                   "ON CONFLICT(show_id, role, key) DO UPDATE SET created_at=excluded.created_at", (sid, role, key, now))
+        db.execute("DELETE FROM phone_pending_dismiss WHERE show_id=? AND role=? AND key=?", (sid, role, key))   # 催了就别再被「暂不提醒」压住
+        n_phone += 1
+        if st.get("can_official"):
+            db.execute("INSERT INTO phone_admin_ops (show_id, role, kind, name, value, created_at) VALUES (?,?,?,?,?,?)",
+                       (sid, "*", "urge", f"{role} · 群{x['gid']}",
+                        json.dumps({"role": role, "gid": str(x["gid"]), "since": x["since"]}, ensure_ascii=False), now))
+            n_group += 1
+    db.commit()
+    if not picks: msg = "❌ 没有可催的项（刷新看看是不是已经回了）"
+    else:
+        msg = f"✅ 小手机已标记 {n_phone} 条" + (f"，群里 {n_group} 条已提交，机器人半分钟内发出" if n_group else "，群里的提醒要插件升级到 1.10.7 以上才能发")
+        if n_skip: msg += f"；{n_skip} 条 10 分钟内催过，跳过"
+    session["phone_flash"] = msg
+    return redirect(back)
+
+@app.route("/p/admin/settings/op", methods=["POST"])
+def admin_phone_settings_op():
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    f = request.form
+    back = url_for("admin_phone_settings")
+    if not hmac.compare_digest(f.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+        return redirect(back)
+    db = get_db()
+    st = _plugin_status(db, sid)
+    kind, name, value, role = f.get("kind", ""), (f.get("name") or "").strip()[:40], (f.get("value") or "").strip(), "*"
+    msg = None
+    if not st.get("can"):
+        msg = "❌ 插件还没升级到支持网页设置的版本，先升级插件"
+    elif kind == "param":
+        p = next((x for x in st["params"] if x.get("id") == name), None)
+        if not p: msg = "❌ 没有这个参数"
+        elif p["type"] == "bool":
+            if value not in ("on", "off"): msg = "❌ 开关参数不对"
+        elif p["type"] == "time":
+            if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", value): msg = "❌ 时间格式是 HH:MM"
+        else:
+            try:
+                n = int(value)
+                if (p.get("min") is not None and n < p["min"]) or (p.get("max") is not None and n > p["max"]):
+                    msg = f"❌ 「{p['label']}」要在 {p.get('min')}~{p.get('max')} 之间"
+            except ValueError: msg = "❌ 要填整数"
+    elif kind in ("official_appt", "official_call"):
+        # 发起官约 / 官电：建群在机器人里做（分配群号、改群名、发公告），这里只校验后排队
+        day = (f.get("day") or "").strip().upper()
+        t1, t2 = (f.get("t1") or "").strip(), (f.get("t2") or "").strip()
+        place = (f.get("place") or "").strip()[:40]
+        people = [n for n in dict.fromkeys(f.getlist("people")) if n]
+        valid_roles = set(_admin_role_list(db, sid))
+        if not st.get("can_official"):
+            msg = f"❌ 插件要升级到 {'.'.join(map(str, _PLUGIN_OFFICIAL_VERSION))} 或更高才能在网页上发起"
+        elif not re.fullmatch(r"D\d{1,3}", day): msg = "❌ 天数格式是 D1、D2…"
+        elif not (re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t1) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t2) and t1 < t2):
+            msg = "❌ 时间要选开始和结束，且结束晚于开始（不能跨日）"
+        elif kind == "official_appt" and not place: msg = "❌ 官约要填地点"
+        elif kind == "official_appt" and re.search(r"[/\s]", place): msg = "❌ 地点里不要有空格或斜杠"
+        elif not people: msg = "❌ 至少选一位参与者"
+        elif any(n not in valid_roles for n in people): msg = "❌ 参与者里有不认识的角色，刷新后重选"
+        elif any("/" in n or "，" in n for n in people): msg = "❌ 角色名里带斜杠或逗号，不能这样发起"
+        else:
+            name = "官约" if kind == "official_appt" else "官电"
+            value = json.dumps({"day": day, "time": f"{t1}-{t2}", "place": place if kind == "official_appt" else "", "participants": people},
+                               ensure_ascii=False)
+    elif kind in ("bulk_item", "bulk_attr"):
+        role = "*all" if f.get("scope") == "all" else "*player"
+        if f.get("sign") == "-": value = "-" + value.lstrip("+-")
+        try:
+            if int(value) == 0 or abs(int(value)) > 9999: raise ValueError
+        except ValueError: msg = "❌ 数量要填 1~9999 的整数"
+        if not msg and not name: msg = "❌ 名称不能为空"
+    else:
+        msg = "❌ 不认识的操作"
+    if msg is None:
+        db.execute("INSERT INTO phone_admin_ops (show_id, role, kind, name, value, created_at) VALUES (?,?,?,?,?,?)",
+                   (sid, role, kind, name, value, int(time.time() * 1000)))
+        db.commit()
+        msg = "✅ 已提交，机器人下一次同步（约半分钟内）执行，结果显示在下面「最近操作」"
+    session["phone_flash"] = msg
+    return redirect(back)
+
+@app.route("/p/admin/as/<role>/op", methods=["POST"])
+def admin_phone_op(role):
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    f = request.form
+    back = url_for("admin_phone_character", role=role, view=f.get("view") if f.get("view") == "attrs" else None)
+    if not hmac.compare_digest(f.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+        return redirect(back)
+    db = get_db()
+    kind, name, value = f.get("kind", ""), (f.get("name") or "").strip()[:40], (f.get("value") or "").strip()
+    msg = None
+    if role not in _admin_role_list(db, sid):
+        msg = "❌ 本季没有这个角色"
+    elif kind == "attr":
+        try: int(value)
+        except ValueError: msg = "❌ 属性值要填整数"
+    elif kind == "item":
+        if f.get("sign") == "-": value = "-" + value.lstrip("+-")
+        try:
+            if int(value) == 0 or abs(int(value)) > 9999: raise ValueError
+        except ValueError: msg = "❌ 数量要填 1~9999 的整数"
+    elif kind == "feature":
+        if name not in _ADMIN_FEATURES or value not in ("on", "off"): msg = "❌ 开关参数不对"
+    else:
+        msg = "❌ 不认识的操作"
+    if not msg and not name:
+        msg = "❌ 名称不能为空"
+    if msg is None:
+        db.execute("INSERT INTO phone_admin_ops (show_id, role, kind, name, value, created_at) VALUES (?,?,?,?,?,?)",
+                   (sid, role, kind, name, value, int(time.time() * 1000)))
+        db.commit()
+        msg = "✅ 已提交，机器人下一次同步（约半分钟内）执行，结果显示在下面「最近操作」"
+    session["phone_flash"] = msg
+    return redirect(back)
 
 @app.route("/p/admin/as/<role>/<other>")
 def admin_phone_thread(role, other):
@@ -10531,6 +10863,7 @@ def admin_rpg():
         equip_slots         = _j("equipment_slots", ["head","chest","hand","leg","foot"]),
         equip_slot_names    = _j("equipment_slot_names", {}),
         craft_recipes       = _j("craft_recipes", {}),
+        level_rules         = _j("level_up_rules", {}),
         skill_defs          = _j("skill_defs", {}),
         battle_attrs        = _j("battle_attrs", {}),
         attack_defense_cfg  = _j("attack_defense_config", {}),
@@ -10552,7 +10885,7 @@ def admin_rpg_save():
         "item_registry", "rpg_attr_defs", "sys_attr_presets",
         "item_registry_pending", "equipment_registry",
         "equipment_registry_pending", "equipment_slots", "equipment_slot_names",
-        "craft_recipes", "skill_defs",
+        "craft_recipes", "skill_defs", "level_up_rules",
         "attack_defense_config",
         "trade_whitelist",
         "rpg_point_groups",

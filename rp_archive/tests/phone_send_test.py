@@ -63,7 +63,7 @@ lin = player("LINWAN0001")
 # 开关关着：没有输入框
 ok(bot.post("/api/phone/sync", headers={"X-Archive-Token":"bad"}, json={}).status_code == 403, "token")
 d = sync(); ok(d["web_send"] is False and d["events"] == [], d)
-t, page = csrf(lin, "周屿"); ok(t is None and 'id="compose"' not in page, "off: no compose")
+t, page = csrf(lin, "周屿"); ok('id="compose"' not in page and 'action="/p/me/send"' not in page, "off: no compose")   # 页面里别处（备注等）也带 csrf，不能再用「找不到 csrf」判断没有输入框
 # 直接 POST 也被拒
 lin2 = player("LINWAN0001")
 with lin2.session_transaction() as s: s["phone_csrf"] = "x"

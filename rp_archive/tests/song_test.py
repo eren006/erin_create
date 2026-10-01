@@ -57,9 +57,9 @@ js = web_song(lin, "163", "186016", to="周屿", message="生日快乐"); ok(js[
 pub = sz.get("/p/me/public").get_data(as_text=True)
 ok("有人点给 周屿" in pub and "晴天" in pub and "生日快乐" in pub and "林晚" not in pub.split('id="appearance"')[0].split("<body>")[1].replace("data-name=\"林晚\"", ""), "public anonymous")
 zp = zy.get("/p/me/点歌台").get_data(as_text=True); ok("有人为你点了一首歌" in zp and "生日快乐" in zp and "林晚" not in zp.split("<body>")[1].split("PHONE_AVATARS")[0], "recipient anonymous")
-ok("点歌台" in zy.get("/p/me").get_data(as_text=True), "inbox thread")
+ok('data-other="点歌台"' in zy.get("/p/me").get_data(as_text=True), "inbox thread")   # 页面 JS 注释里也有「点歌台」三个字，要认会话行的 data-other
 ok("你匿名点给 周屿" in lin.get("/p/me/点歌台").get_data(as_text=True), "sender sees own")
-ok("点歌台" not in sz.get("/p/me").get_data(as_text=True), "bystander has no 点歌台 thread")
+ok('data-other="点歌台"' not in sz.get("/p/me").get_data(as_text=True), "bystander has no 点歌台 thread")
 
 # 群里点歌：不写平台先网易云；写 QQ 走 QQ；点给大家；次数跟网页一起算（上限 3）
 js = group_song("林晚", "晴天", to="大家"); ok(js["ok"] and "给大家" in js["msg"] and "2/3" in js["msg"], js)
@@ -69,7 +69,7 @@ ok(not group_song("周屿", "搜不到")["ok"], "not found")
 ok("不能点给自己" in group_song("周屿", "晴天", to="周屿")["msg"], "self")
 js = group_song("周屿", "晴天", to="小狐狸"); ok(js["ok"] and "给 小狐狸" in js["msg"], js)  # 名单外的称呼可以
 ok("有人点给 小狐狸" in sz.get("/p/me/public").get_data(as_text=True), "custom target in public")
-ok("点歌台" not in sz.get("/p/me").get_data(as_text=True), "custom target reaches nobody")
+ok('data-other="点歌台"' not in sz.get("/p/me").get_data(as_text=True), "custom target reaches nobody")
 ok("最多 20 字" in group_song("周屿", "晴天", to="长" * 21)["msg"], "target too long")
 ok("不允许的字词" in group_song("周屿", "晴天", to="加vx")["msg"], "blocked target")
 ok("不允许的字词" in group_song("周屿", "晴天", message="加vx")["msg"], "blocked message")

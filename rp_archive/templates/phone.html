@@ -329,8 +329,11 @@ a { color: var(--link); text-decoration: none; }
 .admin-del { border: 1px solid #b4231866; border-radius: 10px; background: none; color: #b42318; font: inherit; font-size: 11.5px; padding: 1px 8px; cursor: pointer; }
 .row.admin-role { display: flex; gap: 12px; align-items: center; padding: 10px 16px; }
 .row.admin-role .avatar { text-decoration: none; color: #fff; }
-.row.admin-role .body { flex: 1; min-width: 0; color: inherit; text-decoration: none; }
+.row.admin-role { padding: 10px 16px; border-bottom: .5px solid var(--line); }
+.row.admin-role .body { flex: 1; min-width: 0; color: inherit; text-decoration: none; border-bottom: 0; padding-bottom: 0; margin-bottom: 0; }
+.row.admin-role .top { align-items: center; }
 .row.admin-role .admin-del { flex-shrink: 0; }
+.admin-view { flex-shrink: 0; white-space: nowrap; text-decoration: none; align-self: center; border: 1px solid var(--line); border-radius: 10px; color: var(--link); font-size: 11.5px; padding: 1px 8px; margin-right: 6px; }
 /* 点歌 */
 .song-card { display: flex; gap: 10px; align-items: center; margin-top: 8px; padding: 8px; border-radius: 12px; background: var(--theirs); color: var(--text); flex-wrap: wrap; }
 .sc-cover { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
@@ -575,6 +578,7 @@ a { color: var(--link); text-decoration: none; }
 .profile-flash { margin: 10px var(--gutter) 0; }
 </style>
 {% include '_phone_skin.html' %}
+{% if mode != 'entry' %}{% include '_phone_tools_css.html' %}{% endif %}
 </head>
 <body>
 {% macro npc(name) %}{% if name in (phone_npcs or []) %}<span class="npc-tag">NPC</span>{% endif %}{% endmacro %}
@@ -613,7 +617,7 @@ a { color: var(--link); text-decoration: none; }
   <header class="bar">
     <a class="back" href="{{ url_for('admin_phone_index') }}">角色</a>
     <div class="title">{{ skin.words.messages }}<small>管理 · 以 {{ owner }} 的视角</small></div>
-    <div class="right"></div>
+    <div class="right"><a class="linkbtn" href="{{ url_for('admin_phone_character', role=owner) }}">背包属性</a></div>
     {% include "_phone_quota.html" %}
   </header>
   {% else %}
@@ -671,11 +675,12 @@ a { color: var(--link); text-decoration: none; }
     <div class="title">{{ skin.words.public }}</div>
     <div class="right"></div>
   </header>
+  {% if skin.visual == 'cloudpost' %}<div class="cp-banner" aria-hidden="true"></div>{% endif %}
   {% include '_phone_public_ticker.html' %}
   <div class="scroll" id="scroll">
     <div class="chat public-feed" data-received-ts="{{ items[-1].ts if items else 0 }}">
       {% for it in items %}
-        {% if it.day_break %}<div class="stamp"><b>{{ it.day_break }}</b></div>{% endif %}
+        {% if it.day_break %}<div class="stamp"><b{% if it.day_break|string|length <= 4 %} class="pm"{% endif %}>{{ it.day_break }}</b></div>{% endif %}
         <div class="broadcast">
           {% if it.kind == 'song' %}
           <div class="bc-head">🎵 有人点给 {{ it.to }}<span class="bc-time">{{ it.time }}</span></div>
@@ -708,7 +713,7 @@ a { color: var(--link); text-decoration: none; }
   </header>
   {% else %}
   <header class="bar">
-    <a class="back" href="{{ url_for('player_discover') }}">发现</a>
+    {% if phone_admin %}<a class="back" href="{{ url_for('admin_phone_index') }}">角色</a>{% else %}<a class="back" href="{{ url_for('player_discover') }}">发现</a>{% endif %}
     <div class="title">{{ skin.words.moments }}</div>
     <div class="right">
       <a class="icon-btn" href="{{ url_for('player_moments', mine=1) }}" aria-label="我的朋友圈" title="我的朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg></a>
@@ -937,19 +942,47 @@ a { color: var(--link); text-decoration: none; }
   .daily-card .src { margin-top: 6px; font-size: 12px; color: var(--muted); text-align: right; }
   </style>
 {% elif mode == 'char' %}
+  {% if admin_as %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('admin_phone_index') }}">角色</a>
+    <div class="title">背包与属性<small>管理 · {{ owner }}</small></div>
+    <div class="right"></div>
+  </header>
+  {% else %}
   <header class="bar tab-bar">
     <div class="tab-head"><h1>角色</h1></div>
     <div class="tab-sub">{{ owner }}</div>
   </header>
+  {% endif %}
   <div class="scroll ch-page">
+    {% if skin.visual == 'cloudpost' %}<div class="cp-tag"><img src="{{ url_for('static', filename='themes/cloudpost/tag.webp') }}" alt="" width="116" height="142"><span>{{ owner }}</span></div>{% endif %}
     <nav class="song-tabs lm-tabs" aria-label="角色">
-      <a href="{{ url_for('player_character') }}"{% if view == 'bag' %} aria-current="page"{% endif %}>背包</a>
-      <a href="{{ url_for('player_character', view='attrs') }}"{% if view == 'attrs' %} aria-current="page"{% endif %}>属性</a>
+      <a href="{{ url_for('admin_phone_character', role=owner) if admin_as else url_for('player_character') }}"{% if view == 'bag' %} aria-current="page"{% endif %}>背包</a>
+      <a href="{{ url_for('admin_phone_character', role=owner, view='attrs') if admin_as else url_for('player_character', view='attrs') }}"{% if view == 'attrs' %} aria-current="page"{% endif %}>属性</a>
     </nav>
+    {% if admin_as %}
+    {% if flash %}<div class="ch-flash">{{ flash }}</div>{% endif %}
+    <h3 class="ch-h">功能开关（网页能感知的三项）</h3>
+    <div class="ch-list">{% for f in features %}
+      <form method="post" action="{{ url_for('admin_phone_op', role=owner) }}" class="ch-item ch-row">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="feature"><input type="hidden" name="name" value="{{ f.key }}"><input type="hidden" name="value" value="{{ 'off' if f.on else 'on' }}"><input type="hidden" name="view" value="{{ view }}">
+        <span class="nm">{{ f.name }}</span><span class="ct">{{ '开启' if f.on else '已关闭' }}</span>
+        <button type="submit" class="ch-btn">{{ '关闭' if f.on else '开启' }}</button>
+      </form>{% endfor %}</div>
+    {% endif %}
     {% if not rpg %}
     <div class="gm-empty ch-empty">还没有同步到背包和属性。机器人插件更新到新版并同步一次（约 2 分钟）后就能在这里看到。</div>
     {% elif view == 'bag' %}
       {% if rpg.currencies %}<div class="ch-cur">{% for c in rpg.currencies %}<div><b>{{ c.count }}</b><span>{{ c.name }}</span></div>{% endfor %}</div>{% endif %}
+      {% if admin_as %}<h3 class="ch-h">发放 / 扣除</h3>
+      <form method="post" action="{{ url_for('admin_phone_op', role=owner) }}" class="ch-give">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="item">
+        <input name="name" list="chItemNames" maxlength="40" placeholder="货币/道具/物品 的名称或代码" required>
+        <input name="value" type="number" min="1" max="9999" value="1" aria-label="数量" required>
+        <select name="sign" aria-label="加或扣"><option value="+">发放</option><option value="-">扣除</option></select>
+        <button type="submit" class="ch-btn">提交</button>
+        <datalist id="chItemNames">{% for c in rpg.currencies %}<option value="{{ c.name }}">{% endfor %}{% for it in rpg.presets + rpg['items'] %}<option value="{{ it.name }}">{% endfor %}</datalist>
+      </form>{% endif %}
       {% for title, rows in (('道具', rpg.presets), ('物品', rpg['items'])) %}{% if rows %}
       <h3 class="ch-h">{{ title }}（{{ rows|length }}）</h3>
       <div class="ch-list">{% for it in rows %}
@@ -965,6 +998,10 @@ a { color: var(--link); text-decoration: none; }
         <div class="ch-item"><div class="top"><span class="nm">{{ a.name }}</span><span class="ct">{{ a.value }}{% if a.max is not none %} / {{ a.max }}{% endif %}</span></div>
           {% if a.max is not none %}{% set lo = a.min if a.min is not none else 0 %}{% set span = (a.max - lo) or 1 %}<div class="ch-bar"><i style="width: {{ [0, [100, ((a.value - lo) * 100 / span)]|min]|max|round|int }}%"></i></div>{% endif %}
           {% if a.desc %}<div class="ds">{{ a.desc }}</div>{% endif %}
+          {% if admin_as %}<form method="post" action="{{ url_for('admin_phone_op', role=owner) }}" class="ch-set">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="attr"><input type="hidden" name="name" value="{{ a.name }}"><input type="hidden" name="view" value="attrs">
+            <input name="value" type="number" step="1" value="{{ a.value }}" aria-label="{{ a.name }}"{% if a.min is not none %} min="{{ a.min }}"{% endif %}{% if a.max is not none %} max="{{ a.max }}"{% endif %} required><button type="submit" class="ch-btn">设为此值</button>
+          </form>{% endif %}
         </div>{% endfor %}</div>
       {% else %}<div class="gm-empty ch-empty">还没有注册任何属性</div>{% endif %}
       {% if rpg.equips %}
@@ -975,27 +1012,16 @@ a { color: var(--link); text-decoration: none; }
         </div>{% endfor %}</div>
       {% endif %}
     {% endif %}
+    {% if admin_as and admin_ops %}
+    <h3 class="ch-h">最近操作</h3>
+    <div class="ch-list">{% for o in admin_ops %}
+      <div class="ch-item"><div class="top"><span class="nm">{{ {'attr':'设属性','item':'道具货币','feature':'功能开关'}.get(o.kind, o.kind) }} · {{ o.name }}{{ ' = ' ~ o.value if o.kind != 'feature' else (' → ' ~ ('开启' if o.value == 'on' else '关闭')) }}</span>
+        <span class="ct">{{ '待执行' if not o.done else ('✅' if o.ok else '❌') }}</span></div>
+        {% if o.done and o.result %}<div class="ef">{{ o.result }}</div>{% endif %}</div>{% endfor %}</div>
+    {% endif %}
     {% if rpg and rpg_time %}<div class="ch-sync">同步于 {{ rpg_time }}</div>{% endif %}
   </div>
-  <style>
-  .ch-sync { margin: 14px var(--gutter, 18px) 0; text-align: center; font-size: 12px; color: var(--muted); }
-  .ch-page { padding-bottom: 24px; }
-  .ch-page .song-tabs + .ch-list { margin-top: 12px; }
-  .gm-empty { color: var(--muted); font-size: 13px; text-align: center; }
-  .ch-empty { padding: 28px 24px; line-height: 1.7; }
-  .ch-cur { display: flex; gap: 8px; padding: 12px var(--gutter, 18px) 0; flex-wrap: wrap; }
-  .ch-cur div { flex: 1; min-width: 88px; text-align: center; border: 1px solid var(--line); border-radius: 12px; padding: 8px 6px; }
-  .ch-cur b { display: block; font-size: 20px; } .ch-cur span { font-size: 12px; color: var(--muted); }
-  .ch-h { margin: 16px var(--gutter, 18px) 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
-  .ch-list { margin: 0 var(--gutter, 18px); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
-  .ch-item { padding: 10px 14px; border-bottom: .5px solid var(--line); }
-  .ch-item:last-child { border-bottom: 0; }
-  .ch-item .top { display: flex; justify-content: space-between; gap: 10px; font-size: 15px; }
-  .ch-item .nm { font-weight: 600; } .ch-item .ct { font-variant-numeric: tabular-nums; }
-  .ch-item .ds, .ch-item .ef { margin-top: 3px; font-size: 12px; color: var(--muted); line-height: 1.6; }
-  .ch-bar { height: 6px; border-radius: 3px; background: var(--theirs); margin-top: 7px; overflow: hidden; }
-  .ch-bar i { display: block; height: 100%; background: var(--mine); border-radius: 3px; }
-  </style>
+  
 {% elif mode == 'maps' %}
 {% include '_phone_maps.html' %}
 {% elif mode == 'games' %}
@@ -1007,6 +1033,7 @@ a { color: var(--link); text-decoration: none; }
     <div class="right"></div>
   </header>
   <div class="scroll">
+    {% if skin.visual == 'cloudpost' %}<div class="cp-vinyl" aria-hidden="true"></div>{% endif %}
     {% if why %}<div class="song-note">{{ why }}</div>{% endif %}
     <div class="song-tabs" role="group" aria-label="选择平台">
       <button type="button" data-pf="163" aria-pressed="true">网易云</button>
@@ -1121,9 +1148,10 @@ a { color: var(--link); text-decoration: none; }
             {% elif item.kind == 'letter' %}<span class="pending-title">✉️ {{ p.from }}</span>
             {% else %}<span class="pending-title">🔗 {{ p }}</span>{% endif %}
             {% if m is not none %}<span class="pending-chip{{ ' is-due' if item.kind == 'session' and p.over }}">{{ '已超时 ' if item.kind == 'session' and p.over else '等了 ' }}{{ (m // 60) ~ 'h' if m >= 60 else '' }}{{ m % 60 }}m</span>{% endif %}
+            {% if item.urged_ts %}<span class="pending-chip is-due">管理员催回</span>{% endif %}
           </div>
           <div class="pending-line2">
-            {% if item.kind == 'session' %}群 {{ p.gid }}
+            {% if item.kind == 'session' %}群 {{ p.gid }}{% if item.urged_text %} · 管理员{{ item.urged_text }}催你回复{% endif %}
             {% elif item.kind == 'letter' %}给你写了信，还没回
             {% else %}已回复你的关系线 · 群里发「查看关系线 {{ p }}」回复{% endif %}
           </div>
@@ -1250,6 +1278,83 @@ a { color: var(--link); text-decoration: none; }
     {% endif %}
   </div>
 
+{% elif mode == 'admin_settings' %}
+  <header class="bar tab-bar">
+    <div class="tab-head"><h1>设置</h1></div>
+    <div class="tab-sub">全局参数 · 批量操作</div>
+  </header>
+  <div class="scroll ch-page">
+    <a class="plugin-chip {{ plugin.level }}" href="{{ url_for('admin_phone_settings') }}">{{ plugin.text }}</a>
+    {% if flash %}<div class="ch-flash">{{ flash }}</div>{% endif %}
+    {% if not plugin.can %}
+    <div class="gm-empty ch-empty">插件升级到 1.10.4 或更高、并同步一次后，这里才能看到和修改参数。</div>
+    {% else %}
+    <h3 class="ch-h">发起官约 / 官电</h3>
+    {% if not plugin.can_official %}
+    <p class="ch-note">插件升级到 1.10.7 或更高后，才能在这里发起官约、官电。</p>
+    {% else %}
+    <form method="post" action="{{ url_for('admin_phone_settings_op') }}" class="ch-give" style="flex-direction:column;align-items:stretch;gap:8px">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <select name="kind" aria-label="类型"><option value="official_appt">官约（有地点）</option><option value="official_call">官电（电话）</option></select>
+      <input name="day" maxlength="5" placeholder="天数，例如 D1" pattern="[Dd][0-9]{1,3}" required>
+      <span style="display:flex;gap:6px;align-items:center"><input name="t1" type="time" aria-label="开始时间" required> 到 <input name="t2" type="time" aria-label="结束时间" required></span>
+      <input name="place" maxlength="40" placeholder="地点（仅官约，不要空格）">
+      <details><summary>参与者（点开选择）</summary>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px">{% for n in official_roles %}
+          <label style="white-space:nowrap"><input type="checkbox" name="people" value="{{ n }}"> {{ n }}</label>{% endfor %}</div>
+      </details>
+      <button type="submit" class="ch-btn" data-confirm="确定发起？机器人会马上建群并通知参与者。">发起</button>
+    </form>
+    <p class="ch-note">机器人下一次同步（约半分钟内）建群，会占用一个群号并通知参与者；结果显示在最下面的「最近操作」。时间冲突、群号不够等原因失败会写在结果里。</p>
+    {% endif %}
+    <h3 class="ch-h">批量发放（所有角色）</h3>
+    <form method="post" action="{{ url_for('admin_phone_settings_op') }}" class="ch-give">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="bulk_item">
+      <input name="name" maxlength="40" placeholder="货币/道具/物品 的名称或代码" required>
+      <input name="value" type="number" min="1" max="9999" value="1" aria-label="数量" required>
+      <select name="sign" aria-label="加或扣"><option value="+">发放</option><option value="-">扣除</option></select>
+      <select name="scope" aria-label="范围"><option value="player">仅玩家</option><option value="all">含 NPC</option></select>
+      <button type="submit" class="ch-btn" data-confirm="确定给所有角色批量发放 / 扣除？">提交</button>
+    </form>
+    <form method="post" action="{{ url_for('admin_phone_settings_op') }}" class="ch-give" style="margin-top:8px">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="bulk_attr">
+      <input name="name" maxlength="40" placeholder="属性名（所有角色的该属性加减）" required>
+      <input name="value" type="number" min="1" max="9999" value="1" aria-label="变化量" required>
+      <select name="sign" aria-label="加或减"><option value="+">增加</option><option value="-">减少</option></select>
+      <select name="scope" aria-label="范围"><option value="player">仅玩家</option><option value="all">含 NPC</option></select>
+      <button type="submit" class="ch-btn" data-confirm="确定给所有角色批量加减这个属性？">提交</button>
+    </form>
+    <p class="ch-note">属性加减会按各自的上下限夹住；扣除只扣背包里现有的数量。</p>
+    {% for sec, items in param_groups.items() %}
+    <h3 class="ch-h">{{ sec }}</h3>
+    <div class="ch-list">{% for p in items %}
+      <form method="post" action="{{ url_for('admin_phone_settings_op') }}" class="ch-item ch-row">
+        <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="param"><input type="hidden" name="name" value="{{ p.id }}">
+        <span class="nm">{{ p.label }}{% if p.note %}<small>{{ p.note }}</small>{% endif %}</span>
+        {% if p.type == 'bool' %}
+        <span class="ct">{{ '开启' if p.value else '关闭' }}</span>
+        <input type="hidden" name="value" value="{{ 'off' if p.value else 'on' }}"><button type="submit" class="ch-btn">{{ '关闭' if p.value else '开启' }}</button>
+        {% elif p.type == 'time' %}
+        <input name="value" type="time" value="{{ p.value }}" required><button type="submit" class="ch-btn">保存</button>
+        {% else %}
+        <input name="value" type="number" step="1" value="{{ p.value }}"{% if p.min is not none %} min="{{ p.min }}"{% endif %}{% if p.max is not none %} max="{{ p.max }}"{% endif %} required>{% if p.unit %}<span class="ct">{{ p.unit }}</span>{% endif %}<button type="submit" class="ch-btn">保存</button>
+        {% endif %}
+      </form>{% endfor %}</div>
+    {% endfor %}
+    {% if admin_ops %}
+    <h3 class="ch-h">最近操作</h3>
+    <div class="ch-list">{% for o in admin_ops %}
+      <div class="ch-item"><div class="top"><span class="nm">{{ {'param':'参数','bulk_item':'批量道具','bulk_attr':'批量属性','official_appt':'发起官约','official_call':'发起官电'}.get(o.kind, o.kind) }}{% if o.kind in ('official_appt', 'official_call') %} · {{ o.value }}{% else %} · {{ o.name }} = {{ o.value }}{% endif %}{% if o.role != '*' %}（{{ '含NPC' if o.role == '*all' else '仅玩家' }}）{% endif %}</span>
+        <span class="ct">{{ '待执行' if not o.done else ('✅' if o.ok else '❌') }}</span></div>
+        {% if o.done and o.result %}<div class="ef">{{ o.result }}</div>{% endif %}</div>{% endfor %}</div>
+    {% endif %}
+    {% endif %}
+  </div>
+  
+  <script>
+  document.querySelectorAll('[data-confirm]').forEach(function (b) { b.addEventListener('click', function (e) { if (!confirm(b.getAttribute('data-confirm'))) e.preventDefault(); }); });
+  </script>
+
 {% elif mode == 'admin_index' %}
   <header class="bar">
     <form method="post" action="{{ url_for('player_phone_logout') }}"><button class="linkbtn" type="submit">退出</button></form>
@@ -1257,19 +1362,56 @@ a { color: var(--link); text-decoration: none; }
     <div class="right"></div>
   </header>
   <div class="scroll list">
+    {% if plugin %}<a class="plugin-chip {{ plugin.level }}" href="{{ url_for('admin_phone_settings') }}">{{ plugin.text }} ›</a>{% endif %}
     <a class="row public-row" href="{{ url_for('phone_guide') }}"><div class="avatar public-avatar">📱</div><div class="body"><div class="top"><span class="name">小手机</span></div><div class="preview">管理员指南：发码、网页发送、维护删除</div></div></a>
     <a class="row public-row" href="{{ url_for('player_phone_public') }}"><div class="avatar public-avatar">📢</div><div class="body"><div class="top"><span class="name">公开播报 · 点歌</span></div><div class="preview">看点歌人、删播报和点歌</div></div></a>
     <a class="row public-row" href="{{ url_for('player_moments') }}"><div class="avatar moments-avatar">📷</div><div class="body"><div class="top"><span class="name">{{ skin.words.moments }}</span></div><div class="preview">删朋友圈、评论、图片</div></div></a>
+    <a class="row public-row" href="{{ url_for('admin_phone_urge') }}"><div class="avatar public-avatar">⏰</div><div class="body"><div class="top"><span class="name">催回</span></div><div class="preview">看谁超时没回，一键催（小手机标记 + 群里 @）</div></div></a>
     {% for r in roles %}
     <div class="row admin-role">
       <a class="avatar" data-name="{{ r.name }}" href="{{ url_for('admin_phone_inbox', role=r.name) }}">{{ r.name[:1] }}</a>
       <a class="body" href="{{ url_for('admin_phone_inbox', role=r.name) }}"><div class="top"><span class="name">{{ r.name }}{{ npc(r.name) }}</span><span class="time">{{ r.count }} 条</span></div></a>
+      <a class="admin-view" href="{{ url_for('admin_phone_character', role=r.name) }}">背包属性</a>
       {% if (phone_avatars or {}).get(r.name) %}<button type="button" class="admin-del" data-admin-del="avatar:{{ r.name }}" data-desc="删除 {{ r.name }} 的头像？会换回名字头像。">删头像</button>{% endif %}
     </div>
     {% else %}
     <div class="empty">本季还没有角色</div>
     {% endfor %}
   </div>
+
+{% elif mode == 'admin_urge' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('admin_phone_index') }}">管理</a>
+    <div class="title">催回<small>{{ urge_rows|length }} 项</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll ch-page">
+    <a class="plugin-chip {{ plugin.level }}" href="{{ url_for('admin_phone_settings') }}">{{ plugin.text }}</a>
+    {% if flash %}<div class="ch-flash">{{ flash }}</div>{% endif %}
+    <p class="ch-note">催一次 = 小手机上对方的「待回」会标「管理员催你回复」，同时机器人在那个群里 @ 对方发一条提醒。同一次等待 10 分钟内不重复催。</p>
+    <p class="ch-note"><a href="{{ url_for('admin_phone_urge', all=(None if show_all else '1')) }}">{{ '只看已超时' if show_all else '连没超时的一起看' }}</a></p>
+    {% if urge_rows %}
+    <form method="post" action="{{ url_for('admin_phone_urge_op') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="show_all" value="{{ '1' if show_all else '' }}">
+      <div class="ch-list">{% for u in urge_rows %}
+        <label class="ch-item ch-row"><input type="checkbox" name="item" value="{{ u.role }}|{{ u.key }}"{% if u.over and not u.urged_text %} checked{% endif %}>
+          <span class="nm">{{ u.role }}{{ npc(u.role) }}<small>{{ u.type }} · 群 {{ u.gid }}{% if u.urged_text %} · {{ u.urged_text }}催过{% endif %}</small></span>
+          <span class="ct">{{ '已超时 ' if u.over else '等了 ' }}{{ (u.minutes // 60) ~ 'h' if u.minutes >= 60 else '' }}{{ u.minutes % 60 }}m</span></label>{% endfor %}</div>
+      <button type="submit" class="ch-btn" data-confirm="确定催回勾选的这些？">催回勾选的</button>
+      <button type="submit" name="scope" value="overdue" class="ch-btn" data-confirm="确定催回所有已超时的？">催回全部超时</button>
+    </form>
+    {% else %}<div class="gm-empty ch-empty">🌙 现在没有{{ '' if show_all else '超时的' }}待回</div>{% endif %}
+    {% if admin_ops %}
+    <h3 class="ch-h">最近操作</h3>
+    <div class="ch-list">{% for o in admin_ops %}
+      <div class="ch-item"><div class="top"><span class="nm">{{ o.name }}</span><span class="ct">{{ '待执行' if not o.done else ('✅' if o.ok else '❌') }}</span></div>
+        {% if o.done and o.result %}<div class="ef">{{ o.result }}</div>{% endif %}</div>{% endfor %}</div>
+    {% endif %}
+    {% if plugin.known and not plugin.fresh %}<p class="song-note">⚠️ 机器人有一阵子没同步了，上面可能不是最新的。</p>{% endif %}
+  </div>
+  <script>
+  document.querySelectorAll('[data-confirm]').forEach(function (b) { b.addEventListener('click', function (e) { if (!confirm(b.getAttribute('data-confirm'))) e.preventDefault(); }); });
+  </script>
 
 {% elif mode == 'shop' %}
   <header class="bar">
@@ -1280,6 +1422,24 @@ a { color: var(--link); text-decoration: none; }
   <div class="scroll shop-page">
     {% if why %}<div class="song-note">{{ why }}</div>
     {% else %}
+      {% if skin.visual == 'cloudpost' %}
+      <div class="cp-stage"><div class="cp-lamp" id="cpLamp" data-lit="{{ 1 if shop and shop.state in ('new', 'owned') else 0 }}">
+        <img class="lamp off" src="{{ url_for('static', filename='themes/cloudpost/lamp_off.webp') }}" alt="" width="210" height="311">
+        <img class="lamp on" src="{{ url_for('static', filename='themes/cloudpost/lamp_on.webp') }}" alt="" width="210" height="311">
+        <a class="cp-chain" id="cpChain" href="{{ url_for('player_shop') }}" aria-label="拉一下灯链，去货架看看"><img src="{{ url_for('static', filename='themes/cloudpost/chain.webp') }}" alt="" width="10" height="109"></a>
+      </div></div>
+      <p class="cp-lamp-hint">{{ '灯亮着。' if shop and shop.state in ('new', 'owned') else '拉一下灯链，去货架看看。' }}</p>
+      <script>
+      (function () {
+        var chain = document.getElementById('cpChain'), lamp = document.getElementById('cpLamp');
+        if (!chain) return;
+        chain.addEventListener('click', function (e) {
+          e.preventDefault(); chain.classList.add('pulled'); lamp.dataset.lit = '1';
+          setTimeout(function () { location.href = chain.href; }, 520);
+        });
+      })();
+      </script>
+      {% endif %}
       {% if shop %}
       <section class="shelf">
         {% if shop.state == 'new' %}
@@ -1299,7 +1459,7 @@ a { color: var(--link); text-decoration: none; }
         {% endif %}
       </section>
       {% else %}
-      <a class="song-cta shelf-go" href="{{ url_for('player_shop') }}">🛍️ 去货架看看</a>
+      {% if skin.visual != 'cloudpost' %}<a class="song-cta shelf-go" href="{{ url_for('player_shop') }}">🛍️ 去货架看看</a>{% endif %}
       {% endif %}
       <div class="book">
         {% for g in catalog %}
@@ -1386,7 +1546,7 @@ a { color: var(--link); text-decoration: none; }
     {% set my_alias = other.partition('＠')[2] if alias_thread == 'out' else '' %}
     <div class="chat" data-received-ts="{{ msgs|rejectattr('mine')|map(attribute='ts')|max|default(0) }}">
       {% for m in msgs %}
-        {% if m.show_time %}<div class="stamp">{% if m.day_break %}<b>{{ m.day_break }}</b> {% endif %}{{ m.time }}</div>{% endif %}
+        {% if m.show_time %}<div class="stamp">{% if m.day_break %}<b{% if m.day_break|string|length <= 4 %} class="pm"{% endif %}>{{ m.day_break }}</b> {% endif %}{{ m.time }}</div>{% endif %}
         {% if m.kind == 'sys' %}<div class="stamp group-sys">{{ m.text }}</div>{% else %}
         <div class="msg {{ 'mine' if m.mine else 'theirs' }}" id="message-{{ [sid, owner, m.id]|phone_message_key }}">
           {# 一对一里落款和对方同名就不重复写；落款被换了/匿名/群聊才显示 #}
@@ -1579,10 +1739,11 @@ a { color: var(--link); text-decoration: none; }
 {% endif %}
 
 {% if phone_admin %}
-<div class="bottom-dock"><nav class="phone-nav" aria-label="管理导航">
-  <a href="{{ url_for('admin_phone_index') }}"{% if mode in ('admin_index', 'inbox', 'thread') %} aria-current="page"{% endif %}><span aria-hidden="true">▤</span>角色</a>
-  <a href="{{ url_for('player_phone_public') }}"{% if mode == 'public' %} aria-current="page"{% endif %}><span aria-hidden="true">📢</span>播报</a>
-  <a href="{{ url_for('player_moments') }}"{% if mode == 'moments' %} aria-current="page"{% endif %}><span aria-hidden="true">◎</span>{{ skin.words.moments }}</a>
+<div class="bottom-dock"><nav class="phone-nav admin-nav" aria-label="管理导航">
+  <a href="{{ url_for('admin_phone_index') }}" aria-label="角色"{% if mode in ('admin_index', 'admin_urge', 'inbox', 'thread', 'char') %} aria-current="page"{% endif %}><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20v-1.5a6.5 6.5 0 0 1 13 0V20"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 13.2a6.5 6.5 0 0 1 3.5 5.8V20"/></svg></span>角色</a>
+  <a href="{{ url_for('player_phone_public') }}" aria-label="播报"{% if mode == 'public' %} aria-current="page"{% endif %}><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><path d="M3 10v4h3l7 4V6L6 10H3Z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/></svg></span>播报</a>
+  <a href="{{ url_for('player_moments') }}" aria-label="{{ skin.words.moments }}"{% if mode == 'moments' %} aria-current="page"{% endif %}><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></svg></span>{{ skin.words.moments }}</a>
+  <a href="{{ url_for('admin_phone_settings') }}" aria-label="设置"{% if mode == 'admin_settings' %} aria-current="page"{% endif %}><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg></span>设置</a>
 </nav></div>
 {% else %}{% include '_phone_nav.html' %}{% endif %}
 
@@ -1603,6 +1764,10 @@ a { color: var(--link); text-decoration: none; }
     <button type="button" class="choice" data-font="standard" aria-pressed="false">标准</button>
     <button type="button" class="choice" data-font="large" aria-pressed="false">大字</button>
   </div></fieldset>
+  <fieldset><legend>主题风格</legend><div class="choices" id="skinChoices">
+    <button type="button" class="choice" data-skin="" aria-pressed="{{ 'false' if skin.picked else 'true' }}">跟随本季</button>
+    {% for key, t in phone_themes.items() %}<button type="button" class="choice" data-skin="{{ key }}" aria-pressed="{{ 'true' if skin.picked == key else 'false' }}">{{ t.name }}</button>{% endfor %}
+  </div><p class="local-hint">只换外观（配色、图案、装饰），页面用语跟随本季设置。只保存在这台设备，切换后会刷新页面。</p></fieldset>
   <fieldset><legend>主题色</legend><div class="choices"><button type="button" class="choice" data-theme="system" aria-pressed="false">跟随团主题</button>
     {% for value, label, color in [('purple','紫','#6854bc'),('blue','蓝','#3267a8'),('green','绿','#37765d'),('pink','粉','#a44770'),('orange','橙','#a45427'),('ink','墨','#505763')] %}
     <button type="button" class="choice" data-theme="{{ value }}" aria-pressed="false"><i style="--swatch:{{ color }}" aria-hidden="true"></i>{{ label }}</button>
@@ -1618,7 +1783,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') and not phone_admin %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -1883,6 +2048,12 @@ a { color: var(--link); text-decoration: none; }
       avMsg.textContent = r.msg || '';
       if (r.ok) { delete window.PHONE_AVATARS[me]; avRemove.hidden = true; applyAvatars(); }
     });
+    document.getElementById('skinChoices').addEventListener('click', function (e) {
+      var b = e.target.closest('button[data-skin]'); if (!b) return;
+      var v = b.dataset.skin;
+      document.cookie = 'phone_skin=' + encodeURIComponent(v) + '; path=/; max-age=' + (v ? 31536000 : 0) + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+      location.reload();
+    });
     document.getElementById('appearanceReset').addEventListener('click', function () {
       prefs = {theme:'system', wall:'default', font:'standard'};
       try { localStorage.removeItem(prefKey); } catch (_) {}
@@ -1968,7 +2139,7 @@ a { color: var(--link); text-decoration: none; }
       if (reminder && data.pending) {
         const pending = data.pending;
         reminder.hidden = !pending.count;
-        document.getElementById('pendingEntryTitle').textContent = (pending.stale ? '待回记录' : '待我回复') + ' · ' + pending.count + ' 项';
+        document.getElementById('pendingEntryTitle').textContent = (pending.stale ? '待回记录' : (pending.urged ? '管理员催你回复' : '待我回复')) + ' · ' + pending.count + ' 项';
         document.getElementById('pendingEntryDetail').textContent = pending.stale ? '同步延迟 · 请以最新回复情况为准' : (pending.longest ? '最长已等待 ' + pending.longest : '有关系线等待回复');
         reminder.classList.toggle('is-stale',pending.stale);
       }

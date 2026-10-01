@@ -119,7 +119,7 @@ ok(app.test_client().post("/api/event", headers={"X-Archive-Token": TOKEN}, json
 zb = body(page(zy))
 ok("今晚的月亮很好看" in zb and "不告诉你" in zb and "林晚" not in zb and "飘落到了公告区" in zb, "recipient anonymous")
 _nav = zy.get("/p/me").get_data(as_text=True)
-ok('data-other="__lovemail__" data-received-ts="' in _nav and 'data-received-ts="0"' not in _nav, "unread marker on nav tab")
+ok('data-also="__lovemail__" data-also-ts="' in _nav and 'data-also-ts="0"' not in _nav, "unread marker on nav tab")   # 心动信箱并进了底栏「发现」，未读时间戳是 data-also-ts
 ok("收到的 1" in page(zy), "recipient count")
 ok("寄给 周屿" in page(lin, "sent") and "已派送" in page(lin, "sent"), "sender history")
 ok("今晚的月亮很好看" not in body(page(sz)) and "今晚的月亮很好看" not in page(sz, "sent"), "bystander sees nothing")

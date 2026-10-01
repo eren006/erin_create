@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>长日系统 · 发布控制台</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e2229; --border: #2a2f3a;
+    --text: #e7e9ee; --muted: #8b93a3; --accent: #7aa2ff;
+    --feat: #4caf7d; --improve: #5b9bd5; --fix: #e3685c; --chore: #9a8cc4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; line-height: 1.5; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+  section.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin-bottom: 18px; }
+  section.card h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .badge { display: inline-block; background: var(--panel2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; font-size: 12px; color: var(--muted); }
+  .ver-current { color: var(--accent); font-weight: 600; }
+
+  .module-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .module-row:last-child { border-bottom: none; }
+  .module-row .v { font-family: ui-monospace, monospace; color: var(--muted); }
+  .module-row .v.core { color: var(--accent); }
+
+  input, select, textarea, button { font-family: inherit; font-size: 13px; }
+  input, select, textarea { background: var(--panel2); border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 7px 9px; }
+  textarea { width: 100%; resize: vertical; min-height: 54px; }
+  button { cursor: pointer; border-radius: 6px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); padding: 7px 14px; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0f1115; font-weight: 600; }
+  button.primary:hover { opacity: .9; }
+  button.danger:hover { border-color: var(--fix); color: var(--fix); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  .add-form { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .add-form textarea { flex: 1; min-width: 200px; }
+  .add-form .col { display: flex; flex-direction: column; gap: 6px; }
+
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; color: #0f1115; font-weight: 600; }
+  .pill.feat { background: var(--feat); } .pill.improve { background: var(--improve); }
+  .pill.fix { background: var(--fix); } .pill.chore { background: var(--chore); }
+
+  .note-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .note-item:last-child { border-bottom: none; }
+  .note-item .txt { flex: 1; font-size: 13px; }
+  .note-item .mod { color: var(--muted); font-size: 11px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+
+  .release-panel .bump-opts label { margin-right: 16px; font-size: 13px; }
+  .release-panel .module-bump-list { max-height: 220px; overflow-y: auto; margin: 10px 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .release-panel .module-bump-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+  .release-panel .module-bump-row input[type=text] { width: 90px; }
+  .release-panel .note-checklist { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 10px 0; }
+  .release-panel .note-check { display: flex; gap: 8px; padding: 4px 0; font-size: 13px; align-items: flex-start; }
+
+  .timeline-entry { border-bottom: 1px solid var(--border); padding: 12px 0; }
+  .timeline-entry:last-child { border-bottom: none; }
+  .timeline-entry .ver-line { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+  .timeline-entry .ver-line b { font-size: 14px; }
+  .timeline-entry .ver-line .date { color: var(--muted); font-size: 12px; }
+  .timeline-entry .latest-tag { background: var(--accent); color: #0f1115; font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: 700; }
+  .timeline-entry ul { margin: 4px 0 4px 0; padding-left: 20px; font-size: 13px; }
+  .timeline-entry li { margin-bottom: 3px; }
+  #changelogBox { max-height: 480px; overflow-y: auto; }
+
+  .todo-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .todo-row:last-child { border-bottom: none; }
+  .todo-row.done .txt { text-decoration: line-through; color: var(--muted); }
+  .todo-row .txt { flex: 1; }
+
+  .deploy-target { border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+  .deploy-target:last-child { margin-bottom: 0; }
+  .deploy-target .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .deploy-target .name { font-size: 13px; font-weight: 600; }
+  .deploy-target .meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .deploy-target .status-ok { color: var(--feat); }
+  .deploy-target .status-fail { color: var(--fix); }
+  .deploy-target pre { margin-top: 8px; background: #0a0b0e; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; max-height: 220px; overflow-y: auto; color: #9fe3a8; }
+  .deploy-error { color: var(--muted); font-size: 13px; }
+  .deploy-error a { color: var(--accent); }
+
+  .toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel2); border: 1px solid var(--accent); color: var(--text); padding: 10px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 50; }
+  .toast.show { opacity: 1; }
+  .toast.error { border-color: var(--fix); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>长日系统 · 发布控制台</h1>
+  <div class="sub">当前系统版本 <span class="ver-current" id="coreVer">-</span> · 本地工具，只在这台机器上跑</div>
+
+  <div class="grid">
+    <div>
+      <section class="card">
+        <h2>📝 记一笔改动</h2>
+        <div class="add-form">
+          <div class="col">
+            <select id="noteType">
+              <option value="feat">新增</option>
+              <option value="improve">优化</option>
+              <option value="fix">修复</option>
+              <option value="chore">其他</option>
+            </select>
+            <select id="noteModule"><option value="">（不关联具体模块）</option></select>
+          </div>
+          <textarea id="noteText" placeholder="这次改了什么，写完就能不用记在脑子里了"></textarea>
+          <button class="primary" onclick="addNote()">记下</button>
+        </div>
+        <div id="pendingList"></div>
+      </section>
+
+      <section class="card">
+        <h2>✅ TODO 待办</h2>
+        <div class="add-form">
+          <input id="todoText" placeholder="想到但还没做的" style="flex:1">
+          <button class="primary" onclick="addTodo()">添加</button>
+        </div>
+        <div id="todoList"></div>
+      </section>
+    </div>
+
+    <div>
+      <section class="card">
+        <h2>📦 模块版本一览</h2>
+        <div id="moduleList"></div>
+      </section>
+
+      <section class="card">
+        <h2>🧰 打包 / 同步</h2>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:10px;">
+          改完哪个 长日xx.js 就只用管那一份源文件——不用再记得手动 cp 到 dist/changri_sealpack_src/scripts/ 下同名文件，
+          「发布这个版本」会自动把所有模块的 dist 对齐一遍。这里的两个按钮是不想等到正式发布时才用：
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button onclick="syncDist()">🔄 只同步 dist（不发布，不改版本号）</button>
+          <button onclick="buildPackage()">📦 打包成 .sealpack（导入 SealDice 用）</button>
+        </div>
+        <div id="toolsOutput" style="margin-top:10px;font-size:12px;color:var(--muted);"></div>
+      </section>
+
+      <section class="card release-panel">
+        <h2>🚀 发布新版本</h2>
+        <div class="bump-opts">
+          <label><input type="radio" name="bump" value="patch" checked> 小版本 +0.0.1</label>
+          <label><input type="radio" name="bump" value="minor"> 大版本 +0.1.0</label>
+          <label><input type="radio" name="bump" value="custom"> 自定义 <input type="text" id="customVer" placeholder="1.9.0" style="width:70px"></label>
+        </div>
+        <div style="margin-top:10px;color:var(--muted);font-size:12px;">勾选这次要一起发布的变更（决定进这个版本的更新日志）：</div>
+        <div class="note-checklist" id="noteChecklist"></div>
+        <details style="margin-top:6px;">
+          <summary style="cursor:pointer;font-size:12px;color:var(--muted);">顺带升级某个模块自己的版本号（可选）</summary>
+          <div class="module-bump-list" id="moduleBumpList"></div>
+        </details>
+        <div style="margin-top:12px;">
+          <button class="primary" onclick="doRelease()">发布这个版本</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>🛰️ 部署</h2>
+        <div id="deployBox">加载中...</div>
+      </section>
+    </div>
+  </div>
+
+  <section class="card">
+    <h2>📜 版本历史</h2>
+    <div id="changelogBox"></div>
+  </section>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const TYPE_TITLES = { feat: "新增", improve: "优化", fix: "修复", chore: "其他" };
+let STATE = { modules: [], pending: [], todos: [], release_log: [] };
+
+function toast(msg, isError) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (isError ? ' error' : '');
+  setTimeout(() => el.className = 'toast', 2500);
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || '请求失败');
+  return data;
+}
+
+async function loadState() {
+  STATE = await api('/api/state');
+  render();
+}
+
+function render() {
+  const core = STATE.modules.find(m => m.is_core);
+  document.getElementById('coreVer').textContent = core ? 'v' + core.version : '-';
+
+  document.getElementById('moduleList').innerHTML = STATE.modules.map(m =>
+    `<div class="module-row"><span>${m.is_core ? '⭐ ' : ''}${m.label}</span><span class="v ${m.is_core ? 'core' : ''}">v${m.version}</span></div>`
+  ).join('');
+
+  const modSelect = document.getElementById('noteModule');
+  const curVal = modSelect.value;
+  modSelect.innerHTML = '<option value="">（不关联具体模块）</option>' +
+    STATE.modules.map(m => `<option value="${m.key}">${m.label}</option>`).join('');
+  modSelect.value = curVal;
+
+  renderPending();
+  renderTodos();
+  renderNoteChecklist();
+  renderModuleBumpList();
+  loadChangelog();
+  loadDeployTargets();
+}
+
+async function loadDeployTargets() {
+  const box = document.getElementById('deployBox');
+  try {
+    const targets = await api('/api/deploy/targets');
+    if (!targets.length) {
+      box.innerHTML = '<div class="deploy-error">部署控制台里还没注册这两个项目</div>';
+      return;
+    }
+    box.innerHTML = targets.map(t => {
+      const run = t.last_run;
+      let metaHtml = '还没部署过';
+      if (run) {
+        const ok = run.status === 'success';
+        metaHtml = `上次：${run.finished_at || run.started_at} · <span class="${ok ? 'status-ok' : 'status-fail'}">${ok ? '成功' : '失败'}</span>`;
+      }
+      return `
+        <div class="deploy-target" id="deploy-target-${t.id}">
+          <div class="head">
+            <div>
+              <div class="name">${escapeHtml(t.name)}</div>
+              <div class="meta">${metaHtml}</div>
+            </div>
+            <button class="primary" ${t.is_running ? 'disabled' : ''} onclick="runDeploy(${t.id}, this)">${t.is_running ? '部署中…' : '部署'}</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = `<div class="deploy-error">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function runDeploy(id, btn) {
+  if (!confirm('确定要跑这个部署脚本吗？会 scp/ssh 到服务器。')) return;
+  btn.disabled = true;
+  btn.textContent = '部署中…';
+  const target = document.getElementById('deploy-target-' + id);
+  let pre = target.querySelector('pre');
+  if (!pre) { pre = document.createElement('pre'); target.appendChild(pre); }
+  pre.textContent = '运行中，可能要一会…';
+  try {
+    const result = await api('/api/deploy/' + id + '/run', { method: 'POST' });
+    pre.textContent = result.last_output || '(无输出)';
+    toast(result.last_status === 'success' ? '部署完成' : '部署失败，看输出', result.last_status !== 'success');
+  } catch (e) {
+    pre.textContent = e.message;
+    toast('部署失败', true);
+  } finally {
+    await loadDeployTargets();
+  }
+}
+
+function renderPending() {
+  const list = document.getElementById('pendingList');
+  if (!STATE.pending.length) { list.innerHTML = '<div class="empty">还没有待发布的变更</div>'; return; }
+  list.innerHTML = STATE.pending.slice().reverse().map(n => `
+    <div class="note-item">
+      <span class="pill ${n.type}">${TYPE_TITLES[n.type]}</span>
+      <div class="txt">${escapeHtml(n.text)}${n.module ? `<div class="mod">模块：${moduleLabel(n.module)}</div>` : ''}</div>
+      <button class="danger" onclick="deleteNote('${n.id}')">删除</button>
+    </div>
+  `).join('');
+}
+
+function moduleLabel(key) {
+  const m = STATE.modules.find(x => x.key === key);
+  return m ? m.label : key;
+}
+
+function renderNoteChecklist() {
+  const box = document.getElementById('noteChecklist');
+  if (!STATE.pending.length) { box.innerHTML = '<div class="empty">先在左边记一笔改动</div>'; return; }
+  box.innerHTML = STATE.pending.map(n => `
+    <label class="note-check">
+      <input type="checkbox" class="note-check-box" value="${n.id}" checked>
+      <span class="pill ${n.type}">${TYPE_TITLES[n.type]}</span>
+      <span>${escapeHtml(n.text)}</span>
+    </label>
+  `).join('');
+}
+
+function renderModuleBumpList() {
+  const box = document.getElementById('moduleBumpList');
+  box.innerHTML = STATE.modules.filter(m => !m.is_core).map(m => `
+    <div class="module-bump-row">
+      <input type="checkbox" class="mod-bump-box" value="${m.key}">
+      <span style="flex:1">${m.label} <span style="color:var(--muted)">v${m.version}</span></span>
+      <input type="text" class="mod-bump-input" data-key="${m.key}" placeholder="新版本号">
+    </div>
+  `).join('');
+}
+
+function renderTodos() {
+  const list = document.getElementById('todoList');
+  if (!STATE.todos.length) { list.innerHTML = '<div class="empty">没有待办</div>'; return; }
+  list.innerHTML = STATE.todos.slice().reverse().map(t => `
+    <div class="todo-row ${t.done ? 'done' : ''}">
+      <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTodo('${t.id}', this.checked)">
+      <span class="txt">${escapeHtml(t.text)}</span>
+      <button class="danger" onclick="deleteTodo('${t.id}')">删除</button>
+    </div>
+  `).join('');
+}
+
+async function loadChangelog() {
+  try {
+    const entries = await api('/api/changelog');
+    document.getElementById('changelogBox').innerHTML = entries.map(e => `
+      <div class="timeline-entry">
+        <div class="ver-line"><b>v${e.version}</b><span class="date">${e.date}</span>${e.latest ? '<span class="latest-tag">最新</span>' : ''}</div>
+        ${e.groups.map(g => `
+          <div><span class="pill ${g.type}">${g.title}</span></div>
+          <ul>${g.items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
+        `).join('')}
+      </div>
+    `).join('') || '<div class="empty">解析不到历史记录</div>';
+  } catch (e) {
+    document.getElementById('changelogBox').innerHTML = '<div class="empty">读取失败：' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+async function addNote() {
+  const text = document.getElementById('noteText').value.trim();
+  if (!text) return;
+  try {
+    await api('/api/pending', { method: 'POST', body: JSON.stringify({
+      type: document.getElementById('noteType').value,
+      module: document.getElementById('noteModule').value,
+      text,
+    })});
+    document.getElementById('noteText').value = '';
+    await loadState();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function deleteNote(id) {
+  await api('/api/pending/' + id, { method: 'DELETE' });
+  await loadState();
+}
+
+async function addTodo() {
+  const text = document.getElementById('todoText').value.trim();
+  if (!text) return;
+  try {
+    await api('/api/todos', { method: 'POST', body: JSON.stringify({ text }) });
+    document.getElementById('todoText').value = '';
+    await loadState();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function toggleTodo(id, done) {
+  await api('/api/todos/' + id, { method: 'PUT', body: JSON.stringify({ done }) });
+  await loadState();
+}
+
+async function deleteTodo(id) {
+  await api('/api/todos/' + id, { method: 'DELETE' });
+  await loadState();
+}
+
+async function syncDist() {
+  const box = document.getElementById('toolsOutput');
+  box.textContent = '同步中…';
+  try {
+    const result = await api('/api/sync_dist', { method: 'POST' });
+    box.textContent = result.count
+      ? `✅ 已同步 ${result.count} 个文件：\n` + result.changed_files.join('\n')
+      : '✅ 所有模块的 dist 本来就跟 src 一致，没什么可同步的。';
+    toast(`同步完成：${result.count} 个文件`);
+  } catch (e) {
+    box.textContent = '';
+    toast(e.message, true);
+  }
+}
+
+async function buildPackage() {
+  const box = document.getElementById('toolsOutput');
+  box.textContent = '打包中…';
+  try {
+    const result = await api('/api/package', { method: 'POST', body: JSON.stringify({}) });
+    box.textContent = `✅ 已打包：${result.path}（${result.size_kb} KB）\n导入 SealDice：扩展 → 安装扩展 → 选择这个文件`;
+    toast('打包完成');
+  } catch (e) {
+    box.textContent = '';
+    toast(e.message, true);
+  }
+}
+
+async function doRelease() {
+  const bump = document.querySelector('input[name=bump]:checked').value;
+  const customVer = document.getElementById('customVer').value.trim();
+  const noteIds = Array.from(document.querySelectorAll('.note-check-box:checked')).map(el => el.value);
+  const moduleBumps = {};
+  document.querySelectorAll('.mod-bump-box:checked').forEach(cb => {
+    const input = document.querySelector(`.mod-bump-input[data-key="${cb.value}"]`);
+    if (input && input.value.trim()) moduleBumps[cb.value] = input.value.trim();
+  });
+
+  let confirmMsg = `确定要发布吗？\n升级方式：${bump}${bump === 'custom' ? ' (' + customVer + ')' : ''}\n包含 ${noteIds.length} 条变更`;
+  if (Object.keys(moduleBumps).length) confirmMsg += `\n顺带升级：${Object.keys(moduleBumps).join(', ')}`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const result = await api('/api/release', { method: 'POST', body: JSON.stringify({
+      bump, custom_version: customVer, note_ids: noteIds, module_bumps: moduleBumps,
+    })});
+    toast('发布成功：v' + result.version);
+    await loadState();
+  } catch (e) { toast(e.message, true); }
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+loadState();
+</script>
+</body>
+</html>

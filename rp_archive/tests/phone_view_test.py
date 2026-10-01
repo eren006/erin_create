@@ -47,7 +47,8 @@ cl,b=inbox("周屿")
 # 周屿收到内容被改+落款换成林晚：显示在林晚名下、看到被改后的内容，看不到原文和真发件人
 assert "林晚" in b and "沈知意" not in b, b
 t=cl.get("/p/me/林晚").get_data(as_text=True)
-assert "我喜欢下雨天" in t and "class=\"sig\">林晚<" in t and "我讨厌" not in t and "沈知意" not in t, t
+# 落款跟会话对象同名时页面不再重复显示落款（m.sig_above == their_av 时隐藏），所以只看：信出现在「林晚」会话里（落款已换成林晚）、内容是改后的、真发件人和原文都不露
+assert "我喜欢下雨天" in t and "我讨厌" not in t and "沈知意" not in t, t
 assert "丢的礼物" not in cl.get("/p/me/林晚").get_data(as_text=True)
 # 周屿送出的礼物不出现在自己手机
 assert "黑伞" not in b
@@ -86,7 +87,7 @@ got=dict(c.execute("SELECT role_name, code FROM phone_codes").fetchall())
 assert "新人甲" in got and "新人乙" in got and got["林晚"]==codes["林晚"], got
 pg=adm.get("/admin/phone_codes").get_data(as_text=True); assert "新人甲" in pg and got["新人甲"] in pg
 nc=app.test_client(); assert nc.get("/p/"+got["新人甲"]).status_code==302
-assert "开季后，群里的短信往来和收到的礼物会留在这里" in nc.get("/p/me").get_data(as_text=True)
+assert 'class="empty"' in nc.get("/p/me").get_data(as_text=True)   # 空收件箱提示文案现在跟着皮肤主题走（PHONE_COPY[...]['empty']），不再固定一句，只认空状态块
 adm.post("/admin/phone_codes", data={"action":"delete","role":"新人乙"})
 assert "新人乙" not in adm.get("/admin/phone_codes").get_data(as_text=True)
 # 只有玩家入口强制 HTTPS，保留路径和查询串；本地仍可 HTTP

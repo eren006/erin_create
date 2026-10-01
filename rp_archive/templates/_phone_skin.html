@@ -5,9 +5,72 @@
 .phone .broadcast, .phone .library-card, .phone .arc-card, .phone .count-tile { border-radius: {{ skin.style.radius }}; }
 {% if skin.visual != 'modern' %}
 .phone .bubble { border-radius: {{ skin.style.radius }}; }
-.phone .chat { background-image: linear-gradient(135deg, color-mix(in srgb,var(--mine) 5%,transparent), transparent); }
+/* 淡色渐变铺在整个滚动区上；铺在 .chat 上的话，内容少时只盖住下半截，顶边会出现一条分界线 */
+.phone #scroll { background-image: linear-gradient(135deg, color-mix(in srgb,var(--mine) 5%,transparent), transparent); }
 {% endif %}
 {% if skin.visual == 'scifi' %}
-.phone .chat { background-image: linear-gradient(color-mix(in srgb,var(--mine) 7%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--mine) 7%,transparent) 1px,transparent 1px); background-size: 24px 24px; }
+.phone #scroll { background-image: linear-gradient(color-mix(in srgb,var(--mine) 7%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--mine) 7%,transparent) 1px,transparent 1px); background-size: 24px 24px; }
+{% endif %}
+{% if skin.visual == 'cloudpost' %}
+{% set cp = url_for('static', filename='themes/cloudpost/') %}
+/* 云絮邮局：奶油信纸 + 粉色天际线 + 火漆印。图片都在 static/themes/cloudpost/，缺图时回退成纯色和渐变 */
+.phone:is(:not([data-wall]), [data-wall="default"]) { background-image: url({{ cp }}paper.webp); background-size: 256px 256px; }
+.phone:is(:not([data-wall]), [data-wall="default"]) :is(.scroll, #scroll, .chat, .moments-scroll) { background-color: transparent; background-image: none; }
+.phone .bar { background-color: #f59ea0; background-image: url({{ cp }}skyline.webp), linear-gradient(180deg, #f7a9a8 0%, #ee7489 100%); background-size: 100% auto, auto; background-position: left calc(100% + 14px), 0 0; background-repeat: no-repeat; border-bottom: 1px solid #4b2236; }
+.phone .bar .title, .phone .bar h1, .phone .tab-head h1 { letter-spacing: .04em; color: #2b1f1d; text-shadow: 0 0 7px rgba(255,214,208,.95), 0 0 2px rgba(255,214,208,.95); }
+/* 顶栏里压在楼群上的小字（额度、副标题）：垫一块奶油底，字用深色 */
+.phone .bar .quota, .phone .bar .tab-sub:not(.keep), .phone .bar .title small { background: rgba(255,244,230,.92) !important; color: #4b2236 !important; border-radius: 8px; box-shadow: 0 0 0 2px rgba(255,244,230,.92); text-shadow: none; }
+.phone .bar .quota .near-limit { color: #b42318 !important; }
+.phone .bar .tab-sub:not(.keep) { display: inline-block; padding: 0 4px; }
+.phone .theirs .bubble { border: 1px solid color-mix(in srgb, var(--text) 62%, transparent); background: color-mix(in srgb, var(--bg) 70%, #fff); }
+.phone .broadcast, .phone .library-card, .phone .arc-card, .phone .count-tile { border: 1px solid color-mix(in srgb, var(--text) 40%, transparent); }
+.phone .empty { display: flex; flex-direction: column; align-items: center; }
+.phone .book .empty { grid-column: 1 / -1; justify-self: center; align-self: center; text-align: center; }
+.phone .empty::before { content: ""; display: block; width: 104px; height: 156px; margin: 0 auto 16px; background: url({{ cp }}window.webp) center / contain no-repeat; }
+.phone .phone-nav a.dock-plus { background: url({{ cp }}seal.webp) center / 118% no-repeat; color: #fff4e2; box-shadow: 0 0 0 7px var(--chat-bg, var(--bg)), 0 8px 18px color-mix(in srgb, var(--mine) 40%, transparent); }
+.phone .phone-nav a.dock-plus svg { filter: drop-shadow(0 1px 0 rgba(90,20,40,.45)); }
+/* 日期章：短的日期（D1、D12）盖成圆邮戳，长日期保持原样 */
+.phone .stamp b.pm { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; margin-right: 4px; vertical-align: middle; background: url({{ cp }}stamp.webp) center / contain no-repeat; color: #4b2236; font-size: 11px; font-weight: 700; transform: rotate(-8deg); }
+/* 点歌没有封面时用黑胶 */
+.phone .sc-nocover { background: url({{ cp }}vinyl.webp) center / cover; font-size: 0; border-radius: 50%; }
+/* 礼物入口：右下角垂下一根灯绳，拉一下进礼品店 */
+.phone .shop-fab { right: 20px; bottom: calc(100% + 2px); width: 40px; height: 132px; padding: 0; border: 0; border-radius: 0; background: url({{ cp }}chain.webp) center 6px / 10px 109px no-repeat; box-shadow: none; font-size: 0; color: transparent; overflow: visible; transform-origin: 50% 0; transition: transform .22s cubic-bezier(.3,1.6,.5,1); -webkit-tap-highlight-color: transparent; align-items: flex-start; }
+.phone .shop-fab::before { content: ""; position: absolute; left: 50%; top: 0; width: 22px; height: 8px; margin-left: -11px; border-radius: 4px; background: linear-gradient(#e0bd74, #94702f); box-shadow: 0 1px 3px rgba(60,30,20,.35); }
+.phone .shop-fab:active { transform: scaleY(1.1); }
+.phone .shop-fab.pulled { transform: scaleY(1.15); }
+/* 点歌页顶部的黑胶，缓慢转动 */
+.cp-vinyl { width: 132px; height: 132px; margin: 14px auto 4px; border-radius: 50%; background: url({{ cp }}vinyl.webp) center / cover no-repeat; box-shadow: 0 6px 16px rgba(75,34,54,.28); animation: cp-spin 16s linear infinite; }
+@keyframes cp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .cp-vinyl { animation: none; } }
+/* 角色标签、公开播报顶图、角饰 */
+.cp-tag { position: relative; width: 116px; margin: 12px auto 2px; }
+.cp-tag img { display: block; width: 116px; height: auto; }
+.cp-tag span { position: absolute; left: 9%; right: 9%; top: 41.5%; height: 18.7%; line-height: 1; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #3a1b2a; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cp-banner { height: 92px; margin: 0; background: url({{ cp }}fireescape.webp) center 38% / cover no-repeat; -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); border-bottom: 0; }
+.phone .shop-page, .phone .ch-page { background-image: url({{ cp }}corner_soft.webp); background-size: 96px auto; background-position: left top; background-repeat: no-repeat; background-attachment: local; }
+.phone .shelf { background: color-mix(in srgb, var(--bg) 70%, #fff); color: var(--text); border-color: color-mix(in srgb, var(--text) 45%, transparent); }
+@media (prefers-color-scheme: dark) {
+  .phone:is(:not([data-wall]), [data-wall="default"]) { background-image: linear-gradient(rgba(35,26,28,.9), rgba(35,26,28,.9)), url({{ cp }}paper.webp); background-size: auto, 256px 256px; }
+  .phone .bar { background-image: linear-gradient(rgba(35,26,28,.5), rgba(35,26,28,.5)), url({{ cp }}skyline.webp), linear-gradient(180deg, #7a3f52 0%, #5b2a3c 100%); background-size: auto, 100% auto, auto; background-position: 0 0, left calc(100% + 14px), 0 0; }
+  .phone .bar .title, .phone .bar h1, .phone .tab-head h1 { color: #f6e9d6; text-shadow: 0 1px 6px rgba(35,26,28,.9); }
+  .phone .theirs .bubble { background: color-mix(in srgb, var(--bg) 80%, #fff 6%); }
+  .phone .bar .quota, .phone .bar .tab-sub:not(.keep), .phone .bar .title small { background: rgba(35,26,28,.82) !important; color: #f6e9d6 !important; box-shadow: 0 0 0 2px rgba(35,26,28,.82); }
+  .phone .bar .quota .near-limit { color: #ff9b8f !important; }
+  .cp-tag span { color: #3a1b2a; }
+}
+/* 礼品店：货架 + 台灯，拉灯链才进货架 */
+.cp-stage { position: relative; width: 100%; max-width: 400px; aspect-ratio: 1 / 1; margin: 0 auto; background: url({{ cp }}shelf.webp) center / cover no-repeat; overflow: hidden; }
+.cp-lamp { position: absolute; left: 50%; bottom: calc(26% - 14px); width: 210px; height: 330px; margin-left: -105px; transform: scale(.82); transform-origin: 50% 100%; }
+.cp-lamp img { display: block; }
+.cp-lamp .lamp { position: absolute; left: 0; top: 0; width: 210px; height: auto; transition: opacity .35s; pointer-events: none; user-select: none; }
+.cp-lamp .lamp.on { opacity: 0; }
+.cp-lamp[data-lit="1"] .lamp.on { opacity: 1; }
+.cp-lamp[data-lit="1"] .lamp.off { opacity: 0; }
+.cp-chain { position: absolute; left: 122px; top: 154px; width: 10px; padding: 0 16px 24px; margin: 0 -16px; display: block; transition: transform .22s cubic-bezier(.3,1.6,.5,1); -webkit-tap-highlight-color: transparent; }
+.cp-chain img { width: 10px; height: auto; max-height: 112px; object-fit: cover; object-position: top; }
+.cp-chain { transform-origin: 50% 0; }
+.cp-chain.pulled { transform: scaleY(1.16); }
+.cp-chain:active { transform: scaleY(1.1); }
+.cp-lamp-hint { text-align: center; font-size: 12.5px; color: var(--muted); margin: 8px 0 2px; }
 {% endif %}
 </style>

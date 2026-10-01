@@ -1910,7 +1910,7 @@ async function pushAllCore(say, includeAssets) {
         "private_resources",
         "available_places", "place_keys",
         "custom_message_templates",
-        "craft_recipes",
+        "craft_recipes", "level_up_rules",
         "skill_defs", "battle_attrs", "player_skills",
         "attack_defense_config",
         "shop_listings", "market_config",
@@ -2041,7 +2041,7 @@ async function pullAllCore(say) {
             } else {
                 // 网页端拥有的数据（物品/装备/合成配方/礼品库/属性）：网页端是空的、而机器人里有内容时不覆盖，
                 // 否则网页端一份空注册表（新装、被误清空）一拉就会把机器人里整份数据清成空的
-                if (WEB_OWNED_KEYS.includes(key) || key === "rpg_attr_defs") {
+                if (WEB_OWNED_KEYS.includes(key) || key === "rpg_attr_defs" || key === "level_up_rules") {
                     const v = String(value).trim();
                     const local = String(mainStorGet(key) || "").trim();
                     const webEmpty = v === "" || v === "{}" || v === "[]";
@@ -2288,6 +2288,7 @@ const AUTO_PULL_INTERVAL_MS = 2 * 60 * 1000;
 let _autoPullBusy = false;
 let _autoPullBusySince = 0;      // 防卡死：异步任务被海豹中途打断（如 panic）时 finally 不会执行，靠超时把「进行中」标记放掉
 const AUTO_PULL_BUSY_TIMEOUT_MS = 90 * 1000;
+globalThis.__changriAutoPullBusy = () => _autoPullBusy;   // 主插件执行网页参数修改前问一下：自动拉取在跑就先等下一轮
 const apLog = (m) => console.log("[自动拉取] " + m);
 // 最近一次检查的结果，「。自动拉取 状态」里显示，方便判断它到底有没有在工作
 const _autoPullInfo = { lastTick: 0, lastResult: "还没检查过（插件加载后 2 分钟内会第一次检查）" };
@@ -2339,7 +2340,7 @@ async function apRecordBaseline(snap) {
 // ── 列出「网页端改了什么」 ───────────────────────────────────────────────────
 const AP_BLOB_LABELS = {
     item_registry: "物品注册表", equipment_registry: "装备注册表", equipment_slots: "装备槽位", equipment_slot_names: "装备槽位名",
-    craft_recipes: "合成配方", skill_defs: "技能", rpg_attr_defs: "属性定义", sys_attr_presets: "系统属性预设",
+    craft_recipes: "合成配方", level_up_rules: "升级规则", skill_defs: "技能", rpg_attr_defs: "属性定义", sys_attr_presets: "系统属性预设",
     end_game_bonus_templates: "结戏奖励模版", end_game_draw_config: "结戏抽取配置", custom_message_templates: "自定义消息模版",
     preset_gifts: "预设礼物", private_resources: "私约资源", available_places: "地点", trade_whitelist: "交易白名单",
     global_feature_toggle: "功能开关", monitor_settings: "计时器设置",

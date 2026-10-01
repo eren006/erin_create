@@ -11,6 +11,6 @@
 {% set reminder = pending_summary or {'count':0, 'longest':'', 'stale':false} %}
 <a href="{{ url_for('player_stats', view='pending') }}" class="pending-entry{% if reminder.stale %} is-stale{% endif %}" id="pendingEntry"{% if not reminder.count %} hidden{% endif %}>
   <span class="pending-entry-dot" aria-hidden="true"></span>
-  <span class="pending-entry-copy"><strong id="pendingEntryTitle">{{ '待回记录' if reminder.stale else '待我回复' }} · {{ reminder.count }} 项</strong><small id="pendingEntryDetail">{% if reminder.stale %}同步延迟 · 请以最新回复情况为准{% elif reminder.longest %}最长已等待 {{ reminder.longest }}{% else %}有关系线等待回复{% endif %}</small></span>
+  <span class="pending-entry-copy"><strong id="pendingEntryTitle">{{ '待回记录' if reminder.stale else ('管理员催你回复' if reminder.urged else '待我回复') }} · {{ reminder.count }} 项</strong><small id="pendingEntryDetail">{% if reminder.stale %}同步延迟 · 请以最新回复情况为准{% elif reminder.longest %}最长已等待 {{ reminder.longest }}{% else %}有关系线等待回复{% endif %}</small></span>
   <span aria-hidden="true">›</span>
 </a>

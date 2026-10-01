@@ -1539,6 +1539,12 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
         return seal.replyToSender(ctx, msg, `❌ 未找到收件人 ${toname}`);
     }
 
+    // 自定义礼物留言刷重复：先拦，不占次数和冷却（预设礼物 # 开头是后台写好的，不查）
+    if (!giftInput.startsWith('#')) {
+        const _api = getApi();
+        if (_api && _api.isTooRepetitive && _api.isTooRepetitive(giftInput)) return seal.replyToSender(ctx, msg, _api.TOO_REPEAT_MSG);
+    }
+
     // 4. 冷却与限次检查
     const gameDay = cachedGet("global_days") || "D0";
     const dailyLimit = getStorageInt("giftDailyLimit", 100);
@@ -2112,76 +2118,4 @@ cmd_my_stats.solve =(ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 
-// 管理员：修复被 null-startTime 污染的耗时统计（avgReplyTimeMin 超过阈值才清零，正常数据保留）
-// 用法：。修复耗时统计（扫全部）/ 。修复耗时统计 角色名（只查该角色）
-// 默认阈值：平均耗时 > 1440 分钟（24小时）视为异常
-let cmd_fix_reply_time = seal.ext.newCmdItemInfo();
-cmd_fix_reply_time.name = "修复耗时统计";
-cmd_fix_reply_time.help = "⚠️【维护工具·请勿随意使用】仅在耗时统计显示异常（如天文数字）时使用\n。修复耗时统计 [角色名] —— 自动检测并清除异常耗时数据，正常数据保留，管理员专用";
-cmd_fix_reply_time.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) {
-        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        return seal.ext.newCmdExecuteResult(true);
-    }
-
-    const THRESHOLD_MIN = 2880; // 单次平均超过 48 小时视为污染
-    const platform = msg.platform;
-    const targetRoleName = cmdArgs.getArgN(1) || null;
-    const stats = getUserStats();
-
-    const isCorrupted = (entry) => (entry.avgReplyTimeMin || 0) > THRESHOLD_MIN;
-
-    const resetTimeFields = (entry) => {
-        entry.totalReplyTimeMs = 0;
-        entry.timedReplies = 0;
-        entry.avgReplyTimeMin = 0;
-        if (entry.subtypeStats) {
-            for (const plat of Object.values(entry.subtypeStats)) {
-                for (const sub of Object.values(plat)) {
-                    sub.totalTime = 0;
-                    sub.fastestReply = null;
-                    sub.slowestReply = null;
-                }
-            }
-        }
-    };
-
-    if (targetRoleName) {
-        const uid = getUidByRoleName(platform, targetRoleName);
-        const key = uid ? `${platform}:${uid}` : null;
-        if (!key || !stats[key]) {
-            seal.replyToSender(ctx, msg, `❌ 找不到角色「${targetRoleName}」的统计数据。`);
-            return seal.ext.newCmdExecuteResult(true);
-        }
-        const entry = stats[key];
-        if (isCorrupted(entry)) {
-            const oldAvg = entry.avgReplyTimeMin;
-            resetTimeFields(entry);
-            saveUserStats(stats);
-            seal.replyToSender(ctx, msg, `✅ 「${targetRoleName}」耗时数据异常（${oldAvg ?? "?"}分），已清零，字数/次数保留。`);
-        } else {
-            seal.replyToSender(ctx, msg, `✅ 「${targetRoleName}」耗时数据正常（${entry.avgReplyTimeMin ?? 0}分），无需修复。`);
-        }
-    } else {
-        const lines = [];
-        let fixedCount = 0;
-        for (const [key, entry] of Object.entries(stats)) {
-            if (isCorrupted(entry)) {
-                const oldAvg = entry.avgReplyTimeMin;
-                resetTimeFields(entry);
-                lines.push(`· ${key}：${oldAvg}分 → 已清零`);
-                fixedCount++;
-            }
-        }
-        saveUserStats(stats);
-        if (fixedCount === 0) {
-            seal.replyToSender(ctx, msg, `✅ 全部玩家耗时数据正常，无需修复。`);
-        } else {
-            seal.replyToSender(ctx, msg, `✅ 已修复 ${fixedCount} 位玩家的异常耗时数据（字数/次数保留）：\n${lines.join("\n")}`);
-        }
-    }
-
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["修复耗时统计"] = cmd_fix_reply_time;
 

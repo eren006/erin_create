@@ -313,18 +313,6 @@ function savePoolDefs(defs) {
     if (main) mainKvSet("pool_definitions", defs);
 }
 
-// 池子配方：{ 池子名: { 配方名: [{code,count},...] } }，管理员用「保存池子配方」
-// 把当前库存另存一份命名快照（同一池子可以存多份，比如「开学季」「周年庆」），
-// 之后用「重置抽取池 池子名 配方名」随时把库存还原成那份配方的样子。
-function getPoolSchemas() {
-    const main = getMainExt();
-    return main ? mainKvGet("pool_schemas", {}) : {};
-}
-function savePoolSchemas(schemas) {
-    const main = getMainExt();
-    if (main) mainKvSet("pool_schemas", schemas);
-}
-
 function getDrawConfig() {
     const main = getMainExt();
     return main ? mainKvGet("pool_draw_config", {"total":2,"pools":{}}) : { total: 2, pools: {} };
@@ -405,7 +393,7 @@ function findItem(reg, input) {
 
 // 挂单里存的 currencyCode 可能因货币重新注册而失配（背包按新 code 有余额，
 // 挂单却按创建时的旧 code 查询）。买卖时按 currencyName 现查一次注册表校正，
-// 避免每次都要手动跑「修复商城货币」。
+// 不用再手动修复挂单货币。
 function resolveListingCurrencyCode(reg, listing) {
     if (reg[listing.currencyCode]?.type === "currency") return listing.currencyCode;
     const found = Object.entries(reg).find(([, info]) => info.type === "currency" && info.name === listing.currencyName);
@@ -602,64 +590,6 @@ function timeOverlap(t1, t2) {
 }
 
 // ========================
-// 预设物品初始化
-// ========================
-
-function initPresetItems() {
-    const main = getMainExt();
-    if (!main) return;
-    const reg = getRegistry();
-    let changed = false;
-    if (!reg["SPEC_001"]) {
-        reg["SPEC_001"] = { code: "SPEC_001", name: "追踪器", desc: "一枚散发着微光的微型追踪器，轻轻按动便能感知目标此刻的行踪。", type: "preset", attrs: null };
-        changed = true;
-    }
-    if (!reg["SPEC_002"]) {
-        reg["SPEC_002"] = { code: "SPEC_002", name: "万能钥匙", desc: "一把泛着银光的万能钥匙，据说能开启世间任何一扇被锁住的门。", type: "preset", attrs: null };
-        changed = true;
-    }
-    if (!reg["SPEC_003"]) {
-        reg["SPEC_003"] = { code: "SPEC_003", name: "望远镜", desc: "一架精致的望远镜，使用后可在目标下次发信时悄悄抄录一份副本。", type: "preset", attrs: null };
-        changed = true;
-    }
-    if (!reg["SPEC_004"]) {
-        reg["SPEC_004"] = { code: "SPEC_004", name: "羽毛笔", desc: "一支神奇的羽毛笔，使用后可截获目标发出的下一封信并在发送前修改内容。", type: "preset", attrs: null };
-        changed = true;
-    }
-    if (!reg["SPEC_005"]) {
-        reg["SPEC_005"] = { code: "SPEC_005", name: "捕鼠器", desc: "一个精巧的捕鼠器，激活后将锁定目标指定小时内的行动，使其无法私约、电话或摘心愿。", type: "preset", attrs: null };
-        changed = true;
-    }
-    if (!reg["SPEC_006"]) {
-        reg["SPEC_006"] = { code: "SPEC_006", name: "窃听器", desc: "一枚微型窃听装置，激活后可悄悄截录目标的电话内容——信号有时会有些干扰……", type: "preset", attrs: null };
-        changed = true;
-    }
-    if (!reg["SPEC_007"]) {
-        reg["SPEC_007"] = { code: "SPEC_007", name: "截信器", desc: "一台隐蔽的信号截断仪，激活后可拦截目标发出的短信，但内容偶有失真……", type: "preset", attrs: null };
-        changed = true;
-    }
-    if (!reg["SPEC_008"]) {
-        reg["SPEC_008"] = { code: "SPEC_008", name: "回音壁", desc: "一面奇异的墙壁，贴上后可感知所有投向目标的信件内容——对方收到什么，你便知晓什么。", type: "preset", attrs: null };
-        changed = true;
-    }
-    if (!reg["SPEC_009"]) {
-        reg["SPEC_009"] = { code: "SPEC_009", name: "拆信刀", desc: "一把薄如蝉翼的拆信刀，能悄悄拆开别人信箱里的一封心动信看上一眼，再原样封好，对方毫无察觉。", type: "preset", attrs: null };
-        changed = true;
-    }
-    // 默认货币：金币、银币（按名称判断，避免重复注册）
-    const currencyNames = new Set(Object.values(reg).filter(r => r.type === "currency").map(r => r.name));
-    if (!currencyNames.has("金币")) {
-        const code = genCurrencyCode(reg);
-        if (code) { reg[code] = { code, name: "金币", desc: "流通于玩家间的基础货币。", type: "currency", attrs: null }; changed = true; }
-    }
-    if (!currencyNames.has("银币")) {
-        const code = genCurrencyCode(reg);
-        if (code) { reg[code] = { code, name: "银币", desc: "比金币更零碎的辅助货币。", type: "currency", attrs: null }; changed = true; }
-    }
-    if (changed) saveRegistry(reg);
-}
-
-// ========================
 // 特殊物品使用逻辑
 // ========================
 
@@ -799,25 +729,6 @@ function formatInventory(roleKey, roleName, reg, category = "全部", page = 1) 
 // 这里不再保留 cmd_reg_attr/cmd_del_attr 这两份重复实现。
 
 // ========================
-// 初始化预设物品
-// ========================
-
-let cmd_init_preset = seal.ext.newCmdItemInfo();
-cmd_init_preset.name = "初始化预设物品";
-cmd_init_preset.help = "【管理员】初始化系统预设物品（追踪器、万能钥匙、金币、银币）\n格式：。初始化预设物品";
-cmd_init_preset.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) {
-        return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    }
-
-    initPresetItems();
-    seal.replyToSender(ctx, msg, "✅ 已初始化系统预设物品：追踪器、万能钥匙、望远镜、羽毛笔、捕鼠器、窃听器、截信器、回音壁、拆信刀，以及默认货币金币/银币");
-    return seal.ext.newCmdExecuteResult(true);
-};
-
-ext.cmdMap["初始化预设物品"] = cmd_init_preset;
-
-// ========================
 // 上载：统一注册指令（物品 / 互动物品 / 货币）
 // ========================
 
@@ -828,100 +739,6 @@ function movedToWeb(what, where) {
            `请到网页端「${where}」添加，支持粘贴一大段按格式批量录入；保存后机器人 2 分钟内自动同步。`;
 }
 
-function parseUploadTags(line, defs, currencyNames) {
-    const blocks = [];
-    const name = line.replace(/【([^】]*)】/g, (_, c) => { blocks.push(c.trim()); return ''; }).trim();
-    if (!name) return { error: '物品名不能为空' };
-    const effectPat = /^[\w一-鿿㐀-䶿]+[+-]\d+([,，][\w一-鿿㐀-䶿]+[+-]\d+)*$/;
-    let type = 'item', desc = null, maxUses = -1, attrsRaw = null, canResell = false;
-    for (const b of blocks) {
-        if (b === '互动') { type = 'interact'; continue; }
-        if (b === '货币') { type = 'currency'; continue; }
-        if (b === '二手') { canResell = true; continue; }
-        if (b === '无限') { maxUses = -1; continue; }
-        if (b === '一次') { maxUses = 1; continue; }
-        const tm = b.match(/^(\d+)次$/);
-        if (tm) { maxUses = parseInt(tm[1]); continue; }
-        if (effectPat.test(b)) {
-            const segs = b.split(/[,，]/);
-            for (const seg of segs) {
-                const m = seg.trim().match(/^(.+?)([+-]\d+)$/);
-                if (!m) return { error: `效果格式错误「${seg}」` };
-                const aName = m[1];
-                if (!defs[aName] && !currencyNames.has(aName))
-                    return { error: `未知属性「${aName}」，请先注册属性` };
-            }
-            attrsRaw = b; continue;
-        }
-        if (desc === null) desc = b;
-    }
-    return { name, type, desc, maxUses, attrsRaw, canResell };
-}
-
-let cmd_upload = seal.ext.newCmdItemInfo();
-cmd_upload.name = "上载";
-cmd_upload.help = `【管理员】注册物品/互动物品/货币，支持多行批量
-格式：物品名【标签】【标签】...
-  【描述文字】   物品描述
-  【N次】        使用次数；【无限】= 无限次
-  【属性+N】     效果，如【力量+5,体力-2】
-  【互动】       互动物品（对他人使用）
-  【货币】       注册为货币
-  【二手】       允许二手交易
-示例：
-  。上载 金苹果【恢复体力】【5次】【体力+10】
-  。上载
-  爱心糖【甜蜜道具】【互动】【甜蜜+3】【二手】
-  银币【货币】`;
-cmd_upload.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-
-    const rawMsg = (msg.message || "").trim();
-    const msgParts = rawMsg.split(/\r?\n/);
-    const firstRest = msgParts[0].replace(/^[。.]\s*上载\s*/, "").trim();
-    const extraLines = msgParts.slice(1).map(l => l.trim()).filter(l => l);
-    const lines = [...(firstRest ? [firstRest] : []), ...extraLines];
-
-    if (!lines.length) {
-        const attrList = getValidAttrs().join("、") || "（暂无，请先注册属性）";
-        return seal.replyToSender(ctx, msg, `📦 上载格式：物品名【标签】...\n标签：【N次】【无限】【属性+N,属性-N】【互动】【货币】【二手】【描述】\n当前可用属性：${attrList}`);
-    }
-
-    const reg = getRegistry();
-    const defs = getAttrDefs();
-    const currencyNames = new Set(Object.values(reg).filter(i => i.type === "currency").map(i => i.name));
-    const results = [];
-
-    for (const line of lines) {
-        const parsed = parseUploadTags(line, defs, currencyNames);
-        if (parsed.error) { results.push(`❌ 「${line.substring(0, 20)}」${parsed.error}`); continue; }
-        const { name, type, desc, maxUses, attrsRaw, canResell } = parsed;
-
-        const existing = Object.values(reg).find(r => r.name === name);
-        if (existing) { results.push(`⚠️ 「${name}」已存在 [${existing.code}]，跳过`); continue; }
-
-        if (type === 'currency') {
-            if (getValidAttrs().includes(name)) { results.push(`❌ 「${name}」已被注册为属性，货币名不能与属性重复`); continue; }
-            const code = genCurrencyCode(reg);
-            if (!code) { results.push("❌ 货币代码空间已满"); break; }
-            reg[code] = { code, name, desc: desc || "暂无描述", type: "currency", attrs: null };
-            results.push(`✅ 💰 [${code}] ${name}（货币）`); continue;
-        }
-
-        const genFn = type === 'interact' ? genInteractionCode : genItemCode;
-        const code = genFn(reg);
-        if (!code) { results.push("❌ 代码空间已满，无法继续注册"); break; }
-        reg[code] = { code, name, desc: desc || "暂无描述", type, maxUses, attrs: attrsRaw, price: 0, canResell };
-        const useText = maxUses === -1 ? "无限" : `${maxUses}次`;
-        const icon = type === 'interact' ? "🎭" : "📦";
-        const resellPart = canResell ? " | 可二手" : "";
-        results.push(`✅ ${icon} [${code}] ${name} | ${useText} | 效果:${attrsRaw || "无"}${resellPart}`);
-    }
-
-    saveRegistry(reg);
-    seal.replyToSender(ctx, msg, `上载结果（共${results.length}条）：\n${results.join("\n")}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
 // 「上载」指令已取消：物品统一在网页端物品库添加（以网页端为准，机器人 2 分钟内自动同步）。
 // 群里上载的物品只存在机器人里，下次网页端有改动自动拉取时会被覆盖丢失，所以不再注册这个指令；函数体暂留，需要时取消下面这行注释即可恢复
 // ext.cmdMap["上载"] = cmd_upload;
@@ -1165,115 +982,6 @@ cmd_view_pool.solve = (ctx, msg, cmdArgs) => {
     return replyLong(ctx, msg, text);
 };
 ext.cmdMap["查看池子"] = cmd_view_pool;
-
-// 池子配方：数量池抽完就空了，办限定活动想反复复用同一批库存时，
-// 用「保存池子配方」把当前物品+数量另存一份命名快照（同一池子可以存多份），
-// 之后随时用「重置抽取池」把库存还原成某一份配方的样子。
-
-let cmd_save_pool_recipe = seal.ext.newCmdItemInfo();
-cmd_save_pool_recipe.name = "保存池子配方";
-cmd_save_pool_recipe.help = `【管理员】把池子当前的物品+数量另存为一份命名配方，同一池子可存多份
-保存池子配方 池子名 配方名
-示例：保存池子配方 限定礼盒池 开学季`;
-cmd_save_pool_recipe.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    const poolName = cmdArgs.getArgN(1);
-    const recipeName = cmdArgs.getArgN(2);
-    if (!poolName || !recipeName) return seal.replyToSender(ctx, msg, "格式：保存池子配方 池子名 配方名");
-
-    const defs = getPoolDefs();
-    const pool = defs[poolName];
-    if (!pool) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-    // 配方机制只针对数量池（抽完会清空、需要反复复原库存）；权重池概率抽取不耗库存，
-    // 保底池/分段池另有一套结构，都不需要这个功能。
-    if (pool.type !== "free") return seal.replyToSender(ctx, msg, `❌ 只有数量池支持保存配方，池子「${poolName}」不是数量池。`);
-
-    const schemas = getPoolSchemas();
-    if (!schemas[poolName]) schemas[poolName] = {};
-    const isOverwrite = !!schemas[poolName][recipeName];
-    schemas[poolName][recipeName] = JSON.parse(JSON.stringify(pool.items));
-    savePoolSchemas(schemas);
-
-    const total = pool.items.reduce((s, i) => s + (i.count || 0), 0);
-    const recipeCount = Object.keys(schemas[poolName]).length;
-    return seal.replyToSender(ctx, msg,
-        `✅ 已${isOverwrite ? "覆盖" : "新增"}保存配方「${recipeName}」（池子「${poolName}」，共 ${pool.items.length} 种/合计 ${total}）。\n` +
-        `该池子目前共有 ${recipeCount} 份配方：${Object.keys(schemas[poolName]).join("、")}`);
-};
-ext.cmdMap["保存池子配方"] = cmd_save_pool_recipe;
-
-let cmd_view_pool_recipe = seal.ext.newCmdItemInfo();
-cmd_view_pool_recipe.name = "查看池子配方";
-cmd_view_pool_recipe.help = `【管理员】查看某个池子已保存的配方列表（或某份配方的详情）
-查看池子配方 池子名         —— 列出该池子所有配方名
-查看池子配方 池子名 配方名  —— 显示该配方的物品明细`;
-cmd_view_pool_recipe.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    const poolName = cmdArgs.getArgN(1);
-    const recipeName = cmdArgs.getArgN(2);
-    if (!poolName) return seal.replyToSender(ctx, msg, "格式：查看池子配方 池子名 [配方名]");
-
-    const schemas = getPoolSchemas();
-    const poolSchemas = schemas[poolName];
-    if (!poolSchemas || !Object.keys(poolSchemas).length) {
-        return seal.replyToSender(ctx, msg, `❌ 池子「${poolName}」还没有保存过任何配方，用「保存池子配方 ${poolName} 配方名」先存一份。`);
-    }
-
-    if (!recipeName) {
-        return seal.replyToSender(ctx, msg, `📋 池子「${poolName}」已保存的配方（共 ${Object.keys(poolSchemas).length} 份）：\n${Object.keys(poolSchemas).join("、")}`);
-    }
-    const recipe = poolSchemas[recipeName];
-    if (!recipe) return seal.replyToSender(ctx, msg, `❌ 池子「${poolName}」没有名为「${recipeName}」的配方。`);
-    const reg = getRegistry();
-    const lines = recipe.map(e => {
-        const item = reg[e.code] || { name: e.code };
-        return `  · ${item.name} [${e.code}] ×${e.count}`;
-    });
-    return seal.replyToSender(ctx, msg, `📦 「${poolName}」配方「${recipeName}」（${recipe.length}种）：\n${lines.join("\n")}`);
-};
-ext.cmdMap["查看池子配方"] = cmd_view_pool_recipe;
-
-let cmd_delete_pool_recipe = seal.ext.newCmdItemInfo();
-cmd_delete_pool_recipe.name = "删除池子配方";
-cmd_delete_pool_recipe.help = "【管理员】删除某个池子的某份配方\n删除池子配方 池子名 配方名";
-cmd_delete_pool_recipe.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    const poolName = cmdArgs.getArgN(1);
-    const recipeName = cmdArgs.getArgN(2);
-    if (!poolName || !recipeName) return seal.replyToSender(ctx, msg, "格式：删除池子配方 池子名 配方名");
-
-    const schemas = getPoolSchemas();
-    if (!schemas[poolName]?.[recipeName]) return seal.replyToSender(ctx, msg, `❌ 池子「${poolName}」没有名为「${recipeName}」的配方。`);
-    delete schemas[poolName][recipeName];
-    if (!Object.keys(schemas[poolName]).length) delete schemas[poolName];
-    savePoolSchemas(schemas);
-    return seal.replyToSender(ctx, msg, `✅ 已删除池子「${poolName}」的配方「${recipeName}」。`);
-};
-ext.cmdMap["删除池子配方"] = cmd_delete_pool_recipe;
-
-// 重置抽取池：把池子的物品+数量还原成某份已保存配方的样子，不用每次抽空了都手动重新加物品。
-let cmd_reset_pool = seal.ext.newCmdItemInfo();
-cmd_reset_pool.name = "重置抽取池";
-cmd_reset_pool.help = `【管理员】把池子还原为某份已保存配方的物品+数量
-重置抽取池 池子名 配方名
-需要先用「保存池子配方」存过一份，配方才会存在；用「查看池子配方 池子名」查看有哪些配方可选。`;
-cmd_reset_pool.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    const poolName = cmdArgs.getArgN(1);
-    const recipeName = cmdArgs.getArgN(2);
-    if (!poolName || !recipeName) return seal.replyToSender(ctx, msg, "格式：重置抽取池 池子名 配方名（用「查看池子配方 池子名」查看可选配方）");
-
-    const defs = getPoolDefs();
-    if (!defs[poolName]) return seal.replyToSender(ctx, msg, `❌ 未找到池子「${poolName}」。`);
-    const schemas = getPoolSchemas();
-    const recipe = schemas[poolName]?.[recipeName];
-    if (!recipe) return seal.replyToSender(ctx, msg, `❌ 池子「${poolName}」没有名为「${recipeName}」的配方，先用「保存池子配方 ${poolName} ${recipeName}」存一份。`);
-
-    defs[poolName].items = JSON.parse(JSON.stringify(recipe));
-    savePoolDefs(defs);
-    return seal.replyToSender(ctx, msg, `✅ 池子「${poolName}」已还原为配方「${recipeName}」（${recipe.length}种）。`);
-};
-ext.cmdMap["重置抽取池"] = cmd_reset_pool;
 
 let cmd_adjust = seal.ext.newCmdItemInfo();
 cmd_adjust.name = "调整";
@@ -2835,46 +2543,6 @@ cmd_delete_item.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["删除物品"] = cmd_delete_item;
-
-// 货币被删除后同名重新注册会换 code，导致老的商城/二手市场挂单里存的 currencyCode 失配
-// （背包按当前 code 显示有余额，购买却按挂单里的旧 code 查到 0）。
-// 该指令按 currencyName 重新匹配当前注册表，批量修正所有挂单的 currencyCode，无需逐条重新上架。
-let cmd_fix_shop_currency = seal.ext.newCmdItemInfo();
-cmd_fix_shop_currency.name = "修复商城货币";
-cmd_fix_shop_currency.help = "⚠️【维护工具·请勿随意使用】仅在挂单出现「背包有余额但购买提示不足」时使用\n按货币名重新匹配商城/二手市场挂单里的货币 code\n用于货币被删除重建后，老挂单出现该问题的情况";
-cmd_fix_shop_currency.solve = (ctx, msg) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-
-    const reg = getRegistry();
-    const currencyByName = {};
-    for (const item of Object.values(reg)) {
-        if (item.type === "currency") currencyByName[item.name] = item.code;
-    }
-
-    const shop = getShop();
-    let shopFixed = 0, shopOrphan = 0;
-    for (const listing of shop) {
-        const correctCode = currencyByName[listing.currencyName];
-        if (!correctCode) { shopOrphan++; continue; }
-        if (listing.currencyCode !== correctCode) { listing.currencyCode = correctCode; shopFixed++; }
-    }
-    if (shopFixed > 0) saveShop(shop);
-
-    const market = getMarket();
-    let marketFixed = 0, marketOrphan = 0;
-    for (const shCode of Object.keys(market)) {
-        const listing = market[shCode];
-        const correctCode = currencyByName[listing.currencyName];
-        if (!correctCode) { marketOrphan++; continue; }
-        if (listing.currencyCode !== correctCode) { listing.currencyCode = correctCode; marketFixed++; }
-    }
-    if (marketFixed > 0) saveMarket(market);
-
-    seal.replyToSender(ctx, msg,
-        `✅ 修复完成：\n🏪 商城：修正 ${shopFixed} 条${shopOrphan ? `，${shopOrphan} 条货币名已不存在（跳过）` : ""}\n🔄 二手市场：修正 ${marketFixed} 条${marketOrphan ? `，${marketOrphan} 条货币名已不存在（跳过）` : ""}`);
-    return seal.ext.newCmdExecuteResult(true);
-};
-ext.cmdMap["修复商城货币"] = cmd_fix_shop_currency;
 
 function isApplyTimeValid(main) {
     const hoursStr = mainStorGet("apply_item_hours");
@@ -4740,224 +4408,6 @@ cmd_battle_history.solve = (ctx, msg, cmdArgs) => {
 // ext.cmdMap["战斗历史"] = cmd_battle_history; (合入战况)
 
 // ========================
-// 一键初始化 - 快速启用攻防系统
-// ========================
-
-let cmd_quick_init = seal.ext.newCmdItemInfo();
-cmd_quick_init.name = "一键初始化";
-cmd_quick_init.help = "【已停用】战斗属性和回血药请在网页端「资料库」添加，攻防用「。设置 DLC」打开";
-cmd_quick_init.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    // 1.8.0 起停用：它往机器人本地写属性/回血药/攻防开关，但这些现在都以网页端为准，
-    // 下次网页端有任何改动、自动拉取就会整份覆盖掉，注册了也留不住。改成引导去网页端（同「注册装备」等指令）
-    return seal.replyToSender(ctx, msg,
-        movedToWeb("战斗属性（HP/MP/ATK/DEF/AGI）和回血药", "资料库 → 属性 · 加点 / 物品 · 装备 · 货币") +
-        "\n攻防玩法本身用「。设置 DLC」打开。");
-    // 以下为旧的群内一键初始化实现，已停用（保留供参考）
-
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 无法连接主插件。");
-
-    // 获取当前属性和物品定义
-    const defs = getAttrDefs();
-    const registry = getRegistry();
-
-    let results = [];
-    let errors = [];
-
-    // ========== 创建RPG属性 ==========
-    const attrs = [
-        { name: "HP", min: 0, max: 100, default: 50, desc: "生命值" },
-        { name: "MP", min: 0, max: 100, default: 50, desc: "魔法值" },
-        { name: "ATK", min: 0, max: 100, default: 40, desc: "攻击力" },
-        { name: "DEF", min: 0, max: 100, default: 30, desc: "防御力" },
-        { name: "AGI", min: 0, max: 100, default: 40, desc: "敏捷" }
-    ];
-
-    attrs.forEach(attr => {
-        if (defs[attr.name]) {
-            errors.push(`⏭️ 属性「${attr.name}」已存在`);
-        } else {
-            defs[attr.name] = {
-                min: attr.min,
-                max: attr.max,
-                default: attr.default,
-                desc: attr.desc
-            };
-            results.push(`✅ 已创建属性：${attr.name}`);
-        }
-    });
-
-    saveAttrDefs(defs);
-
-    // ========== 创建回血药物品 ==========
-    const potions = [
-        {
-            name: "小回血药",
-            desc: "恢复少量HP",
-            uses: -1,
-            effects: "HP+30",
-            resellable: "Y",
-            code: "ITEM_POT_S"
-        },
-        {
-            name: "中回血药",
-            desc: "恢复中等HP",
-            uses: -1,
-            effects: "HP+60",
-            resellable: "Y",
-            code: "ITEM_POT_M"
-        },
-        {
-            name: "大回血药",
-            desc: "恢复大量HP",
-            uses: -1,
-            effects: "HP+100",
-            resellable: "Y",
-            code: "ITEM_POT_L"
-        },
-        {
-            name: "全恢复药",
-            desc: "完全恢复HP和MP",
-            uses: -1,
-            effects: "HP+100,MP+100",
-            resellable: "N",
-            code: "ITEM_POT_FULL"
-        }
-    ];
-
-    potions.forEach(potion => {
-        if (registry[potion.code]) {
-            errors.push(`⏭️ 物品「${potion.name}」(${potion.code})已存在`);
-        } else {
-            registry[potion.code] = {
-                code: potion.code,
-                name: potion.name,
-                type: "item",
-                desc: potion.desc,
-                maxUses: parseInt(potion.uses),
-                attrs: potion.effects,
-                canResell: potion.resellable === "Y"
-            };
-            results.push(`✅ 已创建物品：${potion.name} (${potion.code})`);
-        }
-    });
-
-    saveRegistry(registry);
-
-    // ========== 启用攻防系统 ==========
-    let attackDefenseConfig = getAttackDefenseConfig();
-    if (!attackDefenseConfig.enabled) {
-        attackDefenseConfig.enabled = true;
-        attackDefenseConfig.maxInitiations = attackDefenseConfig.maxInitiations || 10;
-        attackDefenseConfig.maxRefusals = attackDefenseConfig.maxRefusals || 10;
-        attackDefenseConfig.turnTimeout = attackDefenseConfig.turnTimeout || 3600000;
-        attackDefenseConfig.defaultTurns = attackDefenseConfig.defaultTurns || 10;
-        attackDefenseConfig.escapeRate = attackDefenseConfig.escapeRate !== undefined ? attackDefenseConfig.escapeRate : 30;
-        attackDefenseConfig.damageRandomness = attackDefenseConfig.damageRandomness || 0;
-        attackDefenseConfig.forceParticipate = false;
-        attackDefenseConfig.minPlayers = 2;
-        attackDefenseConfig.manualStart = false;
-        saveAttackDefenseConfig(attackDefenseConfig);
-        results.push(`✅ 已启用攻防系统（休闲模式配置）`);
-    } else {
-        errors.push(`⏭️ 攻防系统已启用`);
-    }
-
-    // ========== 创建基础装备 ==========
-    const equipRegistry = getEquipRegistry();
-    const baseEquips = [
-        {
-            name: "铁制短剑",
-            desc: "一把普通的短剑",
-            slot: "hand",
-            baseAttrs: { ATK: 15 },
-            code: "EQUIP_SWORD_01"
-        },
-        {
-            name: "皮革甲胄",
-            desc: "轻便的皮甲防御",
-            slot: "chest",
-            baseAttrs: { DEF: 20, HP: 50 },
-            code: "EQUIP_CHEST_01"
-        },
-        {
-            name: "铁制头盔",
-            desc: "保护头部的头盔",
-            slot: "head",
-            baseAttrs: { DEF: 10 },
-            code: "EQUIP_HEAD_01"
-        },
-        {
-            name: "腰部护甲",
-            desc: "增强体力的护甲",
-            slot: "hand",
-            baseAttrs: { HP: 30 },
-            code: "EQUIP_WAIST_01"
-        },
-        {
-            name: "敏捷靴子",
-            desc: "提升速度的靴子",
-            slot: "foot",
-            baseAttrs: { AGI: 5 },
-            code: "EQUIP_FOOT_01"
-        }
-    ];
-
-    let equipCount = 0;
-    baseEquips.forEach(equip => {
-        if (!equipRegistry[equip.code]) {
-            equipRegistry[equip.code] = {
-                code: equip.code,
-                name: equip.name,
-                desc: equip.desc,
-                type: "equipment",
-                slot: equip.slot,
-                baseAttrs: equip.baseAttrs
-            };
-            equipCount++;
-        }
-    });
-
-    if (equipCount > 0) {
-        saveEquipRegistry(equipRegistry);
-        results.push(`✅ 已创建装备系统（${equipCount}件基础装备）`);
-    } else {
-        errors.push(`⏭️ 装备系统已初始化`);
-    }
-
-    // ========== 返回结果 ==========
-    let reply = `🚀 一键初始化完成！\n\n`;
-
-    if (results.length > 0) {
-        reply += `✅ 成功项目 (${results.length})：\n` + results.join("\n") + "\n\n";
-    }
-
-    if (errors.length > 0) {
-        reply += `⏭️ 已跳过 (${errors.length})：\n` + errors.join("\n") + "\n\n";
-    }
-
-    reply += `📋 已创建：\n`;
-    reply += `· 5个属性：HP、MP、ATK、DEF、AGI\n`;
-    reply += `· 4种药品：小/中/大回血药 + 全恢复药\n`;
-    reply += `· 5件装备：铁剑、皮甲、头盔、腰甲、靴子\n`;
-    reply += `· 攻防系统已启用\n\n`;
-    reply += `💡 下一步：\n`;
-    reply += `· 上架商城：上架商城 ITEM_POT_S*50金币\n`;
-    reply += `· 上架装备：上架商城 EQUIP_SWORD_01*500金币\n`;
-    reply += `· 配置攻防：攻防 设置 参数 值\n`;
-    reply += `· 创建池子：注册池子 回血药池 fixed`;
-
-    // （以前这里调用 registerPoolToggleCmds() 并提示「已启用开启池子/关闭池子」——那个函数和这两条指令从来没实现过，
-    //  调用直接 ReferenceError，导致上面拼好的回复发不出去，管理员看起来像「一键初始化」没反应。池子开关在网页端「抽取池」里做）
-
-    seal.replyToSender(ctx, msg, reply);
-    return seal.ext.newCmdExecuteResult(true);
-};
-
-ext.cmdMap["一键初始化"] = cmd_quick_init;
-
-// ========================
 // 装备系统 - 存储和配置
 // ========================
 
@@ -5543,11 +4993,6 @@ function getLevelUpRules() {
     return main ? mainKvGet("level_up_rules", {"max_level":100,"enabled":true,"level_up_rules":{}}) : {};
 }
 
-function saveLevelUpRules(rules) {
-    const main = getMainExt();
-    if (main) mainKvSet("level_up_rules", rules);
-}
-
 // 获取玩家当前等级（新结构：uid 为 key）
 function getPlayerLevel(uid) {
     const main = getMainExt();
@@ -5579,193 +5024,6 @@ function addLevelHistory(uid, record) {
     if (!data[uid]) data[uid] = [];
     data[uid].push(record);
     mainKvSet("player_level_history", data);
-}
-
-// 递增公式：基础 + (级数-1) × 增幅
-function calculateValue(baseStr, level) {
-    if (!baseStr.includes('+')) return parseInt(baseStr) || 0;
-    const [base, increment] = baseStr.split('+').map(x => parseFloat(x) || 0);
-    return Math.floor(base + (level - 1) * increment);
-}
-
-// 替换描述中的 {等级}
-function replaceDescTemplate(desc, level) {
-    return desc.replace(/{等级}/g, level);
-}
-
-// 解析消耗品/奖励品字符串
-// `:` 格式 → 货币/物品/属性，存 code（货币和物品）或名（属性）
-// `+` 格式 → 属性增量奖励，存 { attrs: { attrName: qty } }（仅用于奖励字段）
-// 返回 { result, errors }；errors 非空说明有未知名称
-function parseConsumables(str, level) {
-    if (!str || str.trim() === '') return { result: {}, errors: [] };
-    const result = {};
-    const errors = [];
-    const entries = str.split(',').map(s => s.trim()).filter(s => s);
-
-    const itemReg = getRegistry();
-    const attrDefs = getAttrDefs();
-    const currencyByName = {};
-    const itemByName = {};
-    for (const [code, info] of Object.entries(itemReg)) {
-        if (info.type === "currency") currencyByName[info.name] = code;
-        else itemByName[info.name] = code;
-    }
-
-    entries.forEach(entry => {
-        if (entry.includes(':')) {
-            const colonIdx = entry.indexOf(':');
-            const name = entry.slice(0, colonIdx).trim();
-            const value = entry.slice(colonIdx + 1).trim();
-            const actualValue = calculateValue(value, level);
-
-            // 货币优先，其次物品，再次属性
-            if (currencyByName[name]) {
-                if (!result.currencies) result.currencies = {};
-                result.currencies[currencyByName[name]] = actualValue;
-            } else if (itemByName[name]) {
-                if (!result.items) result.items = {};
-                result.items[itemByName[name]] = actualValue;
-            } else if (attrDefs[name]) {
-                if (!result.attributes) result.attributes = {};
-                result.attributes[name] = actualValue;
-            } else {
-                errors.push(`「${name}」不是已注册的物品、货币或属性`);
-            }
-        } else if (entry.includes('+')) {
-            // `+` 格式仅用于奖励字段（属性增量），消耗字段不应出现
-            const plusIdx = entry.indexOf('+');
-            const name = entry.slice(0, plusIdx).trim();
-            const value = entry.slice(plusIdx + 1).trim();
-            const actualValue = calculateValue(value, level);
-            if (!result.attrs) result.attrs = {};
-            result.attrs[name] = actualValue;
-        } else {
-            errors.push(`「${entry}」格式无法识别（应为 名称:数量 或 属性名+数值）`);
-        }
-    });
-
-    return { result, errors };
-}
-
-// 展开等级范围 "1-50" → [1, 2, ..., 50]
-function expandLevelRange(rangeStr) {
-    if (!rangeStr.includes('-')) return [parseInt(rangeStr)];
-    const [start, end] = rangeStr.split('-').map(x => parseInt(x));
-    const levels = [];
-    for (let i = start; i <= end; i++) levels.push(i);
-    return levels;
-}
-
-// 上传升级等级命令
-function cmd_upload_level_rule(msg, cmdArgs, ctx) {
-    const main = getMainExt();
-    if (!main) return seal.replyToSender(ctx, msg, "❌ 未找到主插件");
-
-    const rest = cmdArgs.args.slice(1).join(' ').trim();
-    const parts = rest.split('*').map(p => p.trim());
-
-    // 格式：等级范围 * 描述 * 消耗品 * 奖励品 [* 成功率]，共至少4段
-    if (parts.length < 4) {
-        return seal.replyToSender(ctx, msg, "❌ 格式错误\n格式：上传升级等级 <等级|范围> * <描述> * <消耗品> * <奖励品> [*成功率]\n消耗品格式：物品名:数量 或 物品名:基础+增幅（无消耗填-）\n奖励品格式：属性名+数值 或 物品名:数量（无奖励填-）\n示例：\n  上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5\n  上传升级等级 20 * 传奇战士 * 金币:1000,晶体:3 * ATK+20,DEF+10 * 80");
-    }
-
-    const levelRange = parts[0];
-    const description = parts[1];
-    const consumablesStr = parts[2] === '-' ? '' : parts[2];
-    const rewardsStr = parts[3] === '-' ? '' : parts[3];
-    const successRate = parts[4] ? Math.max(0, Math.min(100, parseInt(parts[4]) || 100)) : 100;
-
-    const levels = expandLevelRange(levelRange);
-    if (!levels.length || levels.some(isNaN)) {
-        return seal.replyToSender(ctx, msg, `❌ 等级范围「${levelRange}」无法解析`);
-    }
-
-    // 用第一个等级做配置时校验（捕获名称错误）
-    const consumeCheck = parseConsumables(consumablesStr, levels[0]);
-    const rewardCheck = parseConsumables(rewardsStr, levels[0]);
-
-    // 消耗品字段出现 + 格式（属性增量），属于误用
-    const consumeWrongFmt = consumablesStr.split(',').map(s => s.trim()).filter(s => s && s.includes('+') && !s.includes(':'));
-    const allErrors = [
-        ...consumeCheck.errors.map(e => `消耗品：${e}`),
-        ...rewardCheck.errors.map(e => `奖励品：${e}`),
-        ...consumeWrongFmt.map(s => `消耗品：「${s}」请用 名称:数量 格式，+格式仅限奖励品`),
-    ];
-    if (allErrors.length) {
-        return seal.replyToSender(ctx, msg, `❌ 配置校验失败：\n${allErrors.join("\n")}`);
-    }
-
-    const rules = getLevelUpRules();
-    if (!rules.level_up_rules) rules.level_up_rules = {};
-
-    // 成功率：范围时首级100%线性递减至末级 successRate%，单级直接用
-    let successRates = {};
-    if (successRate < 100 && successRate > 0 && levels.length > 1) {
-        const step = (100 - successRate) / (levels.length - 1);
-        levels.forEach((lv, idx) => { successRates[lv] = Math.floor(100 - idx * step); });
-    } else {
-        levels.forEach(lv => { successRates[lv] = successRate; });
-    }
-
-    // 为每个等级创建配置
-    levels.forEach(level => {
-        const desc = replaceDescTemplate(description, level);
-        const { result: consume } = parseConsumables(consumablesStr, level);
-        const { result: reward } = parseConsumables(rewardsStr, level);
-        rules.level_up_rules[level] = {
-            description: desc,
-            consume,
-            rewards: reward,
-            success_rate: successRates[level] ?? 100,
-        };
-    });
-
-    saveLevelUpRules(rules);
-
-    const rangeLabel = levels.length > 1 ? `等级 ${levels[0]}-${levels[levels.length-1]}` : `等级 ${levels[0]}`;
-    return seal.replyToSender(ctx, msg, `✅ 已配置 ${levels.length} 个升级规则（${rangeLabel}）`);
-}
-
-// 查看升级配置
-function cmd_view_level_rule(ctx, msg, cmdArgs) {
-    const levelStr = cmdArgs.getArgN(2);
-    if (!levelStr) {
-        const rules = getLevelUpRules();
-        const levels = Object.keys(rules.level_up_rules || {}).sort((a,b) => parseInt(a) - parseInt(b));
-        const levelCount = levels.length;
-        const maxLevel = rules.max_level || 100;
-        const rangeStr = levelCount > 0 ? `${levels[0]}-${levels[levels.length-1]}` : "（暂无）";
-        return seal.replyToSender(ctx, msg, `📊 升级系统配置\n\n最大等级: ${maxLevel}\n已配置等级: ${levelCount}个\n等级范围: ${rangeStr}`);
-    }
-
-    const level = parseInt(levelStr);
-    const rules = getLevelUpRules();
-    const rule = rules.level_up_rules[level];
-
-    if (!rule) {
-        return seal.replyToSender(ctx, msg, `❌ 等级 ${level} 未配置`);
-    }
-
-    const viewReg = getRegistry();
-    const cname = (code) => viewReg[code]?.name || code;
-
-    let msg_text = `📋 等级 ${level}: ${rule.description}\n\n`;
-    msg_text += `消耗品:\n`;
-    if (rule.consume.items) Object.entries(rule.consume.items).forEach(([code, qty]) => { msg_text += `  · ${cname(code)}: ${qty}\n`; });
-    if (rule.consume.currencies) Object.entries(rule.consume.currencies).forEach(([code, qty]) => { msg_text += `  · ${cname(code)}: ${qty}\n`; });
-    if (rule.consume.attributes) Object.entries(rule.consume.attributes).forEach(([name, qty]) => { msg_text += `  · ${name}: ${qty}\n`; });
-    if (!rule.consume.items && !rule.consume.currencies && !rule.consume.attributes) msg_text += `  · (无)\n`;
-
-    msg_text += `\n奖励品:\n`;
-    if (rule.rewards.attrs) Object.entries(rule.rewards.attrs).forEach(([attr, val]) => { msg_text += `  · ${attr}+${val}\n`; });
-    if (rule.rewards.currencies) Object.entries(rule.rewards.currencies).forEach(([code, qty]) => { msg_text += `  · ${cname(code)}: ${qty}\n`; });
-    if (rule.rewards.items) Object.entries(rule.rewards.items).forEach(([code, qty]) => { msg_text += `  · ${cname(code)}: ${qty}\n`; });
-    if (!rule.rewards.attrs && !rule.rewards.currencies && !rule.rewards.items) msg_text += `  · (无)\n`;
-
-    msg_text += `\n成功率: ${rule.success_rate}%`;
-
-    return seal.replyToSender(ctx, msg, msg_text);
 }
 
 // 升级列表
@@ -5993,24 +5251,6 @@ function cmd_levelup_info(msg, cmdArgs, ctx) {
     return seal.replyToSender(ctx, msg, msg_text);
 }
 
-// 创建命令对象（规范格式）
-let cmd_upload_level = seal.ext.newCmdItemInfo();
-cmd_upload_level.name = "上传升级等级";
-cmd_upload_level.help = "【管理员】配置升级规则\n上传升级等级 <等级|范围> * <描述> * <消耗品> * <奖励品> [*成功率]\n· 等级与描述之间也用 * 分隔，共4段\n· 消耗品：物品名:数量 或 物品名:基础+增幅，无消耗填 -\n· 奖励品：属性名+数值 或 物品名:数量，无奖励填 -\n· 成功率：0-100，范围配置时从100%线性递减至该值\n示例：\n  上传升级等级 1-10 * {等级}级冒险者 * 金币:50+50 * HP+5+5\n  上传升级等级 20 * 传奇战士 * 金币:1000,晶体:3 * ATK+20,DEF+10 * 80\n  上传升级等级 5 * 铁甲武士 * - * ATK+10";
-cmd_upload_level.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    return cmd_upload_level_rule(msg, cmdArgs, ctx);
-};
-// ext.cmdMap["上传升级等级"] = cmd_upload_level; (合入升级子命令)
-
-let cmd_view_level = seal.ext.newCmdItemInfo();
-cmd_view_level.name = "查看升级配置";
-cmd_view_level.help = "查看升级配置\n查看升级配置 [等级号]";
-cmd_view_level.solve = (ctx, msg, cmdArgs) => {
-    return cmd_view_level_rule(ctx, msg, cmdArgs);
-};
-// ext.cmdMap["查看升级配置"] = cmd_view_level; (合入升级子命令)
-
 let cmd_level_listing = seal.ext.newCmdItemInfo();
 cmd_level_listing.name = "升级列表";
 cmd_level_listing.help = "查看所有已配置的升级等级";
@@ -6027,17 +5267,9 @@ cmd_do_upgrade.solve = (ctx, msg, cmdArgs) => {
     if (sub === "列表") return cmd_level_listing.solve(ctx, msg, { getArgN: (_) => "" });
     if (sub === "信息") return cmd_level_info.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
     if (sub === "历史") return cmd_level_history.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
-    if (sub === "上传") {
+    if (sub === "上传" || sub === "配置" || sub === "设置") {
         if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        return cmd_upload_level.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
-    }
-    if (sub === "配置") {
-        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        return cmd_view_level.solve(ctx, msg, { getArgN: (_) => "" });
-    }
-    if (sub === "设置") {
-        if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-        return cmd_level_settings.solve(ctx, msg, { getArgN: (n) => cmdArgs.getArgN(n + 1) });
+        return seal.replyToSender(ctx, msg, movedToWeb("升级规则（等级、消耗、奖励、成功率、开关、最大等级）", "资料库 → 升级"));
     }
 
     return cmd_do_levelup(msg, cmdArgs, ctx);
@@ -6072,36 +5304,6 @@ cmd_level_history.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 // ext.cmdMap["升级历史"] = cmd_level_history; (合入升级子命令)
-
-let cmd_level_settings = seal.ext.newCmdItemInfo();
-cmd_level_settings.name = "升级系统设置";
-cmd_level_settings.help = "【管理员】升级系统全局设置\n升级系统设置 开启|关闭\n升级系统设置 最大等级 <数字>";
-cmd_level_settings.solve = (ctx, msg, cmdArgs) => {
-    if (!isUserAdmin(ctx, msg)) return seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
-    const arg1 = cmdArgs.getArgN(1);
-    const arg2 = cmdArgs.getArgN(2);
-    if (!arg1) { const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r; }
-    const rules = getLevelUpRules();
-    if (arg1 === "开启") {
-        rules.enabled = true;
-        saveLevelUpRules(rules);
-        return seal.replyToSender(ctx, msg, "✅ 升级系统已开启。");
-    }
-    if (arg1 === "关闭") {
-        rules.enabled = false;
-        saveLevelUpRules(rules);
-        return seal.replyToSender(ctx, msg, "✅ 升级系统已关闭。");
-    }
-    if (arg1 === "最大等级") {
-        const n = parseInt(arg2);
-        if (isNaN(n) || n < 1) return seal.replyToSender(ctx, msg, "❌ 最大等级必须为正整数。");
-        rules.max_level = n;
-        saveLevelUpRules(rules);
-        return seal.replyToSender(ctx, msg, `✅ 最大等级已设为 ${n}。`);
-    }
-    const r = seal.ext.newCmdExecuteResult(true); r.showHelp = true; return r;
-};
-// ext.cmdMap["升级系统设置"] = cmd_level_settings; (合入升级子命令)
 
 // ========================
 // 角色档案

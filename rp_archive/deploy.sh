@@ -17,6 +17,10 @@ rsync -az --delete \
   "$LOCAL_DIR/app.py" "$LOCAL_DIR/backup.py" "$LOCAL_DIR/schema.sql" "$LOCAL_DIR/requirements.txt" \
   "$LOCAL_DIR/run.py" "$LOCAL_DIR/blocklist.txt" "$LOCAL_DIR/templates" "$LOCAL_DIR/tools" "$REMOTE"
 
+echo ">>> 推送主题素材 static/themes（只加不删，不动 static 里的其它东西）"
+ssh jarvis 'mkdir -p /home/ubuntu/rp_archive/static/themes'
+rsync -az "$LOCAL_DIR/static/themes/" jarvis:/home/ubuntu/rp_archive/static/themes/
+
 echo ">>> 安装依赖并重启..."
 ssh jarvis 'cd /home/ubuntu/rp_archive && venv/bin/pip install -q -r requirements.txt && sudo systemctl restart rp_archive && sleep 3 && systemctl is-active rp_archive'
 
