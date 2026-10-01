@@ -1106,28 +1106,38 @@ a { color: var(--link); text-decoration: none; }
     <h3 class="ch-h">我的漂流瓶</h3>
     <div class="list">
       {% for t in threads %}
-      <a class="row" href="{{ url_for('player_bottle', bid=t.id) }}"><div class="avatar tile">🍾</div><div class="body"><div class="top"><span class="name">漂流瓶 #{{ t.id }}<span class="alias-tag">{{ '我扔的' if t.mine else '我捡到的' }}</span></span><span class="time">{{ t.time }}</span></div><div class="preview">{{ t.preview }}</div></div></a>
+      {% if t.state == 'pending' %}
+      <div class="row"><div class="avatar tile">🍾</div><div class="body"><div class="top"><span class="name">发送中…<span class="alias-tag">{{ t.tag }}</span></span><span class="time">{{ t.time }}</span></div><div class="preview">{{ t.preview }}</div></div></div>
+      {% elif t.state == 'failed' %}
+      <div class="row"><div class="avatar tile">⚠️</div><div class="body"><div class="top"><span class="name">没扔出去<span class="alias-tag">{{ t.tag }}</span></span><span class="time">{{ t.time }}</span></div><div class="preview">{{ t.note or '机器人没有接收成功' }} · {{ t.preview }}</div></div></div>
+      {% else %}
+      <a class="row" href="{{ url_for('player_bottle', bid=t.id) }}"><div class="avatar tile">🍾</div><div class="body"><div class="top"><span class="name">漂流瓶 #{{ t.id }}{% if t.tag %}<span class="alias-tag">{{ t.tag }}</span>{% endif %}</span><span class="time">{{ t.time }}</span></div><div class="preview">{{ t.preview }}</div></div></a>
+      {% endif %}
       {% else %}<div class="empty">还没有漂流瓶，扔一个试试</div>{% endfor %}
     </div>
+    <p class="song-note">群里扔的瓶子也会出现在这里，可以接着回信；这里扔的瓶子，群里用「漂流瓶 编号 内容」也能回。</p>
   </div>
+  {% if has_pending %}<script>setTimeout(function () { location.reload(); }, 8000);</script>{% endif %}
 
 {% elif mode == 'bottle' %}
   <header class="bar">
     <a class="back" href="{{ url_for('player_bottles') }}">漂流瓶</a>
-    <div class="title">漂流瓶 #{{ bottle.id }}<small>{{ '你扔出的 · 对方是捡到的人' if i_threw else '你捡到的 · 抛瓶人匿名' }}</small></div>
+    <div class="title">漂流瓶 #{{ bottle_id }}<small>{% if not tag_known %}抛瓶人匿名{% elif i_threw %}你扔出的 · 对方是捡到的人{% else %}你捡到的 · 抛瓶人匿名{% endif %}</small></div>
     <div class="right"></div>
   </header>
   <div class="scroll" id="scroll">
     {% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
+    {% if failed %}<div class="notice">⚠️ 上一条没有发出去：{{ failed }}</div>{% endif %}
     {% for m in msgs %}
     <div class="msg {{ 'mine' if m.mine else 'theirs' }}"><div class="bubble">{{ m.text }}</div><div class="meta">{{ m.time }}</div></div>
     {% endfor %}
   </div>
-  <form class="compose" method="post" action="{{ url_for('player_bottle_reply', bid=bottle.id) }}">
+  <form class="compose" method="post" action="{{ url_for('player_bottle_reply', bid=bottle_id) }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <textarea name="text" maxlength="{{ max_msg }}" placeholder="{{ why or '回信……' }}" rows="1" required{% if why %} disabled{% endif %}></textarea>
     <button type="submit"{% if why %} disabled{% endif %}>发送</button>
   </form>
+  {% if has_pending %}<script>setTimeout(function () { location.reload(); }, 8000);</script>{% endif %}
 
 {% elif mode == 'song' %}
   <header class="bar">
@@ -1551,13 +1561,13 @@ a { color: var(--link); text-decoration: none; }
 {% elif mode == 'admin_bottles' %}
   <header class="bar">
     <a class="back" href="{{ url_for('admin_phone_index') }}">桌面</a>
-    <div class="title">漂流瓶<small>{{ '网页版开启中' if bottle_on else '网页版未开启' }} · {{ bottles|length }} 个</small></div>
+    <div class="title">漂流瓶<small>{{ '网页版开启中（群里已停用）' if bottle_on else '网页版未开启（群里在用）' }} · {{ bottles|length }} 个</small></div>
     <div class="right"></div>
   </header>
   <div class="scroll ch-page">
-    <p class="ch-note">管理视角：能看到真实的抛瓶人和捡瓶人，以及静默拉黑下对方看不到的回信。开关在后台「小手机」页。</p>
+    <p class="ch-note">管理视角：能看到真实的抛瓶人和捡瓶人，以及静默拉黑下对方看不到的回信。瓶子池只有一个（在机器人里），群里和网页的瓶子都在这里；开关在后台「小手机」页。{% if pending %}<br>⏳ 有 {{ pending }} 条网页操作在等机器人处理。{% endif %}</p>
     <div class="ch-list">{% for b in bottles %}
-      <div class="ch-item"><div class="top"><span class="nm">#{{ b.id }}　{{ b.thrower }} → {{ b.catcher }}</span></div>
+      <div class="ch-item"><div class="top"><span class="nm">#{{ b.id }}　{% if b.guess %}{{ b.thrower }} ↔ {{ b.catcher }}（方向未知）{% else %}{{ b.thrower }} → {{ b.catcher }}{% endif %}</span></div>
         {% for m in b.msgs %}<div class="ef">{{ m.from }}：{{ m.text }}{% if m.hidden %}（对方看不到）{% endif %} · {{ m.time }}</div>{% endfor %}</div>
     {% else %}<div class="gm-empty ch-empty">还没有漂流瓶</div>{% endfor %}</div>
   </div>

@@ -1691,28 +1691,46 @@ def _migrate(conn):
         )
     """)
 
-    # ── 30. 网页漂流瓶（跟群里的漂流瓶二选一，开着时群里那套改成提示去网页）：站内自己抽人、自己存，不经机器人 ──
+    # ── 30. 漂流瓶：瓶子池只有一个，在机器人里（瓶号、抽人、拉黑规则都在插件）；这里只存「看得到的那一份」给网页显示。
+    #    群里扔/回的由插件发 /api/event(type=drift_bottle) 过来；网页扔/回的先排队（phone_bottle_ops）交给插件执行，回报后入库。
+    #    不写进 extra_events：那张表的好几个页面（公开存档、统计）不按类型过滤，匿名瓶子会漏出去。
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS phone_bottles (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        CREATE TABLE IF NOT EXISTS phone_drift (
             show_id    INTEGER NOT NULL,
+            bottle_id  INTEGER NOT NULL,
             thrower    TEXT    NOT NULL,
             catcher    TEXT    NOT NULL,
-            created_at INTEGER NOT NULL
+            guess      INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (show_id, bottle_id)
         )
     """)
     conn.execute("""
-        CREATE TABLE IF NOT EXISTS phone_bottle_msgs (
+        CREATE TABLE IF NOT EXISTS phone_drift_msgs (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            bottle_id  INTEGER NOT NULL,
             show_id    INTEGER NOT NULL,
+            bottle_id  INTEGER NOT NULL,
             from_role  TEXT    NOT NULL,
             content    TEXT    NOT NULL,
             hidden     INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL
         )
     """)
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_phone_bottle_msgs ON phone_bottle_msgs(bottle_id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_phone_drift_msgs ON phone_drift_msgs(show_id, bottle_id)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_bottle_ops (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id     INTEGER NOT NULL,
+            role        TEXT    NOT NULL,
+            kind        TEXT    NOT NULL,
+            bottle_id   INTEGER NOT NULL DEFAULT 0,
+            content     TEXT    NOT NULL,
+            done        INTEGER NOT NULL DEFAULT 0,
+            ok          INTEGER NOT NULL DEFAULT 0,
+            result      TEXT    NOT NULL DEFAULT '',
+            created_at  INTEGER NOT NULL
+        )
+    """)
 
     # ── 27. 插件每 2 分钟随同步上报的每人报告（我的数量/弧长/时间线/待回），网页「时间线与统计」页只读 ──
     conn.execute("""
@@ -6468,6 +6486,7 @@ def api_phone_sync():
                     "lovemails": lovemails, "lovemail_revokes": lm_revokes,
                     "block_ops": _block_ops_for_bot(db, show["id"], data.get("block_ops_done")),
                     "admin_ops": _admin_ops_for_bot(db, show["id"], data.get("admin_ops_done")),
+                    "bottle_ops": _bottle_ops_for_bot(db, show["id"], data.get("bottle_ops_done")),
                     # 群消息：插件照短信计当日次数和冷却（不记互动统计），游标 phone_group_cursor
                     "group_events": [{"id": r["id"], "from_role": r["from_role"], "timestamp": r["created_at"], "day_key": r["day_key"]}
                                      for r in db.execute("SELECT id, from_role, created_at, day_key FROM phone_group_msgs "
@@ -7658,19 +7677,21 @@ def player_pending_dismiss():
         db.commit()
     return redirect(url_for("player_stats", view="pending"))
 
-# ── 网页漂流瓶 ──────────────────────────────────────────────────────────────────
-# 跟群里的漂流瓶二选一：后台打开「网页漂流瓶」后，插件（>=1.10.8）把群里的「漂流瓶」改成提示去网页；关着时网页入口不出现。
-# 两边是各自独立的瓶子池（瓶号不互通），开关切换时对方那边的旧瓶子保留但不能再回信。
-# 抽人规则照群里：非 NPC、不是自己、没有拉黑抛瓶人的人；回信被拉黑：静默的假装送出（只有自己看得到），非静默如实告知。
-# 匿名：捡到的人只看到「漂流瓶 #号」，抛瓶人看到「捡到的人」；真名只有管理员手机看得到。
+# ── 漂流瓶（群里和网页共用同一个池子）──────────────────────────────────────────────
+# 瓶子池只有一个，在机器人（插件）里：瓶号、随机抽人、拉黑规则都由插件说了算。网页上扔瓶/回信不自己抽人，先排队（phone_bottle_ops），
+# 机器人下一次同步（约半分钟）执行，回报瓶号和捡瓶人后这里入库；所以群里扔的瓶子网页上接着回，网页扔的瓶子群里用「漂流瓶 编号 内容」也能回。
+# 后台「网页漂流瓶」开关只决定「谁来操作」：打开后插件把群里的漂流瓶指令改成提示去网页（二选一，不会两边各发一份），关掉就回群里用。
+# 匿名：捡到的人只看到「漂流瓶 #号」，抛瓶人看到自己扔的；真名只有管理员手机看得到。
+# 说明：这套存档上线之前群里扔的旧瓶子没有内容记录（插件当时只存抛瓶人/捡瓶人），网页上看不到；之后的都有。
 _BOTTLE_MAX = 300
+_BOTTLE_MAX_PENDING = 5   # 每人同时排队等机器人处理的最多几条，防刷
 
 def _phone_bottle_on(db, sid):
     row = db.execute("SELECT bottle_web FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
     return bool(row and row["bottle_web"])
 
 def _bottle_state(db, sid):
-    """(能不能用, 原因)：开关开着、没暂停、机器人同步新鲜（插件才知道群里要停用）、在档期内"""
+    """(能不能用, 原因)：开关开着、没暂停、机器人同步新鲜（网页操作要靠机器人执行）、在档期内"""
     if not _phone_bottle_on(db, sid):
         return False, "网页漂流瓶没有开启"
     if _phone_comm_paused(db, sid):
@@ -7683,18 +7704,74 @@ def _bottle_state(db, sid):
         return False, "不在档期内，暂时不能用"
     return True, ""
 
-def _bottle_other(b, owner):
-    return b["catcher"] if b["thrower"] == owner else b["thrower"]
+def _store_drift_event(show, data):
+    """插件发来的群里漂流瓶事件（抛瓶 / 回信）入库；没有这个瓶子的记录（上线前的旧瓶子）就按这条的收发双方先建一条，标成「方向未知」"""
+    sid = show["id"]
+    if _schedule_zone(show, data.get("timestamp")) != "main":
+        return jsonify({"ok": True, "skipped": True})
+    info = data.get("extra_info") or {}
+    bid = int(info["bottle_id"]) if str(info.get("bottle_id", "")).isdigit() else 0
+    frm, to = (data.get("from_role") or "").strip(), (data.get("to_role") or "").strip()
+    text = (data.get("content") or "").strip()[:2000]
+    if not bid or not frm or not to or not text:
+        return jsonify({"ok": False, "error": "bad drift event"}), 400
+    db = get_db()
+    ts = int(data.get("timestamp") or time.time() * 1000)
+    has = db.execute("SELECT 1 FROM phone_drift WHERE show_id=? AND bottle_id=?", (sid, bid)).fetchone()
+    if not has:
+        db.execute("INSERT INTO phone_drift (show_id, bottle_id, thrower, catcher, guess, created_at) VALUES (?,?,?,?,?,?)",
+                   (sid, bid, frm, to, 0 if info.get("action") == "throw" else 1, ts))
+    db.execute("INSERT INTO phone_drift_msgs (show_id, bottle_id, from_role, content, created_at) VALUES (?,?,?,?,?)", (sid, bid, frm, text, ts))
+    db.commit()
+    return jsonify({"ok": True})
+
+def _bottle_ops_for_bot(db, sid, done):
+    """机器人回报 [{id, ok, msg, bottle_id, catcher, silent}] 先落库（扔瓶成功就建瓶子，回信成功就加一条，静默拉黑的只有自己看得到），
+    再把还没执行的网页操作交给它（每次最多 50 条）"""
+    if isinstance(done, list):
+        for d in done[:200]:
+            if not isinstance(d, dict) or not str(d.get("id", "")).isdigit():
+                continue
+            op = db.execute("SELECT * FROM phone_bottle_ops WHERE show_id=? AND id=? AND done=0", (sid, int(d["id"]))).fetchone()
+            if not op:
+                continue
+            ok = bool(d.get("ok"))
+            db.execute("UPDATE phone_bottle_ops SET done=1, ok=?, result=? WHERE id=?", (1 if ok else 0, str(d.get("msg") or "")[:200], op["id"]))
+            if not ok:
+                continue
+            now = int(time.time() * 1000)
+            bid = int(d["bottle_id"]) if str(d.get("bottle_id", "")).isdigit() and int(d["bottle_id"]) else 0
+            if op["kind"] == "throw" and bid and d.get("catcher"):
+                db.execute("INSERT OR IGNORE INTO phone_drift (show_id, bottle_id, thrower, catcher, guess, created_at) VALUES (?,?,?,?,0,?)",
+                           (sid, bid, op["role"], str(d["catcher"]), now))
+            elif op["kind"] == "reply":
+                bid = op["bottle_id"]
+            if bid:
+                db.execute("INSERT INTO phone_drift_msgs (show_id, bottle_id, from_role, content, hidden, created_at) VALUES (?,?,?,?,?,?)",
+                           (sid, bid, op["role"], op["content"], 1 if d.get("silent") else 0, now))
+        db.commit()
+    return [{"id": r["id"], "role": r["role"], "kind": r["kind"], "bottle_id": r["bottle_id"], "content": r["content"]}
+            for r in db.execute("SELECT * FROM phone_bottle_ops WHERE show_id=? AND done=0 ORDER BY id LIMIT 50", (sid,))]
 
 def _bottle_threads(db, sid, owner):
     out = []
-    for b in db.execute("SELECT * FROM phone_bottles WHERE show_id=? AND (thrower=? OR catcher=?) ORDER BY id DESC", (sid, owner, owner)):
-        last = db.execute("SELECT * FROM phone_bottle_msgs WHERE bottle_id=? AND (hidden=0 OR from_role=?) ORDER BY id DESC LIMIT 1", (b["id"], owner)).fetchone()
+    for b in db.execute("SELECT * FROM phone_drift WHERE show_id=? AND (thrower=? OR catcher=?)", (sid, owner, owner)):
+        last = db.execute("SELECT * FROM phone_drift_msgs WHERE show_id=? AND bottle_id=? AND (hidden=0 OR from_role=?) ORDER BY id DESC LIMIT 1",
+                          (sid, b["bottle_id"], owner)).fetchone()
         if not last:
             continue
-        out.append({"id": b["id"], "mine": b["thrower"] == owner, "preview": ("我：" if last["from_role"] == owner else "") + last["content"][:40],
-                    "time": _phone_time(last["created_at"]), "ts": last["created_at"]})
+        tag = "" if b["guess"] else ("我扔的" if b["thrower"] == owner else "我捡到的")
+        out.append({"id": b["bottle_id"], "tag": tag, "preview": ("我：" if last["from_role"] == owner else "") + last["content"][:40],
+                    "time": _phone_time(last["created_at"]), "ts": last["created_at"], "state": ""})
+    now = int(time.time() * 1000)
+    for o in db.execute("SELECT * FROM phone_bottle_ops WHERE show_id=? AND role=? AND kind='throw' AND (done=0 OR (ok=0 AND created_at>?)) ORDER BY id DESC",
+                        (sid, owner, now - 3600_000)):
+        out.append({"id": 0, "tag": "我扔的", "preview": o["content"][:40], "time": _phone_time(o["created_at"]), "ts": o["created_at"],
+                    "state": "pending" if not o["done"] else "failed", "note": o["result"]})
     return sorted(out, key=lambda t: -t["ts"])
+
+def _bottle_pending_count(db, sid, owner):
+    return db.execute("SELECT COUNT(*) FROM phone_bottle_ops WHERE show_id=? AND role=? AND done=0", (sid, owner)).fetchone()[0]
 
 def _bottle_flash(msg):
     session["phone_flash"] = msg
@@ -7711,8 +7788,10 @@ def player_bottles():
     if not _phone_bottle_on(db, sid):
         return redirect(url_for("player_discover"))
     can, why = _bottle_state(db, sid)
+    threads = _bottle_threads(db, sid, owner)
     return render_template("phone.html", mode="bottles", owner=owner, sid=sid, csrf=_phone_csrf(), can=can, why=why,
-                           threads=_bottle_threads(db, sid, owner), max_msg=_BOTTLE_MAX, flash=session.pop("phone_flash", None))
+                           threads=threads, has_pending=any(t["state"] == "pending" for t in threads),
+                           max_msg=_BOTTLE_MAX, flash=session.pop("phone_flash", None))
 
 @app.route("/p/me/bottles/<int:bid>")
 def player_bottle(bid):
@@ -7721,14 +7800,20 @@ def player_bottle(bid):
         return redirect(url_for("phone_code_entry"))
     sid, owner = who
     db = get_db()
-    b = db.execute("SELECT * FROM phone_bottles WHERE id=? AND show_id=?", (bid, sid)).fetchone()
+    b = db.execute("SELECT * FROM phone_drift WHERE show_id=? AND bottle_id=?", (sid, bid)).fetchone()
     if owner == PHONE_ADMIN or not b or owner not in (b["thrower"], b["catcher"]):
         return redirect(url_for("player_bottles"))
-    msgs = [{"mine": m["from_role"] == owner, "text": m["content"], "time": _phone_time(m["created_at"])}
-            for m in db.execute("SELECT * FROM phone_bottle_msgs WHERE bottle_id=? AND (hidden=0 OR from_role=?) ORDER BY id", (bid, owner))]
+    msgs = [{"mine": m["from_role"] == owner, "text": m["content"], "time": _phone_time(m["created_at"]), "pending": False}
+            for m in db.execute("SELECT * FROM phone_drift_msgs WHERE show_id=? AND bottle_id=? AND (hidden=0 OR from_role=?) ORDER BY id", (sid, bid, owner))]
+    for o in db.execute("SELECT * FROM phone_bottle_ops WHERE show_id=? AND role=? AND kind='reply' AND bottle_id=? AND done=0 ORDER BY id", (sid, owner, bid)):
+        msgs.append({"mine": True, "text": o["content"], "time": "发送中…", "pending": True})
+    failed = db.execute("SELECT result FROM phone_bottle_ops WHERE show_id=? AND role=? AND kind='reply' AND bottle_id=? AND done=1 AND ok=0 "
+                        "AND created_at>? ORDER BY id DESC LIMIT 1", (sid, owner, bid, int(time.time() * 1000) - 600_000)).fetchone()
     can, why = _bottle_state(db, sid)
     return render_template("phone.html", mode="bottle", owner=owner, sid=sid, csrf=_phone_csrf(), can=can, why=why, bottle=b,
-                           i_threw=(b["thrower"] == owner), msgs=msgs, max_msg=_BOTTLE_MAX, flash=session.pop("phone_flash", None))
+                           bottle_id=bid, i_threw=(b["thrower"] == owner), tag_known=not b["guess"], msgs=msgs,
+                           has_pending=any(m["pending"] for m in msgs), failed=(failed["result"] if failed else ""),
+                           max_msg=_BOTTLE_MAX, flash=session.pop("phone_flash", None))
 
 def _bottle_check_text(db, sid, owner, text):
     text = (text or "").strip()
@@ -7742,102 +7827,83 @@ def _bottle_check_text(db, sid, owner, text):
         return None, BLOCKED_MSG
     return text, None
 
-@app.route("/p/me/bottles/throw", methods=["POST"])
-def player_bottle_throw():
+def _bottle_queue(owner_kind):
+    """扔瓶 / 回信的共同入口：校验、排队，返回 (sid, owner, db, back, text) 或 (None, ..., redirect)"""
     who = _phone_current()
     if not who:
-        return redirect(url_for("phone_code_entry"))
+        return None, redirect(url_for("phone_code_entry"))
     sid, owner = who
     if owner == PHONE_ADMIN:
-        return redirect(url_for("admin_phone_bottles"))
+        return None, redirect(url_for("admin_phone_bottles"))
+    return (sid, owner), None
+
+@app.route("/p/me/bottles/throw", methods=["POST"])
+def player_bottle_throw():
+    got, resp = _bottle_queue("throw")
+    if resp: return resp
+    sid, owner = got
+    back = url_for("player_bottles")
     if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
-        _bottle_flash("❌ 页面过期了，刷新后再试")
-        return redirect(url_for("player_bottles"))
+        _bottle_flash("❌ 页面过期了，刷新后再试"); return redirect(back)
     db = get_db()
     can, why = _bottle_state(db, sid)
     if not can:
-        _bottle_flash("❌ " + why)
-        return redirect(url_for("player_bottles"))
+        _bottle_flash("❌ " + why); return redirect(back)
     text, err = _bottle_check_text(db, sid, owner, request.form.get("text"))
     if err:
-        _bottle_flash(err)
-        return redirect(url_for("player_bottles"))
-    sync = _phone_sync_row(db, sid)
-    snap = sync["snap"]
-    roster = snap.get("roster") or []
-    if owner not in [r.get("name") for r in roster]:
-        _bottle_flash("❌ " + _ROLE_GONE_MSG)
-        return redirect(url_for("player_bottles"))
-    blocked_me = {b.get("blocker") for b in _phone_effective_blocks(db, sid, snap) if b.get("blocked") == owner}
-    cands = [r["name"] for r in roster if r.get("name") and not r.get("npc") and r["name"] != owner and r["name"] not in blocked_me]
-    if not cands:
-        _bottle_flash("🌊 大海太安静了，暂时没有能接到漂流瓶的人")
-        return redirect(url_for("player_bottles"))
-    now = int(time.time() * 1000)
-    catcher = secrets.choice(cands)
-    cur = db.execute("INSERT INTO phone_bottles (show_id, thrower, catcher, created_at) VALUES (?,?,?,?)", (sid, owner, catcher, now))
-    db.execute("INSERT INTO phone_bottle_msgs (bottle_id, show_id, from_role, content, created_at) VALUES (?,?,?,?,?)", (cur.lastrowid, sid, owner, text, now))
+        _bottle_flash(err); return redirect(back)
+    if owner not in _phone_roster(_phone_sync_row(db, sid)):
+        _bottle_flash("❌ " + _ROLE_GONE_MSG); return redirect(back)
+    if _bottle_pending_count(db, sid, owner) >= _BOTTLE_MAX_PENDING:
+        _bottle_flash("⏳ 前面几条还在等机器人处理，稍等一下再扔"); return redirect(back)
+    db.execute("INSERT INTO phone_bottle_ops (show_id, role, kind, content, created_at) VALUES (?,?,'throw',?,?)", (sid, owner, text, int(time.time() * 1000)))
     db.commit()
-    _bottle_flash(f"🍾 漂流瓶已抛入大海（编号{cur.lastrowid}），说不定哪天会有回信……")
-    return redirect(url_for("player_bottle", bid=cur.lastrowid))
+    _bottle_flash("🍾 已交给机器人，约半分钟内抛进大海（编号会显示在下面）")
+    return redirect(back)
 
 @app.route("/p/me/bottles/<int:bid>/reply", methods=["POST"])
 def player_bottle_reply(bid):
-    who = _phone_current()
-    if not who:
-        return redirect(url_for("phone_code_entry"))
-    sid, owner = who
+    got, resp = _bottle_queue("reply")
+    if resp: return resp
+    sid, owner = got
     back = url_for("player_bottle", bid=bid)
-    if owner == PHONE_ADMIN:
-        return redirect(url_for("admin_phone_bottles"))
     if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
-        _bottle_flash("❌ 页面过期了，刷新后再试")
-        return redirect(back)
+        _bottle_flash("❌ 页面过期了，刷新后再试"); return redirect(back)
     db = get_db()
-    b = db.execute("SELECT * FROM phone_bottles WHERE id=? AND show_id=?", (bid, sid)).fetchone()
+    b = db.execute("SELECT * FROM phone_drift WHERE show_id=? AND bottle_id=?", (sid, bid)).fetchone()
     if not b or owner not in (b["thrower"], b["catcher"]):
         return redirect(url_for("player_bottles"))
     can, why = _bottle_state(db, sid)
     if not can:
-        _bottle_flash("❌ " + why)
-        return redirect(back)
+        _bottle_flash("❌ " + why); return redirect(back)
     text, err = _bottle_check_text(db, sid, owner, request.form.get("text"))
     if err:
-        _bottle_flash(err)
-        return redirect(back)
-    sync = _phone_sync_row(db, sid)
-    snap = sync["snap"]
-    if owner not in [r.get("name") for r in (snap.get("roster") or [])]:
-        _bottle_flash("❌ " + _ROLE_GONE_MSG)
-        return redirect(back)
-    other = _bottle_other(b, owner)
-    hidden = 0
-    blk = next((x for x in _phone_effective_blocks(db, sid, snap) if x.get("blocker") == other and x.get("blocked") == owner), None)
-    if blk:
-        if not blk.get("silent"):
-            _bottle_flash("❌ 对方已拒绝你的联络")
-            return redirect(back)
-        hidden = 1   # 静默拉黑：自己这边照常显示，对方看不到
-    db.execute("INSERT INTO phone_bottle_msgs (bottle_id, show_id, from_role, content, hidden, created_at) VALUES (?,?,?,?,?,?)",
-               (bid, sid, owner, text, hidden, int(time.time() * 1000)))
+        _bottle_flash(err); return redirect(back)
+    if owner not in _phone_roster(_phone_sync_row(db, sid)):
+        _bottle_flash("❌ " + _ROLE_GONE_MSG); return redirect(back)
+    if _bottle_pending_count(db, sid, owner) >= _BOTTLE_MAX_PENDING:
+        _bottle_flash("⏳ 前面几条还在等机器人处理，稍等一下再发"); return redirect(back)
+    db.execute("INSERT INTO phone_bottle_ops (show_id, role, kind, bottle_id, content, created_at) VALUES (?,?,'reply',?,?,?)",
+               (sid, owner, bid, text, int(time.time() * 1000)))
     db.commit()
     return redirect(back)
 
 @app.route("/p/admin/bottles")
 def admin_phone_bottles():
-    """管理视角：所有网页漂流瓶（真实抛瓶人/捡瓶人 + 每条内容，含静默拉黑下对方看不到的）"""
+    """管理视角：所有漂流瓶（真实抛瓶人/捡瓶人 + 每条内容，含静默拉黑下对方看不到的）"""
     who = _phone_admin_current()
     if not who:
         return redirect(url_for("phone_code_entry"))
     sid = who[0]
     db = get_db()
     rows = []
-    for b in db.execute("SELECT * FROM phone_bottles WHERE show_id=? ORDER BY id DESC LIMIT 100", (sid,)):
+    for b in db.execute("SELECT * FROM phone_drift WHERE show_id=? ORDER BY bottle_id DESC LIMIT 100", (sid,)):
         ms = [{"from": m["from_role"], "text": m["content"], "hidden": bool(m["hidden"]), "time": _phone_time(m["created_at"])}
-              for m in db.execute("SELECT * FROM phone_bottle_msgs WHERE bottle_id=? ORDER BY id", (b["id"],))]
-        rows.append({"id": b["id"], "thrower": b["thrower"], "catcher": b["catcher"], "msgs": ms})
+              for m in db.execute("SELECT * FROM phone_drift_msgs WHERE show_id=? AND bottle_id=? ORDER BY id", (sid, b["bottle_id"]))]
+        rows.append({"id": b["bottle_id"], "thrower": b["thrower"], "catcher": b["catcher"], "guess": bool(b["guess"]), "msgs": ms})
+    pending = db.execute("SELECT COUNT(*) FROM phone_bottle_ops WHERE show_id=? AND done=0", (sid,)).fetchone()[0]
     return render_template("phone.html", mode="admin_bottles", owner="管理员", sid=sid, csrf=_phone_csrf(), phone_admin=True,
-                           bottles=rows, bottle_on=_phone_bottle_on(db, sid))
+                           bottles=rows, bottle_on=_phone_bottle_on(db, sid), pending=pending)
 
 @app.route("/p/me/stats")
 def player_stats():
@@ -9548,6 +9614,8 @@ def api_event():
     show_id = show["id"]
     data       = request.json or {}
     event_type = data.get("type", "")
+    if event_type == "drift_bottle":
+        return _store_drift_event(show, data)
     if event_type not in ("lovemail", "sms", "gift", "direct_letter"):
         return jsonify({"ok": False, "error": "invalid type"}), 400
 

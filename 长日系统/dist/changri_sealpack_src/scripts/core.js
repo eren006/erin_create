@@ -10292,18 +10292,17 @@ function saveDriftBottles(data) {
     kvSet("drift_bottles", data);
 }
 
-function handleDriftBottleThrow(ctx, msg, platform, content) {
-    const senderRoleName = getRoleName(ctx, msg);
-    if (!senderRoleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
-    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
-
+// 漂流瓶核心逻辑（群里指令和网页手机共用同一个池子、同一套规则）。
+// viaWeb=true：来自网页手机——不往群里发消息（收信人在网页上看），也不单独发存档事件（网页那边按回报自己入库）。
+// 返回 { ok, msg, bottleId, catcher, silent }，msg 是给发起人的结果文案。
+function driftBottleThrowCore(platform, uid, senderRoleName, content, viaWeb, ctx) {
     const storage = getRoleStorage()[platform] || {};
     const npcList = kvGet("a_npc_list", []);
     // 拉黑检查：扔瓶子随机分配接收者，直接把拉黑了发送者的人排除在候选池外，避免瓶子随机落到对方手里
     const candidates = Object.entries(storage).filter(([candUid, entry]) =>
         candUid !== uid && entry[0] && !npcList.includes(entry[0]) && !getBlockEntry(platform, candUid, uid)
     );
-    if (!candidates.length) return seal.replyToSender(ctx, msg, "🌊 大海太安静了，暂时没有能接到漂流瓶的人。");
+    if (!candidates.length) return { ok: false, msg: "🌊 大海太安静了，暂时没有能接到漂流瓶的人。" };
 
     const [catcherUid, catcherEntry] = candidates[Math.floor(Math.random() * candidates.length)];
 
@@ -10312,63 +10311,102 @@ function handleDriftBottleThrow(ctx, msg, platform, content) {
     data.bottles[bottleId] = { platform, throwerUid: uid, catcherUid, createdAt: Date.now() };
     saveDriftBottles(data);
 
-    const newmsg = seal.newMessage();
-    newmsg.messageType = "group";
-    newmsg.groupId = `${platform}-Group:${catcherEntry[1]}`;
-    const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-    seal.replyToSender(newctx, newmsg,
-        `🍾 你捡到一个漂流瓶（编号${bottleId}）：\n「${content}」\n\n想回信就发送：漂流瓶 ${bottleId} 你想说的话`);
+    if (!viaWeb) {
+        const newmsg = seal.newMessage();
+        newmsg.messageType = "group";
+        newmsg.groupId = `${platform}-Group:${catcherEntry[1]}`;
+        const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
+        seal.replyToSender(newctx, newmsg,
+            `🍾 你捡到一个漂流瓶（编号${bottleId}）：\n「${content}」\n\n想回信就发送：漂流瓶 ${bottleId} 你想说的话`);
 
-    if (isArchiveEnabled()) {
-        postToArchive("/api/event", {
-            type: "drift_bottle", from_role: senderRoleName, from_qq: uid,
-            to_role: catcherEntry[0], to_qq: catcherUid,
-            content, extra_info: { bottle_id: bottleId, action: "throw" },
-            game_day: cachedGet("global_days") || "", session_id: "", timestamp: Date.now()
-        });
+        if (isArchiveEnabled()) {
+            postToArchive("/api/event", {
+                type: "drift_bottle", from_role: senderRoleName, from_qq: uid,
+                to_role: catcherEntry[0], to_qq: catcherUid,
+                content, extra_info: { bottle_id: bottleId, action: "throw" },
+                game_day: cachedGet("global_days") || "", session_id: "", timestamp: Date.now()
+            });
+        }
     }
+    return { ok: true, msg: `🍾 漂流瓶已抛入大海（编号${bottleId}），说不定哪天会有回信……`, bottleId, catcher: catcherEntry[0] };
+}
 
-    seal.replyToSender(ctx, msg, `🍾 漂流瓶已抛入大海（编号${bottleId}），说不定哪天会有回信……`);
+function handleDriftBottleThrow(ctx, msg, platform, content) {
+    const senderRoleName = getRoleName(ctx, msg);
+    if (!senderRoleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const uid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const r = driftBottleThrowCore(platform, uid, senderRoleName, content, false, ctx);
+    seal.replyToSender(ctx, msg, r.msg);
     return seal.ext.newCmdExecuteResult(true);
 }
 
-function handleDriftBottleReply(ctx, msg, platform, bottleId, bottle, uid, content) {
-    const senderRoleName = getRoleName(ctx, msg);
-    if (!senderRoleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+function driftBottleReplyCore(platform, bottleId, bottle, uid, senderRoleName, content, viaWeb, ctx) {
     const targetUid = bottle.throwerUid === uid ? bottle.catcherUid : bottle.throwerUid;
 
     // 拉黑检查：对方拉黑了自己就拦下回信，静默伪装送出成功，非静默如实告知
     const bottleBlockEntry = getBlockEntry(platform, targetUid, uid);
     if (bottleBlockEntry) {
-        if (bottleBlockEntry.silent) {
-            seal.replyToSender(ctx, msg, `🍾 回信已经通过漂流瓶（编号${bottleId}）送出。`);
-        } else {
-            seal.replyToSender(ctx, msg, `❌ ${resolveUidToName(platform, targetUid)} 已拒绝你的联络。`);
-        }
-        return seal.ext.newCmdExecuteResult(true);
+        if (bottleBlockEntry.silent) return { ok: true, silent: true, msg: `🍾 回信已经通过漂流瓶（编号${bottleId}）送出。` };
+        return { ok: false, msg: `❌ ${resolveUidToName(platform, targetUid)} 已拒绝你的联络。` };
     }
 
     const targetEntry = (getRoleStorage()[platform] || {})[targetUid];
-    if (!targetEntry) return seal.replyToSender(ctx, msg, "❌ 回信投递失败：找不到对方所在群组。");
+    if (!targetEntry) return { ok: false, msg: "❌ 回信投递失败：找不到对方所在群组。" };
 
-    const newmsg = seal.newMessage();
-    newmsg.messageType = "group";
-    newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
-    const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
-    seal.replyToSender(newctx, newmsg,
-        `🍾 漂流瓶（编号${bottleId}）有了新的回信：\n「${content}」\n\n想继续回信就发送：漂流瓶 ${bottleId} 你想说的话`);
+    if (!viaWeb) {
+        const newmsg = seal.newMessage();
+        newmsg.messageType = "group";
+        newmsg.groupId = `${platform}-Group:${targetEntry[1]}`;
+        const newctx = seal.createTempCtx(ctx.endPoint, newmsg);
+        seal.replyToSender(newctx, newmsg,
+            `🍾 漂流瓶（编号${bottleId}）有了新的回信：\n「${content}」\n\n想继续回信就发送：漂流瓶 ${bottleId} 你想说的话`);
 
-    if (isArchiveEnabled()) {
-        postToArchive("/api/event", {
-            type: "drift_bottle", from_role: senderRoleName, from_qq: uid,
-            to_role: targetEntry[0], to_qq: targetUid,
-            content, extra_info: { bottle_id: bottleId, action: "reply" },
-            game_day: cachedGet("global_days") || "", session_id: "", timestamp: Date.now()
-        });
+        if (isArchiveEnabled()) {
+            postToArchive("/api/event", {
+                type: "drift_bottle", from_role: senderRoleName, from_qq: uid,
+                to_role: targetEntry[0], to_qq: targetUid,
+                content, extra_info: { bottle_id: bottleId, action: "reply" },
+                game_day: cachedGet("global_days") || "", session_id: "", timestamp: Date.now()
+            });
+        }
     }
+    return { ok: true, msg: `🍾 回信已经通过漂流瓶（编号${bottleId}）送出。` };
+}
 
-    seal.replyToSender(ctx, msg, `🍾 回信已经通过漂流瓶（编号${bottleId}）送出。`);
+function handleDriftBottleReply(ctx, msg, platform, bottleId, bottle, uid, content) {
+    const senderRoleName = getRoleName(ctx, msg);
+    if (!senderRoleName) return seal.replyToSender(ctx, msg, "❌ 请先创建角色。");
+    const r = driftBottleReplyCore(platform, bottleId, bottle, uid, senderRoleName, content, false, ctx);
+    seal.replyToSender(ctx, msg, r.msg);
     return seal.ext.newCmdExecuteResult(true);
+}
+
+// 网页手机的漂流瓶操作（扔瓶 / 回信）：站点排队下发，这里照群里同一套规则执行，结果回报给站点入库显示。
+// 同一条重复收到（回报还没送达）靠 phone_bottle_ops_done 里的 id 判断，不会重复扔。
+function phoneApplyBottleOps(platform, ops) {
+    if (!ops.length) return;
+    const done = kvGet("phone_bottle_ops_done", []), seen = new Set(done.map(d => d.id));
+    const npcList = kvGet("a_npc_list", []);
+    for (const op of ops) {
+        if (seen.has(op.id)) continue;
+        let r;
+        try {
+            const rawUid = getUidByRoleName(platform, op.role);
+            if (!rawUid) r = { ok: false, msg: `找不到角色「${op.role}」` };
+            else if (npcList.includes(op.role)) r = { ok: false, msg: "NPC 不能用漂流瓶" };
+            else {
+                const uid = getPrimaryUid(platform, rawUid);
+                if (op.kind === "throw") r = driftBottleThrowCore(platform, uid, op.role, String(op.content || ""), true, null);
+                else if (op.kind === "reply") {
+                    const bottle = getDriftBottles().bottles[String(op.bottle_id)];
+                    if (!bottle || bottle.platform !== platform || (bottle.throwerUid !== uid && bottle.catcherUid !== uid)) r = { ok: false, msg: "找不到这个漂流瓶（可能是旧瓶子或不属于你）" };
+                    else r = driftBottleReplyCore(platform, String(op.bottle_id), bottle, uid, op.role, String(op.content || ""), true, null);
+                } else r = { ok: false, msg: `不认识的操作「${op.kind}」` };
+            }
+        } catch (e) { r = { ok: false, msg: "执行出错：" + (e.message || e) }; }
+        done.push({ id: op.id, ok: !!r.ok, msg: String(r.msg || "").slice(0, 200), bottle_id: r.bottleId ? Number(r.bottleId) : (op.bottle_id || 0), catcher: r.catcher || "", silent: !!r.silent });
+    }
+    kvSet("phone_bottle_ops_done", done.slice(-200));
 }
 
 // 无前缀「短信」：识别署名（含自定义署名开关）后转交寄信流程
@@ -12703,6 +12741,7 @@ async function phoneWebSyncCore(base, token) {
     const lmDone = kvGet("phone_lovemail_done", []), lmRevokeDone = kvGet("phone_lovemail_revoke_done", []);
     const blockOpsDone = kvGet("phone_block_ops_done", []);
     const adminOpsDone = kvGet("phone_admin_ops_done", []);
+    const bottleOpsDone = kvGet("phone_bottle_ops_done", []);
     const groupAfter = parseInt(cachedGet("phone_group_cursor") || "0") || 0;
     const reports = Date.now() - _phoneReportsAt >= 120 * 1000 ? buildPhoneReports(platform) : null;
     if (reports) _phoneReportsAt = Date.now();
@@ -12710,7 +12749,7 @@ async function phoneWebSyncCore(base, token) {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Archive-Token": token },
         body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
-            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone, admin_ops_done: adminOpsDone, group_after: groupAfter,
+            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone, admin_ops_done: adminOpsDone, bottle_ops_done: bottleOpsDone, group_after: groupAfter,
             ...(reports ? { reports } : {}),
             // block_write：告诉存档站这个版本会处理网页上的实名拉黑，网页才显示拉黑按钮
             snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, block_write: true,
@@ -12734,6 +12773,12 @@ async function phoneWebSyncCore(base, token) {
         kvSet("phone_admin_ops_done", kvGet("phone_admin_ops_done", []).filter(d => !sent.has(d.id)));
     }
     phoneApplyAdminOps(platform, data.admin_ops || []);
+    // 这次回报的网页漂流瓶操作站点已记下，清掉（同 admin_ops 的做法）；再执行这次给的新操作
+    if (bottleOpsDone.length) {
+        const sentB = new Set(bottleOpsDone.map(d => d.id));
+        kvSet("phone_bottle_ops_done", kvGet("phone_bottle_ops_done", []).filter(d => !sentB.has(d.id)));
+    }
+    phoneApplyBottleOps(platform, data.bottle_ops || []);
     phoneApplyGroupEvents(platform, data.group_events || [], gameDay, groupAfter);
     kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
     kvSet("phone_bottle_web", { on: !!data.bottle_web, url: `${base}/p`, at: Date.now() });
