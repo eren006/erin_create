@@ -64,6 +64,6 @@
   </form>
   {% endif %}
 </dialog>
-{% elif mode in ('new', 'group_new') %}
+{% elif mode == 'group_new' %}
 <nav class="thread-tools" aria-label="返回"><a href="{{ url_for('player_phone_inbox') }}">‹ 返回消息</a></nav>
 {% endif %}

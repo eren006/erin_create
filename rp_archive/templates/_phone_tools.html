@@ -60,6 +60,28 @@
 .group-manage input, .group-manage select { flex: 1; min-width: 0; font: inherit; font-size: 15px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
 .block-note { font-size: 12px; color: var(--muted); line-height: 1.6; margin: 6px 4px 0; }
 .action-sheet h2 { min-width: 0; overflow-wrap: anywhere; }
+/* 新信息：紧凑导航、独立匿名设置和收件人列表。 */
+.phone[data-mode="new"] .bar:not(.big):not(.tab-bar) { grid-template-columns: 64px minmax(0,1fr) 64px; grid-template-rows: auto; min-height: 64px; padding: calc(env(safe-area-inset-top) + 8px) 16px 8px; }
+.phone[data-mode="new"] .bar:not(.big):not(.tab-bar) .title { grid-row: 1; grid-column: 2; justify-content: center; font-size: 20px; line-height: 28px; align-self: center; }
+.phone[data-mode="new"] .bar:not(.big):not(.tab-bar) > .right { grid-column: 3; }
+.new-message-page { padding: 20px 16px calc(24px + env(safe-area-inset-bottom)); }
+.new-intro { font-size: 14px; color: var(--muted); margin: 0 0 16px; }
+.new-message-page .alias-box { padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--bg); gap: 12px; }
+.new-message-page .alias-check { justify-content: space-between; gap: 16px; min-height: 44px; cursor: pointer; }
+.alias-check strong { display: block; font-size: 16px; font-weight: 600; }
+.alias-check small { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.new-message-page #aliasOn { appearance: none; -webkit-appearance: none; flex-shrink: 0; width: 44px; height: 28px; margin: 8px 0; background: var(--theirs); border: 1px solid var(--line); border-radius: 16px; position: relative; cursor: pointer; }
+.new-message-page #aliasOn::before { content: ''; position: absolute; width: 22px; height: 22px; top: 2px; left: 2px; background: var(--bg); border-radius: 50%; box-shadow: 0 1px 4px #0003; }
+.new-message-page #aliasOn:checked { background: var(--mine); border-color: var(--mine); }
+.new-message-page #aliasOn:checked::before { left: 18px; background: #fff; }
+.new-message-page .alias-hint { margin: 0; line-height: 1.7; }
+.recipient-heading { display: flex; justify-content: space-between; margin: 26px 2px 10px; font-size: 15px; font-weight: 600; }
+.recipient-heading span { font-size: 12px; font-weight: 400; color: var(--muted); }
+.recipient-list { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--bg); }
+.recipient-list .row { min-height: 72px; padding: 14px; gap: 12px; }
+.recipient-list .avatar.sm { width: 36px; height: 36px; font-size: 15px; }
+.recipient-list .name { font-size: var(--reading-size,16px); font-weight: 500; }
+.recipient-arrow { margin-left: auto; color: var(--muted); font-size: 22px; }
 </style>
 <div class="tools-toast" id="toolsToast" role="status" hidden></div>
 <script>

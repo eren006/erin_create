@@ -1316,15 +1316,18 @@ a { color: var(--link); text-decoration: none; }
     <div class="title">{{ skin.words.new }}</div>
     <div class="right"></div>
   </header>
+  <div class="scroll new-message-page">
+  <p class="new-intro">选择一位收件人，开始对话</p>
   <form class="alias-box" id="aliasForm" method="post" action="{{ url_for('player_alias_create') }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <input type="hidden" name="to" id="aliasTo" value="">
-    <label class="alias-check"><input type="checkbox" id="aliasOn"> 匿名发起</label>
-    <input class="alias-name" name="alias" id="aliasName" maxlength="{{ alias_len }}" placeholder="写一个化名，再选收件人" autocomplete="off" hidden>
+    <label class="alias-check"><span><strong>匿名发起</strong><small>使用化名与对方交流</small></span><input type="checkbox" role="switch" aria-controls="aliasName aliasHint" id="aliasOn"></label>
+    <input class="alias-name" name="alias" id="aliasName" maxlength="{{ alias_len }}" placeholder="写一个化名，再选收件人" autocomplete="off" aria-label="你的化名" hidden>
     <p class="alias-hint" id="aliasHint" hidden>对方只会看到这个化名，能直接回复你。对同一个人最多 {{ alias_max }} 个化名，次数跟短信一起算。</p>
     {% if flash %}<p class="alias-err">{{ flash }}</p>{% endif %}
   </form>
-  <div class="scroll list">
+  <h2 class="recipient-heading">联系人 <span>{{ contacts|length }} 位</span></h2>
+  <div class="list recipient-list">
     {% if group_chat_on %}
     <a class="row group-entry" href="{{ url_for('player_group_new') }}">
       <div class="avatar sm group-avatar">群</div>
@@ -1334,11 +1337,12 @@ a { color: var(--link); text-decoration: none; }
     {% for n in contacts %}
     <a class="row" data-contact="{{ n }}" href="{{ url_for('player_phone_thread', other=n) }}">
       <div class="avatar sm" data-name="{{ n }}">{{ n[:1] }}</div>
-      <div class="body"><div class="top"><span class="name">{{ disp(n) if disp else n }}{{ npc(n) }}</span></div></div>
+      <div class="body"><div class="top"><span class="name">{{ disp(n) if disp else n }}{{ npc(n) }}</span><span class="recipient-arrow" aria-hidden="true">›</span></div></div>
     </a>
     {% else %}
     <div class="empty">还没有可以发送的对象</div>
     {% endfor %}
+  </div>
   </div>
   <script>
   (function () {
