@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'maps' %}地图 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -918,6 +918,7 @@ a { color: var(--link); text-decoration: none; }
       <a class="row" href="{{ url_for('player_song') }}"><div class="avatar tile">🎵</div><span class="name">点歌台</span><span class="chev" aria-hidden="true">›</span></a>
       <a class="row" href="{{ url_for('player_games') }}"><div class="avatar tile">🎮</div><span class="name">小游戏</span><span class="chev" aria-hidden="true">›</span></a>
       {% endif %}
+      {% if has_maps %}<a class="row" href="{{ url_for('player_maps') }}"><div class="avatar tile">🗺</div><span class="name">地图</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
       <a class="row" href="{{ url_for('phone_guide') }}"><div class="avatar tile">📱</div><span class="name">使用指南</span><span class="chev" aria-hidden="true">›</span></a>
     </div>
     <div class="disc-mark">{{ skin.words.brand }}</div>
@@ -995,6 +996,8 @@ a { color: var(--link); text-decoration: none; }
   .ch-bar { height: 6px; border-radius: 3px; background: var(--theirs); margin-top: 7px; overflow: hidden; }
   .ch-bar i { display: block; height: 100%; background: var(--mine); border-radius: 3px; }
   </style>
+{% elif mode == 'maps' %}
+{% include '_phone_maps.html' %}
 {% elif mode == 'games' %}
 {% include '_phone_games.html' %}
 {% elif mode == 'song' %}
@@ -1615,7 +1618,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'char', 'discover') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -1767,7 +1770,7 @@ a { color: var(--link); text-decoration: none; }
     b.remove();
   });
 </script>
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'char', 'discover') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') %}
 <script>
 (function () {
   var scope = {{ ([sid, owner]|tojson) }};

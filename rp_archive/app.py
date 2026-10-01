@@ -6537,7 +6537,27 @@ def player_discover():
         "SELECT role_name, content, created_at, (SELECT COUNT(*) FROM moment_images i WHERE i.moment_id=m.id) AS n "
         "FROM moments m WHERE show_id=? AND deleted=0 ORDER BY id DESC LIMIT 1", (sid,)).fetchone()
     return render_template("phone.html", mode="discover", owner=owner, sid=sid, csrf=_phone_csrf(),
-                           phone_admin=(owner == PHONE_ADMIN), moments_latest=latest)
+                           phone_admin=(owner == PHONE_ADMIN), moments_latest=latest,
+                           has_maps=bool(_phone_maps(db, sid, owner == PHONE_ADMIN)))
+
+def _phone_maps(db, sid, is_admin):
+    """小手机里能看的地图：玩家只看后台勾了「玩家可见」的，管理身份全看；顺序跟地点列表一致。"""
+    maps = _get_maps(db, sid)
+    row = db.execute("SELECT value FROM site_config WHERE show_id=? AND key='available_places'", (sid,)).fetchone()
+    try: order = list(json.loads(row["value"]).keys()) if row and row["value"] else []
+    except Exception: order = []
+    names = [n for n in order if n in maps] + [n for n in maps if n not in order]
+    return {n: maps[n] for n in names if is_admin or maps[n].get("visible")}
+
+@app.route("/p/me/maps")
+def player_maps():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    maps = _phone_maps(get_db(), sid, owner == PHONE_ADMIN)
+    return render_template("phone.html", mode="maps", owner=owner, sid=sid, csrf=_phone_csrf(),
+                           phone_admin=(owner == PHONE_ADMIN), place_maps=maps)
 
 @app.route("/p/me/moments")
 def player_moments():
@@ -9857,6 +9877,50 @@ def _save_reward_config_key(db, show_id, tid, key, value_str):
     )
 
 
+# ── 地点示意图（后台自己拼，小手机里看）─────────────────────────────────────────
+# 存在 site_config.place_maps：{地点名: {w, h, visible, items:[rect/door/mark]}}。只在网页端，不在 assemble_bot_config 的透传名单里，
+# 所以机器人拉不到、也不会触发「网页端有改动」。渲染见 templates/_place_map_render.html（后台编辑器和小手机共用）。
+_PM_KINDS = {"water", "green", "road", "plaza", "room", "building"}
+
+def _clean_place_map(raw):
+    if not isinstance(raw, dict):
+        raise ValueError("bad map")
+    def _i(v, lo, hi, default=0):
+        try: return max(lo, min(hi, int(v)))
+        except (TypeError, ValueError): return default
+    w, h = _i(raw.get("w"), 6, 60, 20), _i(raw.get("h"), 6, 60, 14)
+    items = []
+    for it in (raw.get("items") or [])[:500]:
+        if not isinstance(it, dict): continue
+        t = it.get("t")
+        if t == "rect" and it.get("kind") in _PM_KINDS:
+            x, y = _i(it.get("x"), 0, w - 1), _i(it.get("y"), 0, h - 1)
+            items.append({"t": "rect", "kind": it["kind"], "x": x, "y": y,
+                          "w": _i(it.get("w"), 1, w - x, 1), "h": _i(it.get("h"), 1, h - y, 1),
+                          "name": str(it.get("name") or "")[:20]})
+        elif t == "door" and it.get("o") in ("h", "v"):
+            items.append({"t": "door", "o": it["o"], "x": _i(it.get("x"), 0, w), "y": _i(it.get("y"), 0, h)})
+        elif t == "mark":
+            items.append({"t": "mark", "x": _i(it.get("x"), 0, w - 1), "y": _i(it.get("y"), 0, h - 1),
+                          "icon": str(it.get("icon") or "📍")[:4], "label": str(it.get("label") or "")[:12]})
+    return {"w": w, "h": h, "visible": bool(raw.get("visible")), "items": items}
+
+def _get_maps(db, sid):
+    row = db.execute("SELECT value FROM site_config WHERE show_id=? AND key='place_maps'", (sid,)).fetchone()
+    try:
+        m = json.loads(row["value"]) if row and row["value"] else {}
+        return m if isinstance(m, dict) else {}
+    except Exception:
+        return {}
+
+def _save_maps(db, sid, tid, maps):
+    db.execute(
+        "INSERT INTO site_config(show_id,tenant_id,key,value) VALUES(?,?,?,?) "
+        "ON CONFLICT(show_id,key) DO UPDATE SET value=excluded.value",
+        (sid, tid, "place_maps", json.dumps(maps, ensure_ascii=False)))
+    db.commit()
+
+
 @app.route("/admin/places", methods=["GET", "POST"])
 @require_admin
 def admin_places():
@@ -9924,12 +9988,37 @@ def admin_places():
                 _save_places(places)
             if is_fetch: return jsonify({"ok": True, "created": created, "skipped": skipped})
 
+        elif action == "save_map":
+            name = request.form.get("name","").strip()
+            if name not in _get_places():
+                if is_fetch: return jsonify({"ok": False, "error": "没有这个地点"})
+            else:
+                try:
+                    cleaned = _clean_place_map(json.loads(request.form.get("map", "")))
+                except Exception:
+                    if is_fetch: return jsonify({"ok": False, "error": "地图数据不对"})
+                    return redirect(url_for("admin_places"))
+                maps = _get_maps(db, sid)
+                maps[name] = cleaned
+                _save_maps(db, sid, tid, maps)
+                if is_fetch: return jsonify({"ok": True})
+
+        elif action == "delete_map":
+            name = request.form.get("name","").strip()
+            maps = _get_maps(db, sid)
+            if maps.pop(name, None) is not None:
+                _save_maps(db, sid, tid, maps)
+            if is_fetch: return jsonify({"ok": True})
+
         elif action == "delete_place":
             name = request.form.get("name","").strip()
             if name:
                 places = _get_places()
                 places.pop(name, None)
                 _save_places(places)
+                maps = _get_maps(db, sid)
+                if maps.pop(name, None) is not None:
+                    _save_maps(db, sid, tid, maps)
                 # clean up keys for this place
                 keys = _get_keys()
                 changed = False
@@ -9969,7 +10058,7 @@ def admin_places():
 
         elif action == "clear_all":
             if request.form.get("confirm") == "Y":
-                db.execute("DELETE FROM site_config WHERE show_id=? AND key IN ('available_places','place_keys')", (sid,))
+                db.execute("DELETE FROM site_config WHERE show_id=? AND key IN ('available_places','place_keys','place_maps')", (sid,))
                 db.commit()
             if is_fetch: return jsonify({"ok": True})
 
@@ -10022,6 +10111,7 @@ def admin_places():
 
     return render_template("admin_places.html",
                            places=places,
+                           place_maps=_get_maps(db, sid),
                            keys_by_place=keys_by_place,
                            players=[dict(p) for p in players],
                            orphan_keys=orphan_keys)

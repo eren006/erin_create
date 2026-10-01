@@ -195,6 +195,7 @@
           </td>
           <td>
             <div class="actions">
+              <button class="btn-toggle" data-map-btn="{{ name }}" onclick="openMapEditor('{{ name }}')">{{ '🗺 地图 ✓' if place_maps.get(name) else '🗺 地图' }}</button>
               <button class="btn-toggle" onclick="togglePlace('{{ name }}', {{ loop.index }})">切换锁定</button>
               <button class="btn-del" onclick="deletePlace('{{ name }}', {{ loop.index }})">删除</button>
             </div>
@@ -441,4 +442,5 @@ async function clearAll() {
 document.getElementById("newName").addEventListener("keydown", e => { if (e.key==="Enter") document.getElementById("newDesc").focus(); });
 document.getElementById("newDesc").addEventListener("keydown", e => { if (e.key==="Enter") addPlace(); });
 </script>
+{% include "_place_map_editor.html" %}
 {% endblock %}

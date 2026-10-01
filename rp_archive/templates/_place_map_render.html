@@ -1,0 +1,74 @@
+{# 地点示意图渲染器：后台编辑器和小手机「地图」页共用，只负责「数据 → SVG 字符串」。
+   数据格式（存在 site_config 的 place_maps 里，按地点名分开）：
+   { w, h, visible, items: [
+       {t:'rect', x,y,w,h, kind:'room|building|plaza|road|green|water', name},   // 格子坐标，一格 = 一个单位
+       {t:'door', x,y, o:'h|v'},     // h=格子上边缘的横门，v=格子左边缘的竖门
+       {t:'mark', x,y, icon, label}  // 一格里的小标记（🔑 🪜 …） ] } #}
+<script>
+window.PlaceMap = (function () {
+  var C = 32;                                   // 一格的像素
+  var KINDS = {
+    water:    { label: '水域', fill: '#a9cde0', stroke: '#7fb0c9', sw: 1,   layer: 0, rx: 8 },
+    green:    { label: '草地', fill: '#cfe0b4', stroke: '#9db37d', sw: 1,   layer: 1, rx: 8 },
+    road:     { label: '道路', fill: '#f9f5ea', stroke: '#b9ad8e', sw: 1,   layer: 2, rx: 0 },
+    plaza:    { label: '广场', fill: '#e6dcc3', stroke: '#a89a78', sw: 1.5, layer: 3, rx: 0 },
+    room:     { label: '房间', fill: '#f6efdf', stroke: '#4a3f2e', sw: 3,   layer: 4, rx: 0 },
+    building: { label: '建筑', fill: '#d8c9a8', stroke: '#4a3f2e', sw: 3,   layer: 4, rx: 0 }
+  };
+  var PAPER = '#efe8d6', INK = '#4a3f2e';
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  // opts: grid（画格子线，编辑器用）、overlay（插在最上层的 SVG 片段）、title
+  function render(cfg, opts) {
+    opts = opts || {};
+    var w = cfg.w || 20, h = cfg.h || 14, items = cfg.items || [];
+    var W = w * C, H = h * C, out = [];
+    out.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" ' +
+             'font-family="PingFang SC,Microsoft YaHei,sans-serif" style="display:block;max-width:100%;height:auto">');
+    out.push('<rect width="' + W + '" height="' + H + '" fill="' + PAPER + '"/>');
+    if (opts.grid) {
+      var g = '';
+      for (var i = 1; i < w; i++) g += 'M' + i * C + ' 0V' + H;
+      for (var j = 1; j < h; j++) g += 'M0 ' + j * C + 'H' + W;
+      out.push('<path d="' + g + '" stroke="#d9cfb6" stroke-width="1" fill="none"/>');
+    }
+    var rects = [];
+    items.forEach(function (it, idx) { if (it.t === 'rect' && KINDS[it.kind]) rects.push({ it: it, idx: idx }); });
+    rects.sort(function (a, b) { return KINDS[a.it.kind].layer - KINDS[b.it.kind].layer || a.idx - b.idx; });
+    rects.forEach(function (r) {
+      var it = r.it, k = KINDS[it.kind], x = it.x * C, y = it.y * C, rw = it.w * C, rh = it.h * C;
+      out.push('<rect x="' + x + '" y="' + y + '" width="' + rw + '" height="' + rh + '" rx="' + k.rx + '" fill="' + k.fill +
+               '" stroke="' + k.stroke + '" stroke-width="' + k.sw + '"/>');
+    });
+    // 名字放在所有区块之上，免得被后画的盖住
+    rects.forEach(function (r) {
+      var it = r.it;
+      if (!it.name) return;
+      var rw = it.w * C, rh = it.h * C, len = Math.max(1, String(it.name).length);
+      var vertical = rh > rw * 1.8 && rw < 3 * C;           // 又窄又长（走廊、小路）：竖着写
+      var fs = vertical ? Math.max(8, Math.min(13, (rh - 8) / len)) : Math.max(8, Math.min(14, (rw - 6) / len));
+      var cx = it.x * C + rw / 2, cy = it.y * C + rh / 2;
+      out.push('<text x="' + cx + '" y="' + cy + '" font-size="' + fs + '" fill="' + INK + '" text-anchor="middle" dominant-baseline="central"' +
+               (vertical ? ' writing-mode="vertical-rl"' : '') + ' style="paint-order:stroke;stroke:#f6efdf;stroke-width:3px">' + esc(it.name) + '</text>');
+    });
+    items.forEach(function (it) {
+      if (it.t !== 'door') return;
+      var x = it.x * C, y = it.y * C;
+      var d = it.o === 'v' ? 'M' + x + ' ' + (y + 5) + 'V' + (y + C - 5) : 'M' + (x + 5) + ' ' + y + 'H' + (x + C - 5);
+      out.push('<path d="' + d + '" stroke="#f6efdf" stroke-width="7" fill="none"/>');   // 先擦掉一段墙
+      out.push('<path d="' + d + '" stroke="#8a6d3b" stroke-width="3" stroke-dasharray="2 3" fill="none"/>');
+    });
+    items.forEach(function (it) {
+      if (it.t !== 'mark') return;
+      var cx = it.x * C + C / 2, cy = it.y * C + C / 2;
+      out.push('<text x="' + cx + '" y="' + cy + '" font-size="20" text-anchor="middle" dominant-baseline="central">' + esc(it.icon || '📍') + '</text>');
+      if (it.label) out.push('<text x="' + cx + '" y="' + (it.y * C + C - 1) + '" font-size="9" fill="' + INK + '" text-anchor="middle" style="paint-order:stroke;stroke:#fff;stroke-width:3px">' + esc(it.label) + '</text>');
+    });
+    out.push('<rect x="0.5" y="0.5" width="' + (W - 1) + '" height="' + (H - 1) + '" fill="none" stroke="#b9ad8e"/>');
+    if (opts.overlay) out.push(opts.overlay);
+    out.push('</svg>');
+    return out.join('');
+  }
+  return { C: C, KINDS: KINDS, render: render, esc: esc };
+})();
+</script>
