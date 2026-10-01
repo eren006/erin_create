@@ -1,0 +1,81 @@
+<style>
+/* ── 小手机统一页面风格（以「信息」列表和聊天页为样板）──────────────────────────────────────────
+   原则：白底、少边框、细线分隔；输入框是淡灰填充的圆角块（跟搜索条一样）；主按钮是主题色实心圆角；
+   小标题是 12px 的淡灰字（跟发现页的「互动 / 玩乐 / 其他」一样）；列表行是头像/图标 + 粗体名字 + 淡灰预览 + 细线，不再套一圈圈边框卡片。
+   颜色全用主题变量（--theirs --mine --muted --line --text），六套外观都跟着变。新页面按这几条写，别再各写一套。 */
+.phone { --pk-fill: var(--theirs); --pk-radius: 14px; --pk-focus: color-mix(in srgb, var(--mine) 55%, transparent); }
+
+/* 1. 表单：淡灰填充的输入块，无边框 */
+.phone .song-form, .phone .wish-form, .phone .bottle-letter { background: none; border: 0; border-radius: 0; box-shadow: none; }
+.phone .wish-form, .phone .bottle-letter { padding-left: 0; padding-right: 0; }
+.phone .song-form { padding-left: var(--gutter, 18px); padding-right: var(--gutter, 18px); }
+.phone .wish-form, .phone .bottle-letter { padding-top: 4px; padding-bottom: 4px; }
+.phone .song-form input, .phone .song-form select, .phone .song-form textarea,
+.phone .wish-form input, .phone .wish-form select, .phone .wish-form textarea,
+.phone .bottle-letter textarea, .phone .song-search input {
+  background: var(--pk-fill); border: 0; border-radius: var(--pk-radius); min-height: 48px; padding: 12px 14px; color: var(--text); font-size: 16px; box-shadow: none; }
+.phone .bottle-letter textarea { border: 0; min-height: 132px; resize: vertical; }
+.phone .song-form textarea, .phone .wish-form textarea { min-height: 112px; }
+.phone .song-form input:focus, .phone .song-form textarea:focus, .phone .song-form select:focus,
+.phone .wish-form input:focus, .phone .wish-form textarea:focus, .phone .wish-form select:focus,
+.phone .bottle-letter textarea:focus, .phone .song-search input:focus { outline: 0; box-shadow: 0 0 0 2px var(--pk-focus); }
+.phone .song-form label, .phone .wish-form label, .phone .wish-label { font-size: 13px; font-weight: 500; color: var(--muted); margin: 16px 0 8px; }
+.phone .wish-form .wish-label { margin-top: 0; }
+.phone .song-form label { margin: 6px 0 0; }
+.phone .wish-intro h2, .phone .bottle-letter-head label { font-size: 17px; font-weight: 700; color: var(--text); }
+
+/* 2. 按钮：主按钮实心，次按钮淡灰填充，都是圆角胶囊 */
+.phone .wish-form .wish-button, .phone .wish-card .wish-button:not(.wish-quiet), .phone .bottle-letter button, .phone .bottle-compose button,
+.phone .song-submit, .phone .song-search button {
+  background: var(--mine); color: var(--mine-text); border: 0; border-radius: 24px; min-height: 46px; padding: 0 22px; font: inherit; font-weight: 600; box-shadow: none; }
+.phone .wish-quiet, .phone .wish-card .wish-quiet { background: var(--pk-fill); color: var(--text); border: 0; border-radius: 22px; }
+.phone .wish-button:disabled, .phone .bottle-letter button:disabled, .phone .bottle-compose button:disabled, .phone .song-submit:disabled { opacity: .45; }
+.phone .song-submit { width: 100%; margin-top: 4px; }
+.phone .song-tabs button { background: var(--pk-fill); border: 0; border-radius: 20px; padding: 9px; font-weight: 500; color: var(--muted); box-shadow: none; }
+.phone .song-tabs button[aria-pressed="true"] { background: var(--mine); color: var(--mine-text); box-shadow: none; font-weight: 600; }
+
+/* 3. 小标题：12px 淡灰，跟发现页分组标题一致 */
+.phone .wish-section h2, .phone .wish-section-heading h2, .phone .bottle-section h2, .phone .ch-h {
+  font-size: 12px; font-weight: 500; letter-spacing: .12em; color: var(--muted); margin: 0; }
+.phone .wish-section, .phone .bottle-section, .phone .wish-section-heading { margin-top: 28px; }
+.phone .wish-section-heading, .phone .bottle-section { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+.phone .bottle-section span, .phone .wish-section-heading .wish-hint { font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+
+/* 4. 列表行：不套边框卡片，行与行之间一条细线 */
+.phone .bottle-list, .phone .wish-wall, .phone .wish-operations { display: block; gap: 0; }
+.phone .bottle-row, .phone .wish-card, .phone .wish-operation {
+  background: none; border: 0; border-bottom: .5px solid var(--line); border-radius: 0; box-shadow: none; padding: 16px 2px; min-height: 0; }
+.phone .bottle-row:last-child, .phone .wish-card:last-child, .phone .wish-operation:last-child { border-bottom: 0; }
+.phone .wish-card.is-mine { background: color-mix(in srgb, var(--mine) 6%, transparent); border-radius: var(--pk-radius); padding: 16px 14px; border-bottom: 0; margin: 6px 0; }
+.phone .wish-card.is-ending { opacity: .72; }
+.phone .bottle-row.is-pending, .phone .wish-operation.is-waiting { background: none; border-style: solid; opacity: .7; }
+.phone .bottle-row.is-failed, .phone .wish-operation.is-failed, .phone .bottle-alert, .phone .wish-notice {
+  background: color-mix(in srgb, var(--tag) 9%, transparent); border: 0; border-radius: var(--pk-radius); padding: 12px 14px; color: var(--text); }
+.phone .bottle-row.is-failed, .phone .wish-operation.is-failed { padding: 16px 14px; margin: 6px 0; }
+.phone .bottle-empty, .phone .wish-empty { border: 0; background: none; color: var(--muted); }
+
+.phone .wish-card::before { display: none; }
+.phone .wish-card-foot { border-top: 0; padding-top: 0; margin-top: 14px; }
+.phone .wish-submit-row { border-top: 0; padding-top: 6px; margin-top: 14px; }
+
+/* 5. 图标块：跟信息列表的头像一样是淡灰圆块，发现页里的图标跟其它行的 emoji 一个大小 */
+.phone .app-icon { border-radius: 50%; border: 0; background: var(--pk-fill); }
+.phone .disc-group .app-icon { width: 32px; height: 32px; flex: none; border-radius: 0; background: none; border: 0; display: flex; align-items: center; justify-content: center; }
+.phone .disc-group .app-icon svg { width: 28px; height: 28px; }
+.phone .wish-intro .app-icon, .phone .bottle-letter-head .app-icon { width: 44px; height: 44px; }
+
+/* 分段切换（心动信箱等）：跟点歌平台切换一样的胶囊 */
+.phone .lm-tabs a { background: var(--pk-fill); border: 0; border-radius: 20px; padding: 9px; color: var(--muted); font-weight: 500; box-shadow: none; }
+.phone .lm-tabs a[aria-current] { background: var(--mine); color: var(--mine-text); box-shadow: none; font-weight: 600; }
+
+/* 6. 单个瓶子 / 聊天式页面的气泡跟聊天页一致：对方淡灰、自己主题色 */
+.phone .bottle-thread .bubble { border: 0; }
+.phone .bottle-thread .mine .bubble { background: var(--mine); color: var(--mine-text); border: 0; }
+.phone .bottle-compose { border-top: .5px solid var(--line); }
+.phone .bottle-compose textarea { background: var(--pk-fill); border: 0; border-radius: 22px; padding: 11px 16px; min-height: 44px; }
+.phone .bottle-compose textarea:focus { outline: 0; box-shadow: 0 0 0 2px var(--pk-focus); }
+/* 7. 卡片：浅色下跟发现页分组卡片一样去掉硬边线，改成柔和光晕；深色保留细边 */
+@media (prefers-color-scheme: light) {
+  .phone .public-ticker, .phone .broadcast { border-color: transparent !important; box-shadow: 0 1px 2px rgba(20,20,40,.04), 0 6px 20px color-mix(in srgb, var(--mine) 11%, transparent); }
+}
+</style>

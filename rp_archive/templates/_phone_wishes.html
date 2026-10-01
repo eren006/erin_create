@@ -53,11 +53,10 @@
             {% elif w.claiming %}<span class="wish-hint">正在被别人摘取…</span>
             {% else %}<form method="post" action="{{ url_for('player_wish_pick', wid=w.id) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="wish-button"{% if why %} disabled aria-describedby="wishWhy"{% endif %} data-confirm="摘取后会马上建一个专属小群，确定吗？">摘取</button></form>{% endif %}
           </div>
-          {% if not w.mine %}<p class="wish-hint wish-pick-hint">想摘取？到群里发『摘心愿 {{ w.id }}』</p>{% endif %}
         </article>
       {% else %}<div class="wish-empty">{{ admin_app_icon('wish') }}<p>这里还留着空白，<br>等一个想与你相遇的心愿。</p></div>{% endfor %}</div>
     </section>
-    <p class="wish-hint wish-footnote">挂、撤、摘都要等机器人处理，约半分钟内完成。摘取成功会建一个专属小群，群号会出现在「我的操作」里，也会发到你的专属群。<br>也可以在群里发「摘心愿 编号」；同一个心愿，先摘到的人赴约。</p>
+    <p class="wish-hint wish-footnote">挂、撤、摘都要等机器人处理，约半分钟内完成。摘取成功会建一个专属小群，群号会出现在「我的操作」里，也会发到你的专属群。<br>同一个心愿，先摘到的人赴约。</p>
   </div>
   <script>
   (function () {
