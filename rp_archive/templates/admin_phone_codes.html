@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}长日存档 · 短信激活码{% endblock %}
+{% block title %}长日存档 · 小手机{% endblock %}
 
 {% block head %}
 <style>
@@ -32,7 +32,7 @@
 
 {% block body %}
 <div class="container" style="max-width:860px;margin:0 auto;padding:24px 16px;">
-  <h2 style="margin-bottom:8px;">📱 短信激活码 <a href="{{ url_for('phone_guide') }}" target="_blank" rel="noopener" style="font-size:13px;font-weight:400;">管理员指南 ›</a></h2>
+  <h2 style="margin-bottom:8px;">📱 小手机 <a href="{{ url_for('phone_guide') }}" target="_blank" rel="noopener" style="font-size:13px;font-weight:400;">管理员指南 ›</a></h2>
   {% if not show %}
     <div class="pc-empty">还没有季度</div>
   {% else %}
@@ -71,6 +71,19 @@
       {% elif sync_fresh %}<b style="color:var(--green)">正常</b>（{{ sync_ago }} 分钟前）
       {% else %}<b style="color:var(--gold)">{{ sync_ago }} 分钟前</b>（机器人可能挂了：网页照最后一次的规则继续工作，每日次数改按自然日算）{% endif %}
       {% if zone != 'main' %}<br>现在不在主档期内，玩家暂时发不了。{% endif %}
+    </div>
+  </div>
+  <div class="pc-add">
+    <label>网页漂流瓶（和群里的漂流瓶二选一）</label>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <form method="post"><input type="hidden" name="action" value="bottle_web">
+        <input type="hidden" name="on" value="{{ '0' if bottle_web else '1' }}">
+        <button class="pc-btn{{ ' ghost' if bottle_web else '' }}" type="submit" {% if not bottle_web and not can_bottle %}disabled{% endif %}>{{ '关闭网页漂流瓶' if bottle_web else '打开网页漂流瓶' }}</button></form>
+      <span style="font-size:13px;">当前：<b style="color:{{ 'var(--green)' if bottle_web else 'var(--muted)' }}">{{ '已打开（群里的漂流瓶已停用）' if bottle_web else '已关闭（用群里的漂流瓶）' }}</b></span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+      打开后玩家在小手机「发现 → 漂流瓶」里扔瓶、回信，抽人规则照群里（不抽 NPC、不抽拉黑了抛瓶人的人），对方只看到「漂流瓶 #号」；群里发「漂流瓶」会提示去网页。
+      两边的瓶子是各自独立的池子，切换时对方那边的旧瓶子保留但不能再回信。需要插件 1.10.8 或更高并同步过一次才能打开{% if not can_bottle %}（<b style="color:var(--gold)">目前插件版本不够或还没同步</b>）{% endif %}。
     </div>
   </div>
   <div class="pc-add">

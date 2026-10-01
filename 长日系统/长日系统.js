@@ -11067,6 +11067,9 @@ ext.onNotCommandReceived = async (ctx, msg) => {
 
     // 3.5 漂流瓶：不填收件人，随机送到某个玩家手里；对方用「漂流瓶 编号 内容」原路回信
     if (raw.startsWith("漂流瓶")) {
+        // 网页漂流瓶开着时群里这套停用（二选一，免得两边各一个池子互相冲突）；存档站挂了（超过 10 分钟没同步）就当没开，群里照常
+        const bottleWeb = phoneBottleWebNotice();
+        if (bottleWeb) return seal.replyToSender(ctx, msg, bottleWeb);
         const rest = raw.slice(3).trim();
         if (!rest) {
             return seal.replyToSender(ctx, msg, "🍾 漂流瓶格式：\n扔漂流瓶：漂流瓶 内容\n回信：漂流瓶 编号 内容\n例：漂流瓶 有人能听到我说话吗\n例：漂流瓶 1 我听到啦，你还好吗");
@@ -12582,7 +12585,7 @@ let _phoneReportsAt = 0;   // 报告每 2 分钟随同步上报一次
 let _phoneSyncBusySince = 0;
 async function phoneWebSync() {
     if (_phoneSyncBusy && Date.now() - _phoneSyncBusySince < 90 * 1000) return;
-    if (!isArchiveEnabled()) { if (kvGet("phone_web_send", {}).on) kvSet("phone_web_send", {}); return; }
+    if (!isArchiveEnabled()) { if (kvGet("phone_web_send", {}).on) kvSet("phone_web_send", {}); if (kvGet("phone_bottle_web", {}).on) kvSet("phone_bottle_web", {}); return; }
     const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
     const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
     if (!base) return;
@@ -12733,6 +12736,7 @@ async function phoneWebSyncCore(base, token) {
     phoneApplyAdminOps(platform, data.admin_ops || []);
     phoneApplyGroupEvents(platform, data.group_events || [], gameDay, groupAfter);
     kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
+    kvSet("phone_bottle_web", { on: !!data.bottle_web, url: `${base}/p`, at: Date.now() });
 
     const events = data.events || [];
     if (!events.length) return;
@@ -13182,6 +13186,13 @@ function phoneWebSendNotice(kindLabel) {
     const st = kvGet("phone_web_send", {});
     if (!st.on || Date.now() - (st.at || 0) > PHONE_WEB_SEND_STALE_MS) return null;
     return `📱 ${kindLabel}现在改在网页手机里发：${st.url || "存档站 /p"}\n用管理员私发给你的激活码登录。`;
+}
+
+// 网页漂流瓶打开时，群里的漂流瓶改成提示去网页；返回提示文字，没打开返回 null（逻辑同 phoneWebSendNotice）
+function phoneBottleWebNotice() {
+    const st = kvGet("phone_bottle_web", {});
+    if (!st.on || Date.now() - (st.at || 0) > PHONE_WEB_SEND_STALE_MS) return null;
+    return `🍾 漂流瓶现在改在网页手机里玩：${st.url || "存档站 /p"}\n在「发现 → 漂流瓶」里扔瓶、回信，用管理员私发给你的激活码登录。`;
 }
 
 let _occupancyHeartbeat = 0;

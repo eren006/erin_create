@@ -1569,6 +1569,8 @@ def _migrate(conn):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_moment_comments_moment ON moment_comments(moment_id)")
+    if "bottle_web" not in _col_names(conn, "phone_settings"):
+        conn.execute("ALTER TABLE phone_settings ADD COLUMN bottle_web INTEGER NOT NULL DEFAULT 0")  # 网页漂流瓶（开着时群里的漂流瓶停用）
     if "comm_paused" not in _col_names(conn, "phone_settings"):
         conn.execute("ALTER TABLE phone_settings ADD COLUMN comm_paused INTEGER NOT NULL DEFAULT 0")  # 管理员「暂停所有通讯」
     if "moment_quota" not in _col_names(conn, "phone_settings"):
@@ -1688,6 +1690,29 @@ def _migrate(conn):
             PRIMARY KEY (show_id, role, key)
         )
     """)
+
+    # ── 30. 网页漂流瓶（跟群里的漂流瓶二选一，开着时群里那套改成提示去网页）：站内自己抽人、自己存，不经机器人 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_bottles (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id    INTEGER NOT NULL,
+            thrower    TEXT    NOT NULL,
+            catcher    TEXT    NOT NULL,
+            created_at INTEGER NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_bottle_msgs (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            bottle_id  INTEGER NOT NULL,
+            show_id    INTEGER NOT NULL,
+            from_role  TEXT    NOT NULL,
+            content    TEXT    NOT NULL,
+            hidden     INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_phone_bottle_msgs ON phone_bottle_msgs(bottle_id)")
 
     # ── 27. 插件每 2 分钟随同步上报的每人报告（我的数量/弧长/时间线/待回），网页「时间线与统计」页只读 ──
     conn.execute("""
@@ -5514,7 +5539,7 @@ _CHAOS_CHAR_POOL     = ["梦", "影", "幻", "虚", "无", "断", "零", "终", 
 _BLACKOUT_CHARS      = ["◼︎", "█", "■", "▮"]
 
 # 网页发送不能发图，给一块表情面板：emoji 和颜文字都是纯文字，点一下插进输入框。
-# 后台「短信激活码」页可以按季改成自己的一套（一行一个），留空就用这里的默认。
+# 后台「小手机」页可以按季改成自己的一套（一行一个），留空就用这里的默认。
 _PHONE_DEFAULT_STICKERS = [
     "😊", "😂", "🥺", "😭", "😳", "🥰", "😘", "😤", "🙄", "🤔", "😴", "🫠",
     "❤️", "💔", "✨", "🌹", "🌙", "☕", "🎂", "👀", "🙏", "👌",
@@ -5716,7 +5741,8 @@ def _phone_comm_pause_guard():
     if request.method != "POST" or not request.path.startswith("/p/me/"):
         return None
     path = request.path
-    key = _PAUSE_FORMS.get(path) or ("phone_flash" if re.fullmatch(r"/p/me/g/\d+/send", path) else None)
+    key = _PAUSE_FORMS.get(path) or ("phone_flash" if re.fullmatch(r"/p/me/g/\d+/send", path) or path == "/p/me/bottles/throw"
+                                     or re.fullmatch(r"/p/me/bottles/\d+/reply", path) else None)
     if not key or (path == "/p/me/lovemail" and request.form.get("action") == "revoke"):
         return None
     who = _phone_current()
@@ -6437,7 +6463,7 @@ def api_phone_sync():
                            (show["id"], role, blob, now))
         db.commit()
     lovemails, lm_revokes = _lm_for_bot(db, show["id"], data.get("lovemail_done"), data.get("lovemail_revoke_done"))
-    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "events": events, "shop_events": shop_events,
+    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "bottle_web": _phone_bottle_on(db, show["id"]), "events": events, "shop_events": shop_events,
                     "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done")),
                     "lovemails": lovemails, "lovemail_revokes": lm_revokes,
                     "block_ops": _block_ops_for_bot(db, show["id"], data.get("block_ops_done")),
@@ -6593,7 +6619,7 @@ def player_discover():
         "SELECT role_name, content, created_at, (SELECT COUNT(*) FROM moment_images i WHERE i.moment_id=m.id) AS n "
         "FROM moments m WHERE show_id=? AND deleted=0 ORDER BY id DESC LIMIT 1", (sid,)).fetchone()
     return render_template("phone.html", mode="discover", owner=owner, sid=sid, csrf=_phone_csrf(),
-                           phone_admin=(owner == PHONE_ADMIN), moments_latest=latest,
+                           phone_admin=(owner == PHONE_ADMIN), moments_latest=latest, bottle_on=_phone_bottle_on(db, sid),
                            has_maps=bool(_phone_maps(db, sid, owner == PHONE_ADMIN)))
 
 def _phone_maps(db, sid, is_admin):
@@ -7632,6 +7658,187 @@ def player_pending_dismiss():
         db.commit()
     return redirect(url_for("player_stats", view="pending"))
 
+# ── 网页漂流瓶 ──────────────────────────────────────────────────────────────────
+# 跟群里的漂流瓶二选一：后台打开「网页漂流瓶」后，插件（>=1.10.8）把群里的「漂流瓶」改成提示去网页；关着时网页入口不出现。
+# 两边是各自独立的瓶子池（瓶号不互通），开关切换时对方那边的旧瓶子保留但不能再回信。
+# 抽人规则照群里：非 NPC、不是自己、没有拉黑抛瓶人的人；回信被拉黑：静默的假装送出（只有自己看得到），非静默如实告知。
+# 匿名：捡到的人只看到「漂流瓶 #号」，抛瓶人看到「捡到的人」；真名只有管理员手机看得到。
+_BOTTLE_MAX = 300
+
+def _phone_bottle_on(db, sid):
+    row = db.execute("SELECT bottle_web FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
+    return bool(row and row["bottle_web"])
+
+def _bottle_state(db, sid):
+    """(能不能用, 原因)：开关开着、没暂停、机器人同步新鲜（插件才知道群里要停用）、在档期内"""
+    if not _phone_bottle_on(db, sid):
+        return False, "网页漂流瓶没有开启"
+    if _phone_comm_paused(db, sid):
+        return False, _PAUSE_MSG
+    sync = _phone_sync_row(db, sid)
+    if not sync or not _phone_day(sync, int(time.time() * 1000))[2]:
+        return False, "机器人暂时没有同步，漂流瓶先歇一会儿"
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    if _schedule_zone(dict(show)) != "main":
+        return False, "不在档期内，暂时不能用"
+    return True, ""
+
+def _bottle_other(b, owner):
+    return b["catcher"] if b["thrower"] == owner else b["thrower"]
+
+def _bottle_threads(db, sid, owner):
+    out = []
+    for b in db.execute("SELECT * FROM phone_bottles WHERE show_id=? AND (thrower=? OR catcher=?) ORDER BY id DESC", (sid, owner, owner)):
+        last = db.execute("SELECT * FROM phone_bottle_msgs WHERE bottle_id=? AND (hidden=0 OR from_role=?) ORDER BY id DESC LIMIT 1", (b["id"], owner)).fetchone()
+        if not last:
+            continue
+        out.append({"id": b["id"], "mine": b["thrower"] == owner, "preview": ("我：" if last["from_role"] == owner else "") + last["content"][:40],
+                    "time": _phone_time(last["created_at"]), "ts": last["created_at"]})
+    return sorted(out, key=lambda t: -t["ts"])
+
+def _bottle_flash(msg):
+    session["phone_flash"] = msg
+
+@app.route("/p/me/bottles")
+def player_bottles():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_bottles"))
+    if not _phone_bottle_on(db, sid):
+        return redirect(url_for("player_discover"))
+    can, why = _bottle_state(db, sid)
+    return render_template("phone.html", mode="bottles", owner=owner, sid=sid, csrf=_phone_csrf(), can=can, why=why,
+                           threads=_bottle_threads(db, sid, owner), max_msg=_BOTTLE_MAX, flash=session.pop("phone_flash", None))
+
+@app.route("/p/me/bottles/<int:bid>")
+def player_bottle(bid):
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    b = db.execute("SELECT * FROM phone_bottles WHERE id=? AND show_id=?", (bid, sid)).fetchone()
+    if owner == PHONE_ADMIN or not b or owner not in (b["thrower"], b["catcher"]):
+        return redirect(url_for("player_bottles"))
+    msgs = [{"mine": m["from_role"] == owner, "text": m["content"], "time": _phone_time(m["created_at"])}
+            for m in db.execute("SELECT * FROM phone_bottle_msgs WHERE bottle_id=? AND (hidden=0 OR from_role=?) ORDER BY id", (bid, owner))]
+    can, why = _bottle_state(db, sid)
+    return render_template("phone.html", mode="bottle", owner=owner, sid=sid, csrf=_phone_csrf(), can=can, why=why, bottle=b,
+                           i_threw=(b["thrower"] == owner), msgs=msgs, max_msg=_BOTTLE_MAX, flash=session.pop("phone_flash", None))
+
+def _bottle_check_text(db, sid, owner, text):
+    text = (text or "").strip()
+    if not text:
+        return None, "❌ 内容不能为空"
+    if len(text) > _BOTTLE_MAX:
+        return None, f"❌ 最多 {_BOTTLE_MAX} 字"
+    if _too_repetitive(text):
+        return None, _REPEAT_MSG
+    if _blocked_hit(sid, owner, "漂流瓶", text):
+        return None, BLOCKED_MSG
+    return text, None
+
+@app.route("/p/me/bottles/throw", methods=["POST"])
+def player_bottle_throw():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_bottles"))
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        _bottle_flash("❌ 页面过期了，刷新后再试")
+        return redirect(url_for("player_bottles"))
+    db = get_db()
+    can, why = _bottle_state(db, sid)
+    if not can:
+        _bottle_flash("❌ " + why)
+        return redirect(url_for("player_bottles"))
+    text, err = _bottle_check_text(db, sid, owner, request.form.get("text"))
+    if err:
+        _bottle_flash(err)
+        return redirect(url_for("player_bottles"))
+    sync = _phone_sync_row(db, sid)
+    snap = sync["snap"]
+    roster = snap.get("roster") or []
+    if owner not in [r.get("name") for r in roster]:
+        _bottle_flash("❌ " + _ROLE_GONE_MSG)
+        return redirect(url_for("player_bottles"))
+    blocked_me = {b.get("blocker") for b in _phone_effective_blocks(db, sid, snap) if b.get("blocked") == owner}
+    cands = [r["name"] for r in roster if r.get("name") and not r.get("npc") and r["name"] != owner and r["name"] not in blocked_me]
+    if not cands:
+        _bottle_flash("🌊 大海太安静了，暂时没有能接到漂流瓶的人")
+        return redirect(url_for("player_bottles"))
+    now = int(time.time() * 1000)
+    catcher = secrets.choice(cands)
+    cur = db.execute("INSERT INTO phone_bottles (show_id, thrower, catcher, created_at) VALUES (?,?,?,?)", (sid, owner, catcher, now))
+    db.execute("INSERT INTO phone_bottle_msgs (bottle_id, show_id, from_role, content, created_at) VALUES (?,?,?,?,?)", (cur.lastrowid, sid, owner, text, now))
+    db.commit()
+    _bottle_flash(f"🍾 漂流瓶已抛入大海（编号{cur.lastrowid}），说不定哪天会有回信……")
+    return redirect(url_for("player_bottle", bid=cur.lastrowid))
+
+@app.route("/p/me/bottles/<int:bid>/reply", methods=["POST"])
+def player_bottle_reply(bid):
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    back = url_for("player_bottle", bid=bid)
+    if owner == PHONE_ADMIN:
+        return redirect(url_for("admin_phone_bottles"))
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        _bottle_flash("❌ 页面过期了，刷新后再试")
+        return redirect(back)
+    db = get_db()
+    b = db.execute("SELECT * FROM phone_bottles WHERE id=? AND show_id=?", (bid, sid)).fetchone()
+    if not b or owner not in (b["thrower"], b["catcher"]):
+        return redirect(url_for("player_bottles"))
+    can, why = _bottle_state(db, sid)
+    if not can:
+        _bottle_flash("❌ " + why)
+        return redirect(back)
+    text, err = _bottle_check_text(db, sid, owner, request.form.get("text"))
+    if err:
+        _bottle_flash(err)
+        return redirect(back)
+    sync = _phone_sync_row(db, sid)
+    snap = sync["snap"]
+    if owner not in [r.get("name") for r in (snap.get("roster") or [])]:
+        _bottle_flash("❌ " + _ROLE_GONE_MSG)
+        return redirect(back)
+    other = _bottle_other(b, owner)
+    hidden = 0
+    blk = next((x for x in _phone_effective_blocks(db, sid, snap) if x.get("blocker") == other and x.get("blocked") == owner), None)
+    if blk:
+        if not blk.get("silent"):
+            _bottle_flash("❌ 对方已拒绝你的联络")
+            return redirect(back)
+        hidden = 1   # 静默拉黑：自己这边照常显示，对方看不到
+    db.execute("INSERT INTO phone_bottle_msgs (bottle_id, show_id, from_role, content, hidden, created_at) VALUES (?,?,?,?,?,?)",
+               (bid, sid, owner, text, hidden, int(time.time() * 1000)))
+    db.commit()
+    return redirect(back)
+
+@app.route("/p/admin/bottles")
+def admin_phone_bottles():
+    """管理视角：所有网页漂流瓶（真实抛瓶人/捡瓶人 + 每条内容，含静默拉黑下对方看不到的）"""
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    db = get_db()
+    rows = []
+    for b in db.execute("SELECT * FROM phone_bottles WHERE show_id=? ORDER BY id DESC LIMIT 100", (sid,)):
+        ms = [{"from": m["from_role"], "text": m["content"], "hidden": bool(m["hidden"]), "time": _phone_time(m["created_at"])}
+              for m in db.execute("SELECT * FROM phone_bottle_msgs WHERE bottle_id=? ORDER BY id", (b["id"],))]
+        rows.append({"id": b["id"], "thrower": b["thrower"], "catcher": b["catcher"], "msgs": ms})
+    return render_template("phone.html", mode="admin_bottles", owner="管理员", sid=sid, csrf=_phone_csrf(), phone_admin=True,
+                           bottles=rows, bottle_on=_phone_bottle_on(db, sid))
+
 @app.route("/p/me/stats")
 def player_stats():
     who = _phone_current()
@@ -8409,6 +8616,7 @@ def _admin_ops_for_bot(db, sid, done):
             for r in db.execute("SELECT * FROM phone_admin_ops WHERE show_id=? AND done=0 ORDER BY id LIMIT 50", (sid,))]
 
 _PLUGIN_OFFICIAL_VERSION = (1, 10, 7)   # 网页发起官约 / 官电要这个版本以上的插件
+_PLUGIN_BOTTLE_VERSION = (1, 10, 8)   # 网页漂流瓶要这个版本以上的插件（它才认得「网页漂流瓶开着就停用群里的」）
 _PLUGIN_MIN_VERSION = (1, 10, 4)   # 网页快速设置 / 参数页 / 批量发放要这个版本以上的插件才会执行
 
 def _plugin_status(db, sid):
@@ -8425,13 +8633,14 @@ def _plugin_status(db, sid):
     fresh = ago * 60000 < _PHONE_SYNC_FRESH_MS
     can = vt >= _PLUGIN_MIN_VERSION
     can_official = vt >= _PLUGIN_OFFICIAL_VERSION
+    can_bottle = vt >= _PLUGIN_BOTTLE_VERSION
     ago_txt = "刚刚" if ago < 1 else (f"{ago} 分钟前" if ago < 120 else f"{ago // 60} 小时前")
     level, note = "ok", ""
     if not can:
         level, note = "warn", f"（{'插件版本太旧，' if ver else '插件还没带版本号，'}需要 ≥ {'.'.join(map(str, _PLUGIN_MIN_VERSION))} 才能在网页上设置）"
     elif not fresh:
         level, note = "bad", "（超过一段时间没同步，机器人可能掉线了）"
-    return {"known": True, "version": ver or "旧版（<1.10.4）", "ago": ago, "fresh": fresh, "can": can, "can_official": can_official, "level": level,
+    return {"known": True, "version": ver or "旧版（<1.10.4）", "ago": ago, "fresh": fresh, "can": can, "can_official": can_official, "can_bottle": can_bottle, "level": level,
             "text": f"插件 {ver or '旧版'} · 最后同步 {ago_txt}{note}", "params": plug.get("params") or []}
 
 @app.route("/p/admin/settings")
@@ -8875,6 +9084,13 @@ def admin_phone_codes():
             db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, ?) "
                        "ON CONFLICT(show_id) DO UPDATE SET web_send=excluded.web_send",
                        (sid, 1 if request.form.get("on") == "1" else 0))
+        elif action == "bottle_web":
+            st = _plugin_status(db, sid)
+            if request.form.get("on") == "1" and not st.get("can_bottle"):
+                return "插件要升级到 %s 或更高并同步一次，才能打开网页漂流瓶" % ".".join(map(str, _PLUGIN_BOTTLE_VERSION)), 409
+            db.execute("INSERT INTO phone_settings (show_id, bottle_web) VALUES (?, ?) "
+                       "ON CONFLICT(show_id) DO UPDATE SET bottle_web=excluded.bottle_web",
+                       (sid, 1 if request.form.get("on") == "1" else 0))
         elif action == "comm_pause":
             db.execute("INSERT INTO phone_settings (show_id, web_send, comm_paused) VALUES (?, 0, ?) "
                        "ON CONFLICT(show_id) DO UPDATE SET comm_paused=excluded.comm_paused",
@@ -8933,7 +9149,8 @@ def admin_phone_codes():
     session.setdefault("theme_csrf", secrets.token_urlsafe(24))
     return render_template("admin_phone_codes.html", rows=rows, show=show,
                            theme_settings=phone_theme(sid), base_url=_phone_base_url(),
-                           web_send=_phone_web_send_on(db, sid), comm_paused=_phone_comm_paused(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
+                           web_send=_phone_web_send_on(db, sid), bottle_web=_phone_bottle_on(db, sid), can_bottle=_plugin_status(db, sid).get("can_bottle"),
+                           comm_paused=_phone_comm_paused(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
                            song_daily=_song_daily_cap(db, sid), song_default=_SONG_DEFAULT_DAILY,
                            admin_code=(db.execute("SELECT code FROM phone_admin_codes WHERE show_id=?", (sid,)).fetchone() or {"code": None})["code"],
                            songs=[dict(r, time=ts_to_str(r["created_at"])) for r in db.execute(

@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'admin_index' %}{{ '角色' if request.args.get('view') == 'roles' else '管理桌面' }} · {% elif mode == 'admin_urge' %}催戏 · {% elif mode == 'admin_official' %}官约 · {% elif mode == 'admin_appearance' %}外观 · {% elif mode == 'admin_settings' %}设置 · {% elif mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'maps' %}地图 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'admin_index' %}{{ '角色' if request.args.get('view') == 'roles' else '管理桌面' }} · {% elif mode == 'admin_urge' %}催戏 · {% elif mode == 'admin_official' %}官约 · {% elif mode == 'admin_appearance' %}外观 · {% elif mode == 'admin_settings' %}设置 · {% elif mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'bottles' or mode == 'bottle' %}漂流瓶 · {% elif mode == 'admin_bottles' %}漂流瓶 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'maps' %}地图 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -637,6 +637,7 @@ a { color: var(--link); text-decoration: none; }
 {% elif name == 'settings' %}<rect class="icon-wash" x="6" y="6" width="28" height="28" rx="7"/><path d="M13 12v16M20 12v16M27 12v16"/><path class="icon-knob" d="M10 15h6v5h-6zM17 23h6v5h-6zM24 11h6v5h-6z"/>
 {% elif name == 'public' %}<path class="icon-wash" d="M6 16h7L27 9v22l-14-7H6z"/><path d="M6 16h7L27 9v22l-14-7H6zM13 24l3 9h5l-3-7M32 15a8 8 0 0 1 0 10"/>
 {% elif name == 'moments' %}<rect class="icon-wash" x="6" y="6" width="28" height="28" rx="5"/><circle cx="15" cy="15" r="3"/><path d="M7 28l9-8 6 5 5-7 7 10M27 3v6M24 6h6"/>
+{% elif name == 'bottle' %}<path class="icon-wash" d="M16 4h8v5l4 5v17a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4V14l4-5z"/><path d="M16 4h8v5l4 5v17a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4V14l4-5zM16 4h8M16 9h8M17 22h6M17 27h4"/>
 {% elif name == 'guide' %}<path class="icon-wash" d="M20 10Q12 5 5 8v24q7-3 15 2 8-5 15-2V8q-7-3-15 2Z"/><path d="M20 10Q12 5 5 8v24q7-3 15 2 8-5 15-2V8q-7-3-15 2ZM20 10v24M10 15l5 1M10 21l5 1M25 16l5-1M25 22l5-1"/>
 {% endif %}</svg></span>
 {%- endmacro %}
@@ -981,6 +982,7 @@ a { color: var(--link); text-decoration: none; }
     <div class="disc-group">
       {% if not phone_admin %}
       <a class="row" href="{{ url_for('player_song') }}"><div class="avatar tile">🎵</div><span class="name">点歌台</span><span class="chev" aria-hidden="true">›</span></a>
+      {% if bottle_on %}<a class="row" href="{{ url_for('player_bottles') if not phone_admin else url_for('admin_phone_bottles') }}"><div class="avatar tile">🍾</div><span class="name">漂流瓶</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
       <a class="row" href="{{ url_for('player_games') }}"><div class="avatar tile">🎮</div><span class="name">小游戏</span><span class="chev" aria-hidden="true">›</span></a>
       {% endif %}
       {% if has_maps %}<a class="row" href="{{ url_for('player_maps') }}"><div class="avatar tile">🗺</div><span class="name">地图</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
@@ -1086,6 +1088,47 @@ a { color: var(--link); text-decoration: none; }
 {% include '_phone_maps.html' %}
 {% elif mode == 'games' %}
 {% include '_phone_games.html' %}
+{% elif mode == 'bottles' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_discover') }}">发现</a>
+    <div class="title">漂流瓶<small>匿名 · 随机送给一位玩家</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll">
+    {% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
+    {% if why %}<div class="song-note">{{ why }}</div>{% endif %}
+    <form class="song-form" method="post" action="{{ url_for('player_bottle_throw') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="bottleText">写一张纸条扔进海里（{{ max_msg }} 字内，对方看不到是谁扔的）</label>
+      <textarea id="bottleText" name="text" maxlength="{{ max_msg }}" placeholder="有人能听到我说话吗……" required></textarea>
+      <button type="submit" class="song-submit"{% if why %} disabled{% endif %}>扔出去</button>
+    </form>
+    <h3 class="ch-h">我的漂流瓶</h3>
+    <div class="list">
+      {% for t in threads %}
+      <a class="row" href="{{ url_for('player_bottle', bid=t.id) }}"><div class="avatar tile">🍾</div><div class="body"><div class="top"><span class="name">漂流瓶 #{{ t.id }}<span class="alias-tag">{{ '我扔的' if t.mine else '我捡到的' }}</span></span><span class="time">{{ t.time }}</span></div><div class="preview">{{ t.preview }}</div></div></a>
+      {% else %}<div class="empty">还没有漂流瓶，扔一个试试</div>{% endfor %}
+    </div>
+  </div>
+
+{% elif mode == 'bottle' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('player_bottles') }}">漂流瓶</a>
+    <div class="title">漂流瓶 #{{ bottle.id }}<small>{{ '你扔出的 · 对方是捡到的人' if i_threw else '你捡到的 · 抛瓶人匿名' }}</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll" id="scroll">
+    {% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
+    {% for m in msgs %}
+    <div class="msg {{ 'mine' if m.mine else 'theirs' }}"><div class="bubble">{{ m.text }}</div><div class="meta">{{ m.time }}</div></div>
+    {% endfor %}
+  </div>
+  <form class="compose" method="post" action="{{ url_for('player_bottle_reply', bid=bottle.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <textarea name="text" maxlength="{{ max_msg }}" placeholder="{{ why or '回信……' }}" rows="1" required{% if why %} disabled{% endif %}></textarea>
+    <button type="submit"{% if why %} disabled{% endif %}>发送</button>
+  </form>
+
 {% elif mode == 'song' %}
   <header class="bar">
     <a class="back" href="{{ url_for('player_discover') }}">发现</a>
@@ -1413,6 +1456,7 @@ a { color: var(--link); text-decoration: none; }
       <a class="admin-app" href="{{ url_for('admin_phone_index', view='roles') }}">{{ admin_app_icon('roles') }}<span>角色</span></a>
       <a class="admin-app" href="{{ url_for('admin_phone_urge') }}">{{ admin_app_icon('urge') }}<span>催戏</span></a>
       <a class="admin-app" href="{{ url_for('admin_phone_official') }}">{{ admin_app_icon('official') }}<span>官约</span></a>
+      <a class="admin-app" href="{{ url_for('admin_phone_bottles') }}">{{ admin_app_icon('bottle') }}<span>漂流瓶</span></a>
       <a class="admin-app" href="{{ url_for('admin_phone_appearance') }}">{{ admin_app_icon('appearance') }}<span>外观</span></a>
       <a class="admin-app" href="{{ url_for('admin_phone_settings') }}">{{ admin_app_icon('settings') }}<span>设置</span></a>
       <a class="admin-app" href="{{ url_for('player_phone_public') }}">{{ admin_app_icon('public') }}<span>公开播报·点歌</span></a>
@@ -1503,6 +1547,20 @@ a { color: var(--link); text-decoration: none; }
   <script>
   document.querySelectorAll('[data-confirm]').forEach(function (b) { b.addEventListener('click', function (e) { if (!confirm(b.getAttribute('data-confirm'))) e.preventDefault(); }); });
   </script>
+
+{% elif mode == 'admin_bottles' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('admin_phone_index') }}">桌面</a>
+    <div class="title">漂流瓶<small>{{ '网页版开启中' if bottle_on else '网页版未开启' }} · {{ bottles|length }} 个</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll ch-page">
+    <p class="ch-note">管理视角：能看到真实的抛瓶人和捡瓶人，以及静默拉黑下对方看不到的回信。开关在后台「小手机」页。</p>
+    <div class="ch-list">{% for b in bottles %}
+      <div class="ch-item"><div class="top"><span class="nm">#{{ b.id }}　{{ b.thrower }} → {{ b.catcher }}</span></div>
+        {% for m in b.msgs %}<div class="ef">{{ m.from }}：{{ m.text }}{% if m.hidden %}（对方看不到）{% endif %} · {{ m.time }}</div>{% endfor %}</div>
+    {% else %}<div class="gm-empty ch-empty">还没有漂流瓶</div>{% endfor %}</div>
+  </div>
 
 {% elif mode == 'admin_urge' %}
   <header class="bar">
@@ -1907,7 +1965,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') and not phone_admin %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'bottles', 'bottle', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') and not phone_admin %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -2094,7 +2152,7 @@ a { color: var(--link); text-decoration: none; }
 </script>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'bottles', 'bottle', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') %}
 <script>
 (function () {
   var scope = {{ ([sid, owner]|tojson) }};
