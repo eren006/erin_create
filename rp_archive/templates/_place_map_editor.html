@@ -41,10 +41,15 @@
         <span class="sp"></span>
         <button id="pmUndo">↩ 撤销</button>
       </div>
+      <div class="pm-bar" id="pmPlaces" style="align-items:flex-start;">
+        <span style="font-size:12px;color:var(--muted);padding-top:6px;">已录入的地点（点一下放进地图）：</span>
+        <span id="pmPlaceChips" style="display:flex;gap:6px;flex-wrap:wrap;flex:1;"></span>
+      </div>
       <div class="pm-bar" id="pmSel" style="display:none;">
         <span style="font-size:12px;color:var(--muted);">选中：</span>
         <input type="text" id="pmName" maxlength="20" placeholder="名称（如 客厅）">
         <select id="pmSelKind"></select>
+        <select id="pmSelPlace" title="关联到已录入的地点"></select>
         <select id="pmSelIcon" style="display:none;"></select>
         <button id="pmDup">复制</button>
         <button id="pmDel" class="del">删除</button>
@@ -71,6 +76,7 @@
   var PM = window.PlaceMap, C = PM.C;
   var ICONS = ['🔑', '🪜', '🛏️', '🍳', '🚽', '🛁', '🪑', '📚', '⛲', '🌳', '⛪', '🏰', '🏪', '🍺', '⚔️', '💰', '🚪', '❓', '📍'];
   var maps = {{ (place_maps or {})|tojson }};
+  var places = {{ (places or {})|tojson }}, placeNames = Object.keys(places);
   var cur = null, name = '', cfg = null, tool = 'select', sel = -1, hist = [], drag = null, preview = null;
   var $ = function (id) { return document.getElementById(id); };
 
@@ -102,7 +108,41 @@
     if (preview) o += '<rect x="' + preview.x * C + '" y="' + preview.y * C + '" width="' + preview.w * C + '" height="' + preview.h * C + '" fill="rgba(139,124,246,.25)" stroke="#8b7cf6" stroke-width="2"/>';
     return o;
   }
-  function draw() { $('pmStage').innerHTML = PM.render(cfg, { grid: true, overlay: overlay() }); }
+  function fillPlaceSel(v) {
+    var sp = $('pmSelPlace');
+    sp.innerHTML = '<option value="">不关联地点</option>' + placeNames.map(function (n) { return '<option value="' + PM.esc(n) + '">关联：' + PM.esc(n) + '</option>'; }).join('');
+    if (v && placeNames.indexOf(v) < 0) sp.innerHTML += '<option value="' + PM.esc(v) + '">关联：' + PM.esc(v) + '（已删除）</option>';
+    sp.value = v;
+  }
+  function draw() { chips(); $('pmStage').innerHTML = PM.render(cfg, { grid: true, overlay: overlay() }); }
+
+  function chips() {   // 录入的地点芯片：已经放进这张地图的打 ✓
+    var used = {}; cfg.items.forEach(function (it) { if (it.t === 'rect' && it.place) used[it.place] = true; });
+    $('pmPlaceChips').innerHTML = placeNames.length ? placeNames.map(function (n) {
+      return '<button type="button" data-p="' + PM.esc(n) + '" style="' + (used[n] ? 'opacity:.6;' : '') + '">' + (used[n] ? '✓ ' : '＋ ') + PM.esc(n) + '</button>';
+    }).join('') : '<span style="font-size:12px;color:var(--muted);padding-top:6px;">还没有录入地点，先在上面「添加地点」</span>';
+    $('pmPlaceChips').querySelectorAll('button').forEach(function (b) { b.onclick = function () { addPlace(b.dataset.p); }; });
+  }
+  function freeSpot(w, h) {   // 找一块不压住别的区块的空位，找不到就放左上角
+    for (var y = 0; y + h <= cfg.h; y++) for (var x = 0; x + w <= cfg.w; x++) {
+      var ok = cfg.items.every(function (it) { return it.t !== 'rect' || x + w <= it.x || it.x + it.w <= x || y + h <= it.y || it.y + it.h <= y; });
+      if (ok) return { x: x, y: y };
+    }
+    return { x: 0, y: 0 };
+  }
+  function addPlace(n) {
+    var ex = cfg.items.findIndex(function (it) { return it.t === 'rect' && it.place === n; });
+    if (ex >= 0) { sel = ex; sync(); draw(); return; }          // 已经在图上：直接选中它
+    snap(); var w = Math.min(4, cfg.w), h = Math.min(3, cfg.h), p = freeSpot(w, h);
+    cfg.items.push({ t: 'rect', kind: 'building', x: p.x, y: p.y, w: w, h: h, name: n, place: n });
+    sel = cfg.items.length - 1; setTool('select'); sync(); draw();
+  }
+  $('pmSelPlace').onchange = function () {
+    var it = cfg.items[sel]; if (!it || it.t !== 'rect') return; snap();
+    var old = it.place; it.place = this.value || '';
+    if (it.place && (!it.name || it.name === old || it.name === '房间' || it.name === '建筑')) it.name = it.place;   // 名字跟着地点走
+    sync(); draw();
+  };
 
   function sync() {   // 选中项 → 属性栏
     var it = sel >= 0 ? cfg.items[sel] : null, bar = $('pmSel');
@@ -111,6 +151,8 @@
     var isRect = it.t === 'rect';
     $('pmSelKind').style.display = isRect ? '' : 'none';
     $('pmSelIcon').style.display = isRect ? 'none' : '';
+    $('pmSelPlace').style.display = isRect ? '' : 'none';
+    if (isRect) { fillPlaceSel(it.place || ''); }
     $('pmName').placeholder = isRect ? '名称（如 客厅）' : '备注（可空，如 钥匙）';
     $('pmName').value = isRect ? (it.name || '') : (it.label || '');
     if (isRect) $('pmSelKind').value = it.kind; else $('pmSelIcon').value = it.icon;

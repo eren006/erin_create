@@ -6556,8 +6556,15 @@ def player_maps():
         return redirect(url_for("phone_code_entry"))
     sid, owner = who
     maps = _phone_maps(get_db(), sid, owner == PHONE_ADMIN)
+    db = get_db()
+    prow = db.execute("SELECT value FROM site_config WHERE show_id=? AND key='available_places'", (sid,)).fetchone()
+    try: places = json.loads(prow["value"]) if prow and prow["value"] else {}
+    except Exception: places = {}
+    # 只带地图上关联到的地点的描述，别把整张地点表（含上锁状态）露给玩家
+    linked = {it["place"] for m in maps.values() for it in m.get("items", []) if it.get("t") == "rect" and it.get("place")}
+    place_info = {n: (places.get(n) or {}).get("desc", "") for n in linked if n in places}
     return render_template("phone.html", mode="maps", owner=owner, sid=sid, csrf=_phone_csrf(),
-                           phone_admin=(owner == PHONE_ADMIN), place_maps=maps)
+                           phone_admin=(owner == PHONE_ADMIN), place_maps=maps, place_info=place_info)
 
 @app.route("/p/me/moments")
 def player_moments():
@@ -9897,7 +9904,7 @@ def _clean_place_map(raw):
             x, y = _i(it.get("x"), 0, w - 1), _i(it.get("y"), 0, h - 1)
             items.append({"t": "rect", "kind": it["kind"], "x": x, "y": y,
                           "w": _i(it.get("w"), 1, w - x, 1), "h": _i(it.get("h"), 1, h - y, 1),
-                          "name": str(it.get("name") or "")[:20]})
+                          "name": str(it.get("name") or "")[:20], "place": str(it.get("place") or "")[:40]})
         elif t == "door" and it.get("o") in ("h", "v"):
             items.append({"t": "door", "o": it["o"], "x": _i(it.get("x"), 0, w), "y": _i(it.get("y"), 0, h)})
         elif t == "mark":
