@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'admin_index' %}{{ '角色' if request.args.get('view') == 'roles' else '管理桌面' }} · {% elif mode == 'admin_urge' %}催回 · {% elif mode == 'admin_settings' %}设置 · {% elif mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'maps' %}地图 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'admin_index' %}{{ '角色' if request.args.get('view') == 'roles' else '管理桌面' }} · {% elif mode == 'admin_urge' %}催戏 · {% elif mode == 'admin_official' %}官约 · {% elif mode == 'admin_appearance' %}外观 · {% elif mode == 'admin_settings' %}设置 · {% elif mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'maps' %}地图 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -587,8 +587,16 @@ a { color: var(--link); text-decoration: none; }
 .admin-welcome p,.urge-summary p { color: var(--muted); font-size: 12px; }
 .admin-apps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 28px 8px; }
 .admin-app { display: flex; align-items: center; flex-direction: column; gap: 10px; color: var(--text); font-size: 12px; text-align: center; }
-.app-icon { display: flex; align-items: center; justify-content: center; width: 66px; height: 66px; border-radius: 21px; background: var(--theirs); border: 1px solid var(--line); font-size: 30px; }
-.admin-app:nth-child(3n + 1) .app-icon { background: color-mix(in srgb,var(--mine) 12%,var(--bg)); }
+.app-icon { display: flex; position: relative; flex: 0 0 auto; align-items: center; justify-content: center; width: 66px; height: 66px; border-radius: 20px; color: color-mix(in srgb,var(--mine) 65%,var(--text)); background: color-mix(in srgb,var(--mine) 9%,var(--bg)); border: 1px solid color-mix(in srgb,var(--mine) 22%,var(--line)); }
+.app-icon svg { width: 38px; height: 38px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.app-icon .icon-wash { fill: color-mix(in srgb,var(--mine) 12%,var(--bg)); }
+.app-icon .icon-knob { fill: var(--bg); }
+.app-icon-classic { border-radius: 14px 14px 23px 14px; outline: 1px solid var(--line); outline-offset: -5px; }
+.app-icon-scifi { border-radius: 5px; clip-path: polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px); background: linear-gradient(135deg,var(--theirs),var(--bg)); }
+.app-icon-scifi svg { stroke-linecap: square; stroke-linejoin: bevel; }
+.app-icon-medieval { border-radius: 13px 13px 29px 29px; border-width: 2px; }
+.app-icon-cloudpost { border-radius: 8px; border: 2px dashed color-mix(in srgb,var(--mine) 45%,var(--line)); outline: 1px solid var(--line); outline-offset: -6px; background: var(--bg); }
+.app-icon-republic { border-radius: 10px; border: 3px double color-mix(in srgb,var(--mine) 40%,var(--line)); }
 .admin-app:active .app-icon { transform: scale(.96); }
 .admin-app:focus-visible,.admin-nav button:focus-visible { outline: 2px solid var(--mine); outline-offset: 4px; }
 .admin-roles[hidden] { display: none; }
@@ -620,6 +628,18 @@ a { color: var(--link); text-decoration: none; }
 {% if mode != 'entry' %}{% include '_phone_tools_css.html' %}{% endif %}
 </head>
 <body>
+{% macro admin_app_icon(name) -%}
+<span class="app-icon app-icon-{{ skin.visual }}" aria-hidden="true"><svg viewBox="0 0 40 40" focusable="false">
+{% if name == 'roles' %}<rect class="icon-wash" x="6" y="5" width="28" height="30" rx="5"/><circle cx="20" cy="15" r="5"/><path d="M11 29c0-5 4-8 9-8s9 3 9 8M10 9H7v5M30 31h3v-5"/>
+{% elif name == 'urge' %}<path class="icon-wash" d="M11 26V17a9 9 0 0 1 18 0v9l3 4H8z"/><path d="M11 26V17a9 9 0 0 1 18 0v9l3 4H8zM17 34h6M20 4v4M5 13l3-3M32 10l3 3"/><path d="M20 15v6l4 2"/>
+{% elif name == 'official' %}<rect class="icon-wash" x="6" y="11" width="28" height="22" rx="4"/><path d="M6 14l14 10 14-10M6 29l9-8M34 29l-9-8M14 7h12"/><path d="M20 3v8"/>
+{% elif name == 'appearance' %}<path class="icon-wash" d="M20 5a15 15 0 1 0 0 30h3a4 4 0 0 0 0-8h-1a3 3 0 0 1 0-6h5a8 8 0 0 0 8-8c0-5-7-8-15-8Z"/><circle cx="13" cy="14" r="1.5"/><circle cx="22" cy="11" r="1.5"/><circle cx="10" cy="23" r="1.5"/><path d="M28 29l7-7M27 30l-1 4 4-1"/>
+{% elif name == 'settings' %}<rect class="icon-wash" x="6" y="6" width="28" height="28" rx="7"/><path d="M13 12v16M20 12v16M27 12v16"/><path class="icon-knob" d="M10 15h6v5h-6zM17 23h6v5h-6zM24 11h6v5h-6z"/>
+{% elif name == 'public' %}<path class="icon-wash" d="M6 16h7L27 9v22l-14-7H6z"/><path d="M6 16h7L27 9v22l-14-7H6zM13 24l3 9h5l-3-7M32 15a8 8 0 0 1 0 10"/>
+{% elif name == 'moments' %}<rect class="icon-wash" x="6" y="6" width="28" height="28" rx="5"/><circle cx="15" cy="15" r="3"/><path d="M7 28l9-8 6 5 5-7 7 10M27 3v6M24 6h6"/>
+{% elif name == 'guide' %}<path class="icon-wash" d="M20 10Q12 5 5 8v24q7-3 15 2 8-5 15-2V8q-7-3-15 2Z"/><path d="M20 10Q12 5 5 8v24q7-3 15 2 8-5 15-2V8q-7-3-15 2ZM20 10v24M10 15l5 1M10 21l5 1M25 16l5-1M25 22l5-1"/>
+{% endif %}</svg></span>
+{%- endmacro %}
 {% macro npc(name) %}{% if name in (phone_npcs or []) %}<span class="npc-tag">NPC</span>{% endif %}{% endmacro %}
 {% macro song_card(sg) %}
 <div class="song-card">
@@ -1328,24 +1348,7 @@ a { color: var(--link); text-decoration: none; }
     {% if not plugin.can %}
     <div class="gm-empty ch-empty">插件升级到 1.10.4 或更高、并同步一次后，这里才能看到和修改参数。</div>
     {% else %}
-    <h3 class="ch-h">发起官约 / 官电</h3>
-    {% if not plugin.can_official %}
-    <p class="ch-note">插件升级到 1.10.7 或更高后，才能在这里发起官约、官电。</p>
-    {% else %}
-    <form method="post" action="{{ url_for('admin_phone_settings_op') }}" class="ch-give" style="flex-direction:column;align-items:stretch;gap:8px">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <select name="kind" aria-label="类型"><option value="official_appt">官约（有地点）</option><option value="official_call">官电（电话）</option></select>
-      <input name="day" maxlength="5" placeholder="天数，例如 D1" pattern="[Dd][0-9]{1,3}" required>
-      <span style="display:flex;gap:6px;align-items:center"><input name="t1" type="time" aria-label="开始时间" required> 到 <input name="t2" type="time" aria-label="结束时间" required></span>
-      <input name="place" maxlength="40" placeholder="地点（仅官约，不要空格）">
-      <details><summary>参与者（点开选择）</summary>
-        <div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px">{% for n in official_roles %}
-          <label style="white-space:nowrap"><input type="checkbox" name="people" value="{{ n }}"> {{ n }}</label>{% endfor %}</div>
-      </details>
-      <button type="submit" class="ch-btn" data-confirm="确定发起？机器人会马上建群并通知参与者。">发起</button>
-    </form>
-    <p class="ch-note">机器人下一次同步（约半分钟内）建群，会占用一个群号并通知参与者；结果显示在最下面的「最近操作」。时间冲突、群号不够等原因失败会写在结果里。</p>
-    {% endif %}
+    <p class="ch-note">发起官约 / 官电已经搬到桌面的「官约」App。</p>
     <h3 class="ch-h">批量发放（所有角色）</h3>
     <form method="post" action="{{ url_for('admin_phone_settings_op') }}" class="ch-give">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="bulk_item">
@@ -1406,12 +1409,14 @@ a { color: var(--link); text-decoration: none; }
     {% if plugin %}<a class="plugin-chip {{ plugin.level }}" href="{{ url_for('admin_phone_settings') }}">{{ plugin.text }} ›</a>{% endif %}
     <div class="admin-welcome"><span>工作台</span><h1>今天，从这里开始。</h1><p>查看角色动态，照看每一段故事。</p></div>
     <nav class="admin-apps" aria-label="管理应用">
-      <a class="admin-app" href="{{ url_for('admin_phone_index', view='roles') }}"><span class="app-icon" aria-hidden="true">👥</span><span>角色</span></a>
-      <a class="admin-app" href="{{ url_for('admin_phone_urge') }}"><span class="app-icon" aria-hidden="true">⏰</span><span>催回</span></a>
-      <a class="admin-app" href="{{ url_for('admin_phone_settings') }}"><span class="app-icon" aria-hidden="true">⚙️</span><span>设置</span></a>
-      <a class="admin-app" href="{{ url_for('player_phone_public') }}"><span class="app-icon" aria-hidden="true">📢</span><span>公开播报·点歌</span></a>
-      <a class="admin-app" href="{{ url_for('player_moments') }}"><span class="app-icon" aria-hidden="true">📷</span><span>{{ skin.words.moments }}</span></a>
-      <a class="admin-app" href="{{ url_for('phone_guide') }}"><span class="app-icon" aria-hidden="true">📖</span><span>指南</span></a>
+      <a class="admin-app" href="{{ url_for('admin_phone_index', view='roles') }}">{{ admin_app_icon('roles') }}<span>角色</span></a>
+      <a class="admin-app" href="{{ url_for('admin_phone_urge') }}">{{ admin_app_icon('urge') }}<span>催戏</span></a>
+      <a class="admin-app" href="{{ url_for('admin_phone_official') }}">{{ admin_app_icon('official') }}<span>官约</span></a>
+      <a class="admin-app" href="{{ url_for('admin_phone_appearance') }}">{{ admin_app_icon('appearance') }}<span>外观</span></a>
+      <a class="admin-app" href="{{ url_for('admin_phone_settings') }}">{{ admin_app_icon('settings') }}<span>设置</span></a>
+      <a class="admin-app" href="{{ url_for('player_phone_public') }}">{{ admin_app_icon('public') }}<span>公开播报·点歌</span></a>
+      <a class="admin-app" href="{{ url_for('player_moments') }}">{{ admin_app_icon('moments') }}<span>{{ skin.words.moments }}</span></a>
+      <a class="admin-app" href="{{ url_for('phone_guide') }}">{{ admin_app_icon('guide') }}<span>指南</span></a>
     </nav>
   </div>
   {% endif %}
@@ -1428,16 +1433,86 @@ a { color: var(--link); text-decoration: none; }
     {% endfor %}
   </div>
 
+{% elif mode == 'admin_appearance' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('admin_phone_index') }}">桌面</a>
+    <div class="title">外观<small>只保存在这台设备</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll ch-page admin-appearance">
+    <div class="appearance-preview"><div class="bubble preview-reply">今天过得好吗？</div><div class="bubble">想和你分享一件小事。</div></div>
+    <h3 class="ch-h">主题风格</h3>
+    <div class="choices" id="skinChoices">
+      <button type="button" class="choice" data-skin="" aria-pressed="{{ 'false' if skin.picked else 'true' }}">跟随本季</button>
+      {% for key, t in phone_themes.items() %}<button type="button" class="choice" data-skin="{{ key }}" aria-pressed="{{ 'true' if skin.picked == key else 'false' }}">{{ t.name }}</button>{% endfor %}
+    </div>
+    <p class="ch-note">只换外观（配色、图案、装饰），页面用语跟随本季设置。切换后会刷新页面。</p>
+    <h3 class="ch-h">主题色</h3>
+    <div class="choices">
+      <button type="button" class="choice" data-theme="system" aria-pressed="false">跟随团主题</button>
+      {% for value, label, color in [('purple','紫','#6854bc'),('blue','蓝','#3267a8'),('green','绿','#37765d'),('pink','粉','#a44770'),('orange','橙','#a45427'),('ink','墨','#505763')] %}
+      <button type="button" class="choice" data-theme="{{ value }}" aria-pressed="false"><i style="--swatch:{{ color }}" aria-hidden="true"></i>{{ label }}</button>{% endfor %}
+    </div>
+    <h3 class="ch-h">页面底色</h3>
+    <div class="choices">
+      {% for value, label in [('default','纯色'),('paper','暖纸'),('mist','雾蓝'),('sage','浅叶'),('rose','微粉')] %}
+      <button type="button" class="choice" data-wall="{{ value }}" aria-pressed="false">{{ label }}</button>{% endfor %}
+    </div>
+    <p class="ch-note"><button type="button" class="quiet-button" id="adminAppearanceReset">恢复默认外观</button></p>
+  </div>
+
+{% elif mode == 'admin_official' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('admin_phone_index') }}">桌面</a>
+    <div class="title">官约<small>发起官约 / 官电</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll ch-page">
+    <a class="plugin-chip {{ plugin.level }}" href="{{ url_for('admin_phone_settings') }}">{{ plugin.text }}</a>
+    {% if flash %}<div class="ch-flash">{{ flash }}</div>{% endif %}
+    {% if not plugin.can %}
+    <div class="gm-empty ch-empty">插件升级到 1.10.4 或更高、并同步一次后，这里才能发起。</div>
+    {% else %}
+    {% if not plugin.can_official %}
+    <p class="ch-note">插件升级到 1.10.7 或更高后，才能在这里发起官约、官电。</p>
+    {% else %}
+    <form method="post" action="{{ url_for('admin_phone_settings_op') }}" class="ch-give" style="flex-direction:column;align-items:stretch;gap:8px">
+      <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="back" value="official">
+      <select name="kind" aria-label="类型"><option value="official_appt">官约（有地点）</option><option value="official_call">官电（电话）</option></select>
+      <input name="day" maxlength="5" placeholder="天数，例如 D1" pattern="[Dd][0-9]{1,3}" required>
+      <span style="display:flex;gap:6px;align-items:center"><input name="t1" type="time" aria-label="开始时间" required> 到 <input name="t2" type="time" aria-label="结束时间" required></span>
+      <input name="place" maxlength="40" placeholder="地点（仅官约，不要空格）">
+      <details><summary>参与者（点开选择）</summary>
+        <div style="display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px">{% for n in official_roles %}
+          <label style="white-space:nowrap"><input type="checkbox" name="people" value="{{ n }}"> {{ n }}</label>{% endfor %}</div>
+      </details>
+      <button type="submit" class="ch-btn" data-confirm="确定发起？机器人会马上建群并通知参与者。">发起</button>
+    </form>
+    <p class="ch-note">机器人下一次同步（约半分钟内）建群，会占用一个群号并通知参与者；结果显示在最下面的「最近操作」。时间冲突、群号不够等原因失败会写在结果里。</p>
+    {% endif %}
+    {% if admin_ops %}
+    <h3 class="ch-h">最近发起</h3>
+    <div class="ch-list">{% for o in admin_ops %}
+      <div class="ch-item"><div class="top"><span class="nm">{{ o.name }} · {{ o.value }}</span>
+        <span class="ct">{{ '待执行' if not o.done else ('✅' if o.ok else '❌') }}</span></div>
+        {% if o.done and o.result %}<div class="ef">{{ o.result }}</div>{% endif %}</div>{% endfor %}</div>
+    {% endif %}
+    {% endif %}
+  </div>
+  <script>
+  document.querySelectorAll('[data-confirm]').forEach(function (b) { b.addEventListener('click', function (e) { if (!confirm(b.getAttribute('data-confirm'))) e.preventDefault(); }); });
+  </script>
+
 {% elif mode == 'admin_urge' %}
   <header class="bar">
     <a class="back" href="{{ url_for('admin_phone_index') }}">桌面</a>
-    <div class="title">催回<small>{{ urge_rows|length }} 项</small></div>
+    <div class="title">催戏<small>{{ urge_rows|length }} 项</small></div>
     <div class="right"></div>
   </header>
   <div class="scroll ch-page admin-urge">
     <a class="plugin-chip {{ plugin.level }}" href="{{ url_for('admin_phone_settings') }}">{{ plugin.text }}</a>
     {% if flash %}<div class="ch-flash">{{ flash }}</div>{% endif %}
-    <div class="urge-summary"><span class="app-icon" aria-hidden="true">⏰</span><div><strong>{{ urge_rows|selectattr('over')|list|length }} <small>项已超时</small></strong><p>给等待中的故事，一声提醒。</p></div></div>
+    <div class="urge-summary">{{ admin_app_icon('urge') }}<div><strong>{{ urge_rows|selectattr('over')|list|length }} <small>项已超时</small></strong><p>给等待中的故事，一声提醒。</p></div></div>
     <p class="ch-note">催一次 = 小手机上对方的「待回」会标「管理员催你回复」，同时机器人在那个群里 @ 对方发一条提醒。同一次等待 10 分钟内不重复催。</p>
     <p class="urge-filter"><span>{{ '全部待回' if show_all else '已超时' }}</span><a href="{{ url_for('admin_phone_urge', all=(None if show_all else '1')) }}">{{ '只看已超时' if show_all else '连没超时的一起看' }}</a></p>
     {% if urge_rows %}
@@ -1447,8 +1522,8 @@ a { color: var(--link); text-decoration: none; }
         <label class="ch-item ch-row urge-card{% if u.over %} is-overdue{% endif %}"><input type="checkbox" name="item" value="{{ u.role }}|{{ u.key }}"{% if u.over and not u.urged_text %} checked{% endif %}>
           <span class="nm">{{ u.role }}{{ npc(u.role) }}<small>{{ u.type }} · 群 {{ u.gid }}{% if u.urged_text %} · {{ u.urged_text }}催过{% endif %}</small></span>
           <span class="ct">{{ '已超时 ' if u.over else '等了 ' }}{{ (u.minutes // 60) ~ 'h' if u.minutes >= 60 else '' }}{{ u.minutes % 60 }}m</span></label>{% endfor %}</div>
-      <div class="urge-actions"><button type="submit" class="ch-btn" data-confirm="确定催回勾选的这些？">催回勾选的</button>
-      <button type="submit" name="scope" value="overdue" class="ch-btn" data-confirm="确定催回所有已超时的？">催回全部超时</button></div>
+      <div class="urge-actions"><button type="submit" class="ch-btn" data-confirm="确定催戏勾选的这些？">催戏勾选的</button>
+      <button type="submit" name="scope" value="overdue" class="ch-btn" data-confirm="确定催戏所有已超时的？">催戏全部超时</button></div>
     </form>
     {% else %}<div class="gm-empty ch-empty">🌙 现在没有{{ '' if show_all else '超时的' }}待回</div>{% endif %}
     {% if admin_ops %}
@@ -1983,6 +2058,41 @@ a { color: var(--link); text-decoration: none; }
     b.remove();
   });
 </script>
+{% if phone_admin %}
+<script>
+// 管理端自己的外观偏好（主题色/页面底色，存在本机；主题风格走 phone_skin cookie，全站通用）。每个管理页都应用一次。
+(function () {
+  var key = 'phone:appearance:admin', phone = document.querySelector('.phone'), prefs = {},
+      themes = {system:{{ skin.style.accent|tojson }}, purple:'#6854bc', blue:'#3267a8', green:'#37765d', pink:'#a44770', orange:'#a45427', ink:'#505763'},
+      walls = ['default', 'paper', 'mist', 'sage', 'rose'];
+  try { prefs = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (_) { prefs = {}; }
+  if (!Object.prototype.hasOwnProperty.call(themes, prefs.theme)) prefs.theme = 'system';
+  if (!walls.includes(prefs.wall)) prefs.wall = 'default';
+  function apply() {
+    phone.style.setProperty('--mine', themes[prefs.theme]);
+    phone.dataset.wall = prefs.wall;
+    document.querySelectorAll('button[data-theme]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.theme === prefs.theme)); });
+    document.querySelectorAll('button[data-wall]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.wall === prefs.wall)); });
+  }
+  function save() { try { localStorage.setItem(key, JSON.stringify(prefs)); } catch (_) {} }
+  apply();
+  var page = document.querySelector('.admin-appearance');
+  if (!page) return;
+  page.addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-theme],button[data-wall],button[data-skin]'); if (!b) return;
+    if (b.dataset.skin !== undefined) {
+      document.cookie = 'phone_skin=' + encodeURIComponent(b.dataset.skin) + '; path=/; max-age=' + (b.dataset.skin ? 31536000 : 0) + '; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
+      location.reload(); return;
+    }
+    if (b.dataset.theme) prefs.theme = b.dataset.theme;
+    if (b.dataset.wall) prefs.wall = b.dataset.wall;
+    save(); apply();
+  });
+  document.getElementById('adminAppearanceReset').addEventListener('click', function () { prefs = {theme:'system', wall:'default'}; save(); apply(); });
+})();
+</script>
+{% endif %}
+
 {% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') %}
 <script>
 (function () {

@@ -8527,6 +8527,29 @@ def admin_phone_urge_op():
     session["phone_flash"] = msg
     return redirect(back)
 
+@app.route("/p/admin/appearance")
+def admin_phone_appearance():
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    return render_template("phone.html", mode="admin_appearance", owner="管理员", sid=who[0], csrf=_phone_csrf(), phone_admin=True)
+
+@app.route("/p/admin/official")
+def admin_phone_official():
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    db = get_db()
+    ops = [dict(r) for r in db.execute("SELECT * FROM phone_admin_ops WHERE show_id=? AND kind IN ('official_appt','official_call') ORDER BY id DESC LIMIT 10", (sid,))]
+    for o in ops:
+        try: v = json.loads(o["value"])
+        except (ValueError, TypeError): v = {}
+        o["value"] = " ".join(x for x in (v.get("day"), v.get("time"), v.get("place"), "、".join(v.get("participants") or [])) if x)
+    return render_template("phone.html", mode="admin_official", owner="管理员", sid=sid, csrf=_phone_csrf(), phone_admin=True,
+                           plugin=_plugin_status(db, sid), admin_ops=ops, flash=session.pop("phone_flash", None),
+                           official_roles=_admin_role_list(db, sid))
+
 @app.route("/p/admin/settings/op", methods=["POST"])
 def admin_phone_settings_op():
     who = _phone_admin_current()
@@ -8534,7 +8557,7 @@ def admin_phone_settings_op():
         return redirect(url_for("phone_code_entry"))
     sid = who[0]
     f = request.form
-    back = url_for("admin_phone_settings")
+    back = url_for("admin_phone_official" if f.get("back") == "official" else "admin_phone_settings")
     if not hmac.compare_digest(f.get("csrf", ""), session.get("phone_csrf", "") or "-"):
         session["phone_flash"] = "❌ 页面过期了，刷新后再试"
         return redirect(back)

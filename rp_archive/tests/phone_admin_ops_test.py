@@ -99,11 +99,11 @@ pg = m.get("/p/admin/settings").get_data(as_text=True); ok("批量道具" in pg 
 c.execute("DELETE FROM phone_admin_ops")
 def of(**kw):
     kw.setdefault("csrf", m.csrf); return m.post("/p/admin/settings/op", data=kw)
-ok("发起官约 / 官电" in m.get("/p/admin/settings").get_data(as_text=True) and "1.10.7" in m.get("/p/admin/settings").get_data(as_text=True), "official form hidden for old plugin")
+ok("发起官约 / 官电" in m.get("/p/admin/official").get_data(as_text=True) and "1.10.7" in m.get("/p/admin/official").get_data(as_text=True), "official form hidden for old plugin")
 of(kind="official_call", day="D1", t1="14:00", t2="15:00", people=["林晚", "周屿"])
 ok(c.execute("SELECT COUNT(*) FROM phone_admin_ops").fetchone()[0] == 0, "old plugin rejects official")
 c.execute("UPDATE phone_sync SET snapshot=?", (json.dumps({"plugin": {"version": "1.10.7", "params": params}}),)); c.commit()
-pg = m.get("/p/admin/settings").get_data(as_text=True); ok('name="people"' in pg and "林晚" in pg and "沈知意" in pg, "official form shown")
+pg = m.get("/p/admin/official").get_data(as_text=True); ok('name="people"' in pg and "林晚" in pg and "沈知意" in pg, "official form shown")
 bad = [dict(kind="official_call", day="1", t1="14:00", t2="15:00", people=["林晚"]),            # 天数格式
        dict(kind="official_call", day="D1", t1="15:00", t2="14:00", people=["林晚"]),           # 结束早于开始
        dict(kind="official_call", day="D1", t1="14:00", t2="", people=["林晚"]),                # 缺结束
@@ -169,4 +169,10 @@ pp = lin.get("/p/me/stats?view=pending").get_data(as_text=True); ok("管理员�
 ok("管理员催你回复" in lin.get("/p/me").get_data(as_text=True), "banner on home")
 ok(lin.post("/p/admin/urge/op", data={"csrf": lc, "scope": "overdue"}).status_code == 302
    and c.execute("SELECT COUNT(*) FROM phone_urges WHERE role='林晚'").fetchone()[0] == 1, "player cannot urge")
+
+# ── 管理端：官约 / 外观 单独的 App 页 ──
+ok("官约" in m.get("/p/admin").get_data(as_text=True) and "外观" in m.get("/p/admin").get_data(as_text=True), "desktop has apps")
+ok('id="skinChoices"' in m.get("/p/admin/appearance").get_data(as_text=True), "appearance page")
+ok("最近发起" in m.get("/p/admin/official").get_data(as_text=True), "official page lists ops")
+ok(app.test_client().get("/p/admin/appearance").status_code == 302 and app.test_client().get("/p/admin/official").status_code == 302, "login required")
 print("ALL OK")
