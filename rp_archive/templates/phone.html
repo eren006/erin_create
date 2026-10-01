@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'admin_index' %}{{ '角色' if request.args.get('view') == 'roles' else '管理桌面' }} · {% elif mode == 'admin_urge' %}催戏 · {% elif mode == 'admin_official' %}官约 · {% elif mode == 'admin_appearance' %}外观 · {% elif mode == 'admin_settings' %}设置 · {% elif mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'bottles' or mode == 'bottle' %}漂流瓶 · {% elif mode == 'admin_bottles' %}漂流瓶 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'maps' %}地图 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'admin_index' %}{{ '角色' if request.args.get('view') == 'roles' else '管理桌面' }} · {% elif mode == 'admin_urge' %}催戏 · {% elif mode == 'admin_official' %}官约 · {% elif mode == 'admin_appearance' %}外观 · {% elif mode == 'admin_settings' %}设置 · {% elif mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'bottles' or mode == 'bottle' %}漂流瓶 · {% elif mode == 'wishes' %}心愿 · {% elif mode == 'admin_bottles' %}漂流瓶 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'maps' %}地图 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -623,6 +623,130 @@ a { color: var(--link); text-decoration: none; }
 .urge-actions { display: grid; gap: 8px; margin: 18px 18px 26px; }
 .urge-actions .ch-btn { margin: 0; min-height: 44px; background: var(--theirs); color: var(--text); border: 1px solid var(--line); }
 .urge-actions .ch-btn + .ch-btn { background: var(--bg); color: var(--text); border: 1px solid var(--line); }
+
+/* 漂流瓶：信笺、潮汐与匿名往来；颜色跟随当前主题。 */
+.bottle-page { padding: 22px 18px 32px; }
+.bottle-letter { padding: 20px; border: 1px solid var(--gift-line); border-radius: 18px 18px 5px 18px; background: var(--gift-bg); }
+.bottle-letter-head { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.bottle-letter-head label { display: block; font-size: 16px; font-weight: 600; line-height: 1.6; }
+.bottle-hint { color: var(--muted); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.bottle-letter textarea { display: block; width: 100%; min-height: 136px; padding: 10px 0; resize: vertical; border: 0; border-top: 1px solid var(--gift-line); border-bottom: 1px solid var(--gift-line); border-radius: 0; background: var(--gift-bg); color: var(--text); font: inherit; font-size: 16px; line-height: 1.9; }
+.bottle-letter textarea::placeholder { color: var(--muted); opacity: 1; }
+.bottle-letter-foot { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-top: 16px; }
+.bottle-letter button,.phone .bottle-compose button { min-height: 44px; padding: 10px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--theirs); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.bottle-letter.is-disabled { opacity: .6; }
+.bottle-letter :disabled,.bottle-compose :disabled { cursor: not-allowed; }
+.bottle-section { display: flex; align-items: baseline; justify-content: space-between; margin: 30px 2px 10px; }
+.bottle-section h2 { font-size: 15px; font-weight: 600; }
+.bottle-section span { font-size: 11px; color: var(--muted); letter-spacing: .1em; }
+.bottle-entry .app-icon,.bottle-page .app-icon { width: 44px; height: 44px; border-radius: 14px; }
+.bottle-entry .app-icon svg,.bottle-page .app-icon svg { width: 29px; height: 29px; }
+.bottle-list { display: grid; gap: 8px; }
+.bottle-row { display: grid; grid-template-columns: 44px minmax(0,1fr); gap: 12px; padding: 16px 12px; min-height: 88px; border: 1px solid var(--line); border-radius: 14px; color: var(--text); background: var(--bg); }
+.bottle-row-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; font-size: 14px; }
+.bottle-tag { font-size: 11px; font-weight: 400; color: var(--muted); }
+.bottle-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 7px 0; font-size: 13px; line-height: 1.7; }
+.bottle-row time { display: block; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+.bottle-row.is-pending { border-style: dashed; background: var(--theirs); }
+.bottle-row.is-pending .app-icon,.bottle-thread .is-pending .meta { animation: bottle-drift 3s ease-in-out infinite; }
+.bottle-row.is-failed,.bottle-alert { background: var(--gift-bg); border: 1px solid var(--gift-line); border-inline-start-width: 3px; }
+.bottle-reason { margin: 6px 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.bottle-empty { padding: 32px 16px; text-align: center; border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); font-size: 13px; line-height: 2; }
+.bottle-footnote { margin: 22px 4px 0; }
+.bottle-thread { padding: 22px 16px; }
+.bottle-thread .msg { margin: 0 0 20px; }
+.phone .bottle-thread .bubble { padding: 13px 16px; border: 1px solid var(--line); border-radius: 16px 16px 16px 4px; background: var(--theirs); color: var(--text); line-height: 1.8; overflow-wrap: anywhere; }
+.phone .bottle-thread .mine .bubble { border-color: var(--gift-line); border-radius: 16px 16px 4px 16px; background: var(--gift-bg); }
+.phone .bottle-thread .is-pending .bubble { border-style: dashed; }
+.bottle-thread .meta { color: var(--muted); font-size: 11px; margin-top: 6px; }
+.bottle-alert { margin: 0 0 18px; padding: 12px 14px; border-radius: 10px; color: var(--text); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.phone .bottle-compose { padding: 12px 14px calc(env(safe-area-inset-bottom) + 12px); gap: 10px; }
+.phone .bottle-compose textarea { min-height: 44px; border-radius: 12px; overflow-y: auto; }
+.bottle-admin-intro { padding-bottom: 20px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+.bottle-admin-intro p { margin-top: 10px; }
+.bottle-admin-card { border: 1px solid var(--line); border-radius: 14px; margin-bottom: 12px; padding: 16px; }
+.bottle-admin-card h2 { font-size: 14px; font-weight: 600; line-height: 1.8; overflow-wrap: anywhere; }
+.bottle-admin-message { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.bottle-admin-message p { white-space: pre-wrap; }
+.bottle-admin-message.is-hidden { border-top-style: dashed; }
+.bottle-hidden { display: inline-block; color: var(--muted); font-size: 12px; }
+.bottle-bar .back { min-width: 44px; }
+.phone .bar.bottle-bar .title { display: block; }
+.bottle-bar .title small { display: block; margin-top: 5px; white-space: normal; letter-spacing: 0; line-height: 1.7; }
+.bottle-page :focus-visible,.phone .bottle-compose textarea:focus-visible,.bottle-compose :focus-visible,.bottle-bar a:focus-visible,.bottle-entry:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+@keyframes bottle-drift { 0%,100% { transform: translateY(0); opacity: 1; } 50% { transform: translateY(-2px); opacity: .65; } }
+@media (prefers-reduced-motion: reduce) { .bottle-row.is-pending .app-icon,.bottle-thread .is-pending .meta { animation: none; } }
+/* 心愿：匿名许愿签，样式仅作用于心愿页与入口。 */
+.wish-page { padding: 22px 18px 32px; }
+.phone .bar.wish-bar .title { display: block; }
+.wish-bar .title small { display: block; margin-top: 5px; line-height: 1.7; white-space: normal; letter-spacing: 0; }
+.wish-bar .back { min-width: 44px; }
+.wish-entry .app-icon,.wish-intro .app-icon,.wish-empty .app-icon { width: 44px; height: 44px; }
+.wish-entry .app-icon svg,.wish-intro .app-icon svg,.wish-empty .app-icon svg { width: 29px; height: 29px; }
+.wish-form { padding: 20px; border: 1px solid var(--gift-line); border-radius: 18px 18px 5px 5px; background: var(--gift-bg); }
+.wish-intro { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.wish-intro h2 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+.wish-hint { color: var(--muted); font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.wish-form fieldset { border: 0; min-width: 0; }
+.wish-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.wish-form label,.wish-label { display: block; margin: 18px 0 8px; font-size: 13px; font-weight: 600; }
+.wish-form .wish-label { margin-top: 0; }
+.wish-form label .wish-hint { margin-left: 5px; font-weight: 400; }
+.wish-form input,.wish-form select,.wish-form textarea { display: block; width: 100%; min-width: 0; max-width: 100%; min-height: 44px; border: 1px solid var(--gift-line); border-radius: 10px; padding: 10px; background: var(--bg); color: var(--text); font: inherit; font-size: 16px; }
+.wish-form input::placeholder,.wish-form textarea::placeholder { color: var(--muted); opacity: 1; }
+.wish-time-row { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 8px; align-items: center; }
+.wish-time-row > span { font-size: 12px; color: var(--muted); }
+.wish-form input[type="time"] { padding-inline: 6px; }
+@media (prefers-color-scheme: dark) { .wish-form input,.wish-form select { color-scheme: dark; } }
+.wish-label-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0 8px; }
+.wish-form textarea { min-height: 116px; resize: vertical; line-height: 1.9; border-radius: 10px 10px 3px 10px; }
+.wish-form input + .wish-hint,.wish-reward-row + .wish-hint { margin-top: 7px; }
+.wish-reward-row { display: grid; grid-template-columns: minmax(0,1fr) 68px; gap: 8px; }
+.wish-submit-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid var(--gift-line); padding-top: 18px; margin-top: 20px; }
+.wish-page .wish-button { min-height: 44px; min-width: 64px; padding: 10px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--theirs); color: var(--text); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.wish-page .wish-quiet { background: var(--bg); font-weight: 400; }
+.wish-form.is-disabled { opacity: .6; }
+.wish-page button:disabled { opacity: .5; cursor: not-allowed; }
+.wish-form :disabled { cursor: not-allowed; }
+.wish-section { margin-top: 30px; }
+.wish-section h2 { font-size: 15px; font-weight: 600; }
+.wish-section-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.wish-wall,.wish-operations { display: grid; gap: 14px; margin-top: 14px; }
+.wish-operation { padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.wish-op-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.wish-operation p { margin-top: 8px; }
+.wish-state { font-size: 12px; color: var(--muted); }
+.wish-operation.is-waiting { border-style: dashed; background: var(--theirs); }
+.wish-operation.is-waiting .wish-state { animation: wish-wait 3s ease-in-out infinite; }
+.wish-operation.is-done { border-inline-start: 3px solid var(--line); }
+.wish-operation.is-done .wish-state::before { content: '✓ '; }
+.wish-operation.is-failed,.wish-notice { background: var(--gift-bg); border: 1px solid var(--gift-line); border-inline-start-width: 3px; }
+.wish-result { white-space: pre-wrap; }
+.wish-group { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--theirs); }
+.wish-group > span { display: block; font-size: 12px; color: var(--muted); }
+.wish-page .wish-group .wish-copy { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wish-card { position: relative; min-width: 0; padding: 24px 18px 14px; border: 1px solid var(--line); border-radius: 5px 16px 16px 16px; background: var(--bg); overflow-wrap: anywhere; }
+.wish-card::before { content: ''; position: absolute; top: 10px; left: 18px; width: 24px; border-top: 2px solid var(--gift-line); }
+.wish-card.is-mine { background: var(--gift-bg); border-color: var(--gift-line); }
+.wish-card-heading { display: flex; align-items: baseline; gap: 6px 8px; flex-wrap: wrap; }
+.wish-card h3 { font-size: 15px; font-weight: 600; min-width: 0; }
+.wish-mine,.wish-reward { display: inline-block; border: 1px solid var(--gift-line); border-radius: 6px; background: var(--gift-bg); padding: 2px 7px; font-size: 11px; line-height: 1.8; }
+.wish-left { margin-left: auto; font-size: 11px; color: var(--muted); }
+.wish-card.is-ending { border-style: dashed; }
+.wish-card.is-ending .wish-left { text-decoration: underline; text-underline-offset: 4px; }
+.wish-where { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 10px; font-size: 12px; line-height: 1.8; color: var(--muted); }
+.wish-content { margin: 18px 0; font-size: 16px; line-height: 1.9; white-space: pre-wrap; }
+.wish-operation .wish-reward { margin-left: 6px; }
+.wish-card-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 18px; padding-top: 8px; border-top: 1px solid var(--line); }
+.wish-copy { min-width: 44px; min-height: 44px; max-width: 100%; padding: 8px 4px; border: 0; background: none; color: var(--text); font: inherit; font-size: 12px; text-align: left; overflow-wrap: anywhere; user-select: text; cursor: pointer; }
+.wish-copy span { margin-left: 5px; color: var(--muted); font-size: 11px; font-weight: 400; }
+.wish-pick-hint { margin-top: 5px; }
+.wish-empty { display: grid; justify-items: center; gap: 14px; padding: 32px 18px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); font-size: 13px; line-height: 2; text-align: center; }
+.wish-footnote { margin: 24px 4px 0; }
+.wish-notice { padding: 12px 14px; margin-bottom: 18px; border-radius: 10px; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.phone .wish-page :focus-visible,.wish-entry:focus-visible,.wish-bar a:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+@keyframes wish-wait { 0%,100% { opacity: 1; transform: translateY(0); } 50% { opacity: .6; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .wish-operation.is-waiting .wish-state { animation: none; } }
 </style>
 {% include '_phone_skin.html' %}
 {% if mode != 'entry' %}{% include '_phone_tools_css.html' %}{% endif %}
@@ -638,6 +762,7 @@ a { color: var(--link); text-decoration: none; }
 {% elif name == 'public' %}<path class="icon-wash" d="M6 16h7L27 9v22l-14-7H6z"/><path d="M6 16h7L27 9v22l-14-7H6zM13 24l3 9h5l-3-7M32 15a8 8 0 0 1 0 10"/>
 {% elif name == 'moments' %}<rect class="icon-wash" x="6" y="6" width="28" height="28" rx="5"/><circle cx="15" cy="15" r="3"/><path d="M7 28l9-8 6 5 5-7 7 10M27 3v6M24 6h6"/>
 {% elif name == 'bottle' %}<path class="icon-wash" d="M16 4h8v5l4 5v17a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4V14l4-5z"/><path d="M16 4h8v5l4 5v17a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4V14l4-5zM16 4h8M16 9h8M17 22h6M17 27h4"/>
+{% elif name == 'wish' %}<path class="icon-wash" d="M10 12h20v23H10z"/><path d="M10 12h20v23H10zM20 4v12M16 4h8M15 23h10M15 28h6"/><circle cx="20" cy="17" r="1"/>
 {% elif name == 'guide' %}<path class="icon-wash" d="M20 10Q12 5 5 8v24q7-3 15 2 8-5 15-2V8q-7-3-15 2Z"/><path d="M20 10Q12 5 5 8v24q7-3 15 2 8-5 15-2V8q-7-3-15 2ZM20 10v24M10 15l5 1M10 21l5 1M25 16l5-1M25 22l5-1"/>
 {% endif %}</svg></span>
 {%- endmacro %}
@@ -982,7 +1107,8 @@ a { color: var(--link); text-decoration: none; }
     <div class="disc-group">
       {% if not phone_admin %}
       <a class="row" href="{{ url_for('player_song') }}"><div class="avatar tile">🎵</div><span class="name">点歌台</span><span class="chev" aria-hidden="true">›</span></a>
-      {% if bottle_on %}<a class="row" href="{{ url_for('player_bottles') if not phone_admin else url_for('admin_phone_bottles') }}"><div class="avatar tile">🍾</div><span class="name">漂流瓶</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
+      {% if wish_on and not phone_admin %}<a class="row wish-entry" href="{{ url_for('player_wishes') }}">{{ admin_app_icon('wish') }}<span class="name">心愿</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
+      {% if bottle_on %}<a class="row bottle-entry" href="{{ url_for('player_bottles') if not phone_admin else url_for('admin_phone_bottles') }}">{{ admin_app_icon('bottle') }}<span class="name">漂流瓶</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
       <a class="row" href="{{ url_for('player_games') }}"><div class="avatar tile">🎮</div><span class="name">小游戏</span><span class="chev" aria-hidden="true">›</span></a>
       {% endif %}
       {% if has_maps %}<a class="row" href="{{ url_for('player_maps') }}"><div class="avatar tile">🗺</div><span class="name">地图</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
@@ -1089,55 +1215,61 @@ a { color: var(--link); text-decoration: none; }
 {% elif mode == 'games' %}
 {% include '_phone_games.html' %}
 {% elif mode == 'bottles' %}
-  <header class="bar">
+  <header class="bar bottle-bar">
     <a class="back" href="{{ url_for('player_discover') }}">发现</a>
     <div class="title">漂流瓶<small>匿名 · 随机送给一位玩家</small></div>
     <div class="right"></div>
   </header>
-  <div class="scroll">
-    {% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
-    {% if why %}<div class="song-note">{{ why }}</div>{% endif %}
-    <form class="song-form" method="post" action="{{ url_for('player_bottle_throw') }}">
+  <div class="scroll bottle-page">
+    {% if flash %}<div class="bottle-alert" role="status">{{ flash }}</div>{% endif %}
+    <form class="bottle-letter{% if why %} is-disabled{% endif %}" method="post" action="{{ url_for('player_bottle_throw') }}">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <label for="bottleText">写一张纸条扔进海里（{{ max_msg }} 字内，对方看不到是谁扔的）</label>
-      <textarea id="bottleText" name="text" maxlength="{{ max_msg }}" placeholder="有人能听到我说话吗……" required></textarea>
-      <button type="submit" class="song-submit"{% if why %} disabled{% endif %}>扔出去</button>
+      <div class="bottle-letter-head">{{ admin_app_icon('bottle') }}<div><label for="bottleText">写一张纸条扔进海里</label><p class="bottle-hint" id="bottlePrivacy">不署名，交给一次偶然。</p></div></div>
+      <textarea id="bottleText" name="text" maxlength="{{ max_msg }}" placeholder="有人能听到我说话吗……" aria-describedby="bottlePrivacy bottleLimit{% if why %} bottleWhy{% endif %}" required{% if why %} disabled{% endif %}></textarea>
+      {% if why %}<p class="bottle-reason" id="bottleWhy">{{ why }}</p>{% endif %}
+      <div class="bottle-letter-foot"><span class="bottle-hint" id="bottleLimit">{{ max_msg }} 字内 · 对方看不到你的名字</span><button type="submit"{% if why %} disabled{% endif %}>扔出去</button></div>
     </form>
-    <h3 class="ch-h">我的漂流瓶</h3>
-    <div class="list">
+    <div class="bottle-section"><h2>我的漂流瓶</h2><span>纸短 · 情长</span></div>
+    <div class="bottle-list">
       {% for t in threads %}
-      {% if t.state == 'pending' %}
-      <div class="row"><div class="avatar tile">🍾</div><div class="body"><div class="top"><span class="name">发送中…<span class="alias-tag">{{ t.tag }}</span></span><span class="time">{{ t.time }}</span></div><div class="preview">{{ t.preview }}</div></div></div>
-      {% elif t.state == 'failed' %}
-      <div class="row"><div class="avatar tile">⚠️</div><div class="body"><div class="top"><span class="name">没扔出去<span class="alias-tag">{{ t.tag }}</span></span><span class="time">{{ t.time }}</span></div><div class="preview">{{ t.note or '机器人没有接收成功' }} · {{ t.preview }}</div></div></div>
+      {% if t.state == 'pending' or t.state == 'failed' %}
+      <div class="bottle-row is-{{ t.state }}">
       {% else %}
-      <a class="row" href="{{ url_for('player_bottle', bid=t.id) }}"><div class="avatar tile">🍾</div><div class="body"><div class="top"><span class="name">漂流瓶 #{{ t.id }}{% if t.tag %}<span class="alias-tag">{{ t.tag }}</span>{% endif %}</span><span class="time">{{ t.time }}</span></div><div class="preview">{{ t.preview }}</div></div></a>
+      <a class="bottle-row" href="{{ url_for('player_bottle', bid=t.id) }}">
       {% endif %}
-      {% else %}<div class="empty">还没有漂流瓶，扔一个试试</div>{% endfor %}
+        {{ admin_app_icon('bottle') }}
+        <div><div class="bottle-row-head"><strong>{% if t.state == 'pending' %}发送中…{% elif t.state == 'failed' %}没扔出去{% else %}漂流瓶 #{{ t.id }}{% endif %}</strong>{% if t.tag %}<span class="bottle-tag">{{ t.tag }}</span>{% endif %}</div>
+          {% if t.state == 'failed' %}<p class="bottle-reason">{{ t.note or '机器人没有接收成功' }}</p>{% endif %}
+          <p class="bottle-preview">{{ t.preview }}</p><time>{{ t.time }}</time>
+        </div>
+      {% if t.state == 'pending' or t.state == 'failed' %}</div>{% else %}</a>{% endif %}
+      {% else %}<div class="bottle-empty">海面还很安静。<br>第一张纸条，就从这里出发。</div>{% endfor %}
     </div>
-    <p class="song-note">群里扔的瓶子也会出现在这里，可以接着回信；这里扔的瓶子，群里用「漂流瓶 编号 内容」也能回。</p>
+    <p class="bottle-hint bottle-footnote">群里扔的瓶子也会出现在这里，可以接着回信；这里扔的瓶子，群里用「漂流瓶 编号 内容」也能回。</p>
   </div>
   {% if has_pending %}<script>setTimeout(function () { location.reload(); }, 8000);</script>{% endif %}
 
 {% elif mode == 'bottle' %}
-  <header class="bar">
+  <header class="bar bottle-bar">
     <a class="back" href="{{ url_for('player_bottles') }}">漂流瓶</a>
     <div class="title">漂流瓶 #{{ bottle_id }}<small>{% if not tag_known %}抛瓶人匿名{% elif i_threw %}你扔出的 · 对方是捡到的人{% else %}你捡到的 · 抛瓶人匿名{% endif %}</small></div>
     <div class="right"></div>
   </header>
-  <div class="scroll" id="scroll">
-    {% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
-    {% if failed %}<div class="notice">⚠️ 上一条没有发出去：{{ failed }}</div>{% endif %}
+  <div class="scroll bottle-thread" id="scroll">
+    {% if flash %}<div class="bottle-alert" role="status">{{ flash }}</div>{% endif %}
+    {% if failed %}<div class="bottle-alert" role="status">上一条没有发出去：{{ failed }}</div>{% endif %}
     {% for m in msgs %}
-    <div class="msg {{ 'mine' if m.mine else 'theirs' }}"><div class="bubble">{{ m.text }}</div><div class="meta">{{ m.time }}</div></div>
+    <div class="msg {{ 'mine' if m.mine else 'theirs' }}{% if m.pending %} is-pending{% endif %}"><div class="bubble">{{ m.text }}</div><div class="meta">{{ m.time }}</div></div>
     {% endfor %}
   </div>
-  <form class="compose" method="post" action="{{ url_for('player_bottle_reply', bid=bottle_id) }}">
+  <form class="compose bottle-compose" method="post" action="{{ url_for('player_bottle_reply', bid=bottle_id) }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
-    <textarea name="text" maxlength="{{ max_msg }}" placeholder="{{ why or '回信……' }}" rows="1" required{% if why %} disabled{% endif %}></textarea>
+    <textarea aria-label="回信" name="text" maxlength="{{ max_msg }}" placeholder="{{ why or '回信……' }}" rows="1" required{% if why %} disabled{% endif %}></textarea>
     <button type="submit"{% if why %} disabled{% endif %}>发送</button>
   </form>
   {% if has_pending %}<script>setTimeout(function () { location.reload(); }, 8000);</script>{% endif %}
+
+{% elif mode == 'wishes' %}{% include '_phone_wishes.html' %}
 
 {% elif mode == 'song' %}
   <header class="bar">
@@ -1559,17 +1691,18 @@ a { color: var(--link); text-decoration: none; }
   </script>
 
 {% elif mode == 'admin_bottles' %}
-  <header class="bar">
+  <header class="bar bottle-bar">
     <a class="back" href="{{ url_for('admin_phone_index') }}">桌面</a>
     <div class="title">漂流瓶<small>{{ '网页版开启中（群里已停用）' if bottle_on else '网页版未开启（群里在用）' }} · {{ bottles|length }} 个</small></div>
     <div class="right"></div>
   </header>
-  <div class="scroll ch-page">
-    <p class="ch-note">管理视角：能看到真实的抛瓶人和捡瓶人，以及静默拉黑下对方看不到的回信。瓶子池只有一个（在机器人里），群里和网页的瓶子都在这里；开关在后台「小手机」页。{% if pending %}<br>⏳ 有 {{ pending }} 条网页操作在等机器人处理。{% endif %}</p>
-    <div class="ch-list">{% for b in bottles %}
-      <div class="ch-item"><div class="top"><span class="nm">#{{ b.id }}　{% if b.guess %}{{ b.thrower }} ↔ {{ b.catcher }}（方向未知）{% else %}{{ b.thrower }} → {{ b.catcher }}{% endif %}</span></div>
-        {% for m in b.msgs %}<div class="ef">{{ m.from }}：{{ m.text }}{% if m.hidden %}（对方看不到）{% endif %} · {{ m.time }}</div>{% endfor %}</div>
-    {% else %}<div class="gm-empty ch-empty">还没有漂流瓶</div>{% endfor %}</div>
+  <div class="scroll bottle-page">
+    <div class="bottle-admin-intro"><strong>纸条总览 · 只读</strong><p class="bottle-hint">这里显示双方真名，也保留对方看不到的回信。群里和网页共用一个瓶子池；开关在后台「小手机」页。</p><p class="bottle-hint">{{ pending }} 条网页操作在等机器人处理</p></div>
+    {% for b in bottles %}
+      <article class="bottle-admin-card"><h2>#{{ b.id }}　{% if b.guess %}{{ b.thrower }} ↔ {{ b.catcher }}（方向未知）{% else %}{{ b.thrower }} → {{ b.catcher }}{% endif %}</h2>
+        {% for m in b.msgs %}<div class="bottle-admin-message{% if m.hidden %} is-hidden{% endif %}"><p>{{ m.from }}：{{ m.text }}</p>{% if m.hidden %}<span class="bottle-hidden">（对方看不到）</span>{% endif %}<div class="bottle-hint">{{ m.time }}</div></div>{% endfor %}
+      </article>
+    {% else %}<div class="bottle-empty">还没有漂流瓶</div>{% endfor %}
   </div>
 
 {% elif mode == 'admin_urge' %}
@@ -1975,7 +2108,7 @@ a { color: var(--link); text-decoration: none; }
 </dialog>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'bottles', 'bottle', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') and not phone_admin %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'new', 'song', 'bottles', 'bottle', 'wishes', 'library', 'profile', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') and not phone_admin %}
 <dialog class="appearance notice-dialog" id="phoneNotice" aria-labelledby="phoneNoticeTitle">
   <div class="heading"><h2 id="phoneNoticeTitle">使用须知</h2></div>
   <div class="notice-body">
@@ -2162,7 +2295,7 @@ a { color: var(--link); text-decoration: none; }
 </script>
 {% endif %}
 
-{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'bottles', 'bottle', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') %}
+{% if mode in ('inbox', 'thread', 'public', 'moments', 'song', 'bottles', 'bottle', 'wishes', 'library', 'profile', 'new', 'shop', 'lovemail', 'group_new', 'stats', 'games', 'maps', 'char', 'discover') %}
 <script>
 (function () {
   var scope = {{ ([sid, owner]|tojson) }};

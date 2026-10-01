@@ -74,6 +74,19 @@
     </div>
   </div>
   <div class="pc-add">
+    <label>网页心愿（挂心愿 / 悬赏 / 摘心愿 / 撤心愿 搬到小手机）</label>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <form method="post"><input type="hidden" name="action" value="wish_web">
+        <input type="hidden" name="on" value="{{ '0' if wish_web else '1' }}">
+        <button class="pc-btn{{ ' ghost' if wish_web else '' }}" type="submit" {% if not wish_web and not can_wish %}disabled{% endif %}>{{ '关闭网页心愿' if wish_web else '打开网页心愿' }}</button></form>
+      <span style="font-size:13px;">当前：<b style="color:{{ 'var(--green)' if wish_web else 'var(--muted)' }}">{{ '已打开（群里的挂心愿 / 撤心愿已停用）' if wish_web else '已关闭（用群里的心愿）' }}</b></span>
+    </div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+      心愿池只有一个（在机器人里），群里和网页是<b>同一批心愿</b>。打开后玩家在小手机「发现 → 心愿」里看心愿墙、挂心愿（可带悬赏）、摘别人的心愿、撤自己的心愿。所有操作交给机器人<b>按先后顺序一个一个</b>处理（约半分钟内）：规则和群里一样（心愿开关、开放时间、时间冲突、数量上限、写信币都照旧），摘取会建专属小群；两个人同时摘同一个，先到的成功；建群失败心愿会放回。群里发「挂心愿 / 悬赏心愿 / 摘心愿 / 撤心愿」会提示去网页，只有「看心愿」还在群里。关掉就回群里用。
+      需要插件 1.10.8 或更高、社交卫星已加载并同步过一次才能打开{% if not can_wish %}（<b style="color:var(--gold)">目前插件版本不够、社交卫星没加载或还没同步</b>）{% endif %}。
+    </div>
+  </div>
+  <div class="pc-add">
     <label>网页漂流瓶（和群里的漂流瓶二选一）</label>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <form method="post"><input type="hidden" name="action" value="bottle_web">

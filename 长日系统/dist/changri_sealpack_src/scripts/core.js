@@ -2720,6 +2720,8 @@ function checkTsFeatureWindow(featureKey) {
 }
 
 function checkRealityHourLimit(timeStr, ctx, msg) {
+    // 网页心愿等不经过聊天的调用：ctx.__captureReply 接住提示文字，不往群里发
+    const say = (t) => { if (ctx && ctx.__captureReply) ctx.__captureReply(t); else seal.replyToSender(ctx, msg, t); };
     const slotSizeRaw = cachedGet("ts_reality_slot_size");
     const slotSize = slotSizeRaw ? JSON.parse(slotSizeRaw) : 0;
     if (!slotSize) {
@@ -2740,7 +2742,7 @@ function checkRealityHourLimit(timeStr, ctx, msg) {
     if (match) startHour = parseInt(match[1], 10);
 
     if (startHour === null) {
-        seal.replyToSender(ctx, msg, "⚠️ 时间格式错误，无法进行时段检查");
+        say( "⚠️ 时间格式错误，无法进行时段检查");
         return false;
     }
 
@@ -2756,12 +2758,12 @@ function checkRealityHourLimit(timeStr, ctx, msg) {
         const slotStart = currentSlot * sz;
         const slotEnd   = Math.min(slotStart + sz, 24);
         if (exactMode) {
-            seal.replyToSender(ctx, msg,
+            say(
                 `⚠️ 时段限制：当前现实时间为 ${currentTimeStr}，本时段（现实 ${String(slotStart).padStart(2,'0')}:00–${String(slotEnd - 1).padStart(2,'0')}:59）` +
                 `只能发起戏内 ${String(slotStart).padStart(2,'0')}:xx–${String(slotEnd - 1).padStart(2,'0')}:xx 开始的剧情邀约。\n\n` +
                 `💡 如需取消此限制，请联系管理调整「现实/戏内时间对照档位」。`);
         } else {
-            seal.replyToSender(ctx, msg,
+            say(
                 `⚠️ 时段限制：当前现实时间为 ${currentTimeStr}，` +
                 `只能发起戏内 00:00–${String(slotEnd).padStart(2,'0')}:00 以前开始的剧情邀约。\n\n` +
                 `💡 如需取消此限制，请联系管理调整「现实/戏内时间对照档位」。`);
@@ -6010,8 +6012,8 @@ function finishGroupCreation({ platform, ctx, msg, gid, expireTime, groupData, p
     if (groupData.subtype) initGroupTimer(platform, gid, groupData.subtype, participants, participants[0]);
 }
 
-async function finalizeGroupCreation(platform, ctx, msg, groupData, participants) {
-    const alloc = await beginGroupCreation(platform, ctx, msg);
+async function finalizeGroupCreation(platform, ctx, msg, groupData, participants, reply) {
+    const alloc = await beginGroupCreation(platform, ctx, msg, reply);
     if (!alloc) return false;
     const { gid, expireTime, timeStr } = alloc;
 
@@ -10295,7 +10297,15 @@ function saveDriftBottles(data) {
 // 漂流瓶核心逻辑（群里指令和网页手机共用同一个池子、同一套规则）。
 // viaWeb=true：来自网页手机——不往群里发消息（收信人在网页上看），也不单独发存档事件（网页那边按回报自己入库）。
 // 返回 { ok, msg, bottleId, catcher, silent }，msg 是给发起人的结果文案。
+// 漂流瓶本质是不写收件人的匿名短信，跟「寄信」共用开关：全局关了、或这个人被限制寄信，都不能扔/回
+function driftBottleBlockedReason(uid) {
+    if (kvGet("global_feature_toggle", {}).enable_chaos_letter === false) return "📪 寄信功能已关闭，漂流瓶暂时不能用。";
+    if (!isUserFeatureEnabled(uid, "enable_chaos_letter")) return "❌ 你已被限制使用寄信功能，漂流瓶也不能用。";
+    return null;
+}
 function driftBottleThrowCore(platform, uid, senderRoleName, content, viaWeb, ctx) {
+    const blockedWhy = driftBottleBlockedReason(uid);
+    if (blockedWhy) return { ok: false, msg: blockedWhy };
     const storage = getRoleStorage()[platform] || {};
     const npcList = kvGet("a_npc_list", []);
     // 拉黑检查：扔瓶子随机分配接收者，直接把拉黑了发送者的人排除在候选池外，避免瓶子随机落到对方手里
@@ -10341,6 +10351,8 @@ function handleDriftBottleThrow(ctx, msg, platform, content) {
 }
 
 function driftBottleReplyCore(platform, bottleId, bottle, uid, senderRoleName, content, viaWeb, ctx) {
+    const blockedWhy = driftBottleBlockedReason(uid);
+    if (blockedWhy) return { ok: false, msg: blockedWhy };
     const targetUid = bottle.throwerUid === uid ? bottle.catcherUid : bottle.throwerUid;
 
     // 拉黑检查：对方拉黑了自己就拦下回信，静默伪装送出成功，非静默如实告知
@@ -10407,6 +10419,62 @@ function phoneApplyBottleOps(platform, ops) {
         done.push({ id: op.id, ok: !!r.ok, msg: String(r.msg || "").slice(0, 200), bottle_id: r.bottleId ? Number(r.bottleId) : (op.bottle_id || 0), catcher: r.catcher || "", silent: !!r.silent });
     }
     kvSet("phone_bottle_ops_done", done.slice(-200));
+}
+
+// 网页手机的心愿操作（挂 / 悬赏 / 撤 / 摘）：站点排队下发，这里交给社交卫星里同一套函数执行（开关、时间冲突、地点、上限、扣币、建群都复用），
+// 结果回报给站点。顺序规则（不要改）：
+//  · 所有操作进同一条队列，一次只执行一个，按站点 id 先后；摘心愿要等建群（异步），期间后面的操作排队等着，
+//    不会出现「摘取的建群还没落地，后一条挂心愿的时间冲突检查看不到它」。
+//  · 同一条重复收到（回报还没送达）不会重复执行：已回报的看 phone_wish_ops_done，排队/执行中的看内存里的 _wishOpsKnown；
+//    摘心愿开始前先把 id 记进 phone_wish_ops_started（持久化）——插件在建群中途被重载时，重新收到就不再自动重跑
+//    （免得重复建群、重复发奖励），直接回报「状态不明」让玩家到群里核对。
+//  · 同一时刻只有一个排空循环，且有看门狗：卡住超过 3 分钟就放行新的循环，不会让后面的操作永远排着。
+const _wishOpsKnown = new Set();
+const _wishQueue = [];
+let _wishDraining = false, _wishDrainAt = 0;
+function wishOpReport(op, r) {
+    const d = kvGet("phone_wish_ops_done", []);
+    d.push({ id: op.id, ok: !!r.ok, msg: String(r.msg || "").slice(0, 200), wish_id: r.wishId || "", gid: r.gid || "" });
+    kvSet("phone_wish_ops_done", d.slice(-200));
+}
+async function wishRunOne(platform, op) {
+    const api = globalThis.__changriWishWeb;
+    if (!api) return { ok: false, msg: "插件里的社交卫星没加载，暂时不能在网页操作心愿" };
+    let v = {}; try { v = JSON.parse(op.payload || "{}"); } catch (_) {}
+    if (op.kind === "post") return api.post(platform, op.role, v);
+    if (op.kind === "withdraw") return api.withdraw(platform, op.role, String(v.wish_id || ""));
+    if (op.kind === "pick") {
+        const started = kvGet("phone_wish_ops_started", []);
+        if (started.includes(op.id)) return { ok: false, msg: "上次执行被中断，状态不明：请到群里看一下有没有摘成（有没有收到群号），没有的话再摘一次" };
+        started.push(op.id); kvSet("phone_wish_ops_started", started.slice(-200));
+        return await api.pick(platform, op.role, String(v.wish_id || ""));
+    }
+    return { ok: false, msg: `不认识的操作「${op.kind}」` };
+}
+async function wishDrain(platform) {
+    if (_wishDraining && Date.now() - _wishDrainAt < 180000) return;
+    _wishDraining = true; _wishDrainAt = Date.now();
+    try {
+        while (_wishQueue.length) {
+            const op = _wishQueue.shift();
+            let r;
+            try { r = await wishRunOne(platform, op); } catch (e) { r = { ok: false, msg: "执行出错：" + (e.message || e) }; }
+            wishOpReport(op, r || { ok: false, msg: "没有结果" });
+            _wishDrainAt = Date.now();
+        }
+    } catch (e) { console.error("[网页心愿] 排空队列出错：" + (e.message || e)); }
+    _wishDraining = false;
+}
+function phoneApplyWishOps(platform, ops) {
+    if (!ops.length) return;
+    const doneIds = new Set(kvGet("phone_wish_ops_done", []).map(d => d.id));
+    for (const op of ops.slice().sort((a, b) => a.id - b.id)) {
+        if (doneIds.has(op.id) || _wishOpsKnown.has(op.id)) continue;
+        _wishOpsKnown.add(op.id);
+        _wishQueue.push(op);
+    }
+    if (_wishOpsKnown.size > 500) { for (const id of Array.from(_wishOpsKnown).slice(0, 250)) _wishOpsKnown.delete(id); }
+    wishDrain(platform);
 }
 
 // 无前缀「短信」：识别署名（含自定义署名开关）后转交寄信流程
@@ -12623,7 +12691,7 @@ let _phoneReportsAt = 0;   // 报告每 2 分钟随同步上报一次
 let _phoneSyncBusySince = 0;
 async function phoneWebSync() {
     if (_phoneSyncBusy && Date.now() - _phoneSyncBusySince < 90 * 1000) return;
-    if (!isArchiveEnabled()) { if (kvGet("phone_web_send", {}).on) kvSet("phone_web_send", {}); if (kvGet("phone_bottle_web", {}).on) kvSet("phone_bottle_web", {}); return; }
+    if (!isArchiveEnabled()) { if (kvGet("phone_web_send", {}).on) kvSet("phone_web_send", {}); if (kvGet("phone_bottle_web", {}).on) kvSet("phone_bottle_web", {}); if (kvGet("phone_wish_web", {}).on) kvSet("phone_wish_web", {}); return; }
     const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
     const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
     if (!base) return;
@@ -12678,6 +12746,24 @@ async function phoneWebSyncCore(base, token) {
         delivery_time: (cachedGet("lovemail_delivery_time") || "22:00").replace(/"/g, "").trim() || "22:00"
     };
 
+    // 心愿：网页挂心愿/撤心愿照这里的开关、开放时间、上限执行，跟群里的「挂心愿」一样（最终还是插件按自己的数据再校验一次）
+    const wishWin = kvGet("ts_feature_windows", []).find(w => w.feature === "enable_wish_system");
+    rules.wish = {
+        enabled: toggle.enable_wish_system !== false,
+        has_day: !!cachedGet("global_days"),
+        window: wishWin ? { start: wishWin.start, end: wishWin.end } : null,
+        bounty_enabled: cachedGet("wish_bounty_enabled") !== "false",
+        max_concurrent: getStorageInt("wish_max_concurrent", 3),
+        daily_post_limit: getStorageInt("wish_daily_post_limit", 0)
+    };
+    // 心愿墙：当前还漂着的心愿（24 小时内）。from_role 只给网页判断「哪些是我的」，不展示给别人
+    const wishNow = Date.now();
+    const wishes = kvGet("a_wishPool", []).filter(w => wishNow - w.timestamp < 86400000).slice(-200).map(w => ({
+        id: w.id, day: w.day || "", time: w.time || "", place: w.place || "", content: w.content || "",
+        nick: w.displayName || "", gender: w.gender || "", ts: w.timestamp || 0,
+        reward: w.rewardCode ? `${w.rewardName || w.rewardCode}×${w.rewardCount}` : "",
+        from_role: (() => { const pf = String(w.fromId || "").split(":")[0]; return (pf && getUserRoleName(pf, w.fromId)) || nameOf(String(w.fromId || "").replace(/^[^:]+:/, "")) || ""; })()
+    }));
     const featureOff = {};
     for (const [uid, cfg] of Object.entries(kvGet("feature_user_blocklist", {}))) {
         const name = nameOf(uid);
@@ -12686,6 +12772,7 @@ async function phoneWebSyncCore(base, token) {
         if (cfg.enable_chaos_letter === false) off.push("sms");
         if (cfg.enable_general_gift === false) off.push("gift");
         if (cfg.enable_lovemail === false) off.push("lovemail");
+        if (cfg.enable_wish_system === false) off.push("wish");
         if (off.length) featureOff[name] = off;
     }
     const blocks = [];
@@ -12742,6 +12829,7 @@ async function phoneWebSyncCore(base, token) {
     const blockOpsDone = kvGet("phone_block_ops_done", []);
     const adminOpsDone = kvGet("phone_admin_ops_done", []);
     const bottleOpsDone = kvGet("phone_bottle_ops_done", []);
+    const wishOpsDone = kvGet("phone_wish_ops_done", []);
     const groupAfter = parseInt(cachedGet("phone_group_cursor") || "0") || 0;
     const reports = Date.now() - _phoneReportsAt >= 120 * 1000 ? buildPhoneReports(platform) : null;
     if (reports) _phoneReportsAt = Date.now();
@@ -12749,12 +12837,12 @@ async function phoneWebSyncCore(base, token) {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Archive-Token": token },
         body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
-            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone, admin_ops_done: adminOpsDone, bottle_ops_done: bottleOpsDone, group_after: groupAfter,
+            lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone, admin_ops_done: adminOpsDone, bottle_ops_done: bottleOpsDone, wish_ops_done: wishOpsDone, group_after: groupAfter,
             ...(reports ? { reports } : {}),
             // block_write：告诉存档站这个版本会处理网页上的实名拉黑，网页才显示拉黑按钮
             snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, block_write: true,
-                        counts, last, catalogs, displays, shop, lovemail,
-                        plugin: { version: ext.version || "", params: buildPhoneAdminParams() } } })
+                        counts, last, catalogs, displays, shop, lovemail, wishes,
+                        plugin: { version: ext.version || "", wish_web: !!globalThis.__changriWishWeb, params: buildPhoneAdminParams() } } })
     });
     if (!resp.ok) return;
     const data = await resp.json();
@@ -12779,9 +12867,15 @@ async function phoneWebSyncCore(base, token) {
         kvSet("phone_bottle_ops_done", kvGet("phone_bottle_ops_done", []).filter(d => !sentB.has(d.id)));
     }
     phoneApplyBottleOps(platform, data.bottle_ops || []);
+    if (wishOpsDone.length) {
+        const sentW = new Set(wishOpsDone.map(d => d.id));
+        kvSet("phone_wish_ops_done", kvGet("phone_wish_ops_done", []).filter(d => !sentW.has(d.id)));
+    }
+    phoneApplyWishOps(platform, data.wish_ops || []);
     phoneApplyGroupEvents(platform, data.group_events || [], gameDay, groupAfter);
     kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
     kvSet("phone_bottle_web", { on: !!data.bottle_web, url: `${base}/p`, at: Date.now() });
+    kvSet("phone_wish_web", { on: !!data.wish_web, url: `${base}/p`, at: Date.now() });
 
     const events = data.events || [];
     if (!events.length) return;

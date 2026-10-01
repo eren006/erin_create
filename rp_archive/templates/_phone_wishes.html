@@ -1,0 +1,89 @@
+  <header class="bar wish-bar">
+    <a class="back" href="{{ url_for('player_discover') }}">发现</a>
+    <div class="title">心愿<small>匿名 · 24 小时内有效</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll wish-page">
+    {% if flash %}<div class="wish-notice" role="status">{{ flash }}</div>{% endif %}
+    <form class="wish-form{% if why %} is-disabled{% endif %}" method="post" action="{{ url_for('player_wish_post') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="wish-intro">{{ admin_app_icon('wish') }}<div><h2>留一场相遇</h2><p class="wish-hint">把想一起做的事，写给有缘的人。</p></div></div>
+      {% if why %}<p class="wish-notice" id="wishWhy">{{ why }}</p>{% endif %}
+      <fieldset{% if why %} disabled aria-describedby="wishWhy"{% endif %}>
+        <legend class="wish-sr-only">挂一个心愿</legend>
+        <div class="wish-label">什么时候</div>
+        <div class="wish-time-row"><input name="t1" type="time" aria-label="开始时间" required><span>到</span><input name="t2" type="time" aria-label="结束时间" required></div>
+        <label for="wishPlace">在哪里</label>
+        <input id="wishPlace" name="place" list="wishPlaces" maxlength="30" placeholder="地点（不要有空格）" required>
+        <datalist id="wishPlaces">{% for n in places %}<option value="{{ n }}">{% endfor %}</datalist>
+        <div class="wish-label-row"><label for="wishContent">一句想说的话</label><span class="wish-hint" id="wishCount">还可写 {{ max_content }} 字</span></div>
+        <textarea id="wishContent" name="content" maxlength="{{ max_content }}" aria-describedby="wishCount" placeholder="比如，想和你一起等一场日落。" required></textarea>
+        <label for="wishNick">留个昵称 <span class="wish-hint">选填 · 10 字内</span></label>
+        <input id="wishNick" name="nick" maxlength="10" placeholder="不写就只显示性别" aria-describedby="wishPrivacy">
+        <p class="wish-hint" id="wishPrivacy">心愿上只留性别和昵称，不显示真名。</p>
+        {% if rewards %}
+        <label for="wishReward">悬赏（选填）</label>
+        <div class="wish-reward-row"><select id="wishReward" name="reward" aria-describedby="wishRewardHint"><option value="">不悬赏</option>{% for r in rewards %}<option value="{{ r.name }}">{{ r.name }}（有 {{ r.count }}）</option>{% endfor %}</select><input name="reward_count" type="number" min="1" value="1" aria-label="悬赏数量"></div>
+        <p class="wish-hint" id="wishRewardHint">送给摘下心愿的人。挂出时从背包扣除，撤回或过期会退回。</p>
+        {% endif %}
+        <div class="wish-submit-row"><span class="wish-hint">给相遇留一天时间</span><button type="submit" class="wish-button"{% if why %} disabled{% endif %}>挂出去</button></div>
+      </fieldset>
+    </form>
+    {% if pending %}
+    <section class="wish-section" aria-labelledby="wishOpsTitle"><h2 id="wishOpsTitle">我的操作</h2>
+      <div class="wish-operations">{% for o in pending %}
+        <article class="wish-operation {{ 'is-waiting' if not o.done else ('is-done' if o.ok else 'is-failed') }}">
+          <div class="wish-op-heading"><strong>{{ {'post': '挂心愿', 'withdraw': '撤心愿', 'pick': '摘心愿'}.get(o.kind, o.kind) }}</strong><span class="wish-state">{{ '发送中 · 处理中…' if not o.done else ('已完成' if o.ok else '没成功') }}</span></div>
+          <p>{% if o.kind == 'post' %}{{ o.p.time }} · {{ o.p.place }}<br>{{ o.p.content }}{% if o.p.reward %}<span class="wish-reward">{{ o.p.reward.name }}×{{ o.p.reward.count }}</span>{% endif %}{% else %}编号 {{ o.p.wish_id }}{% endif %}</p>
+          {% if o.done and o.result %}<p class="wish-result"{% if o.ok and o.kind == 'pick' %} data-wish-group{% endif %}>{{ o.result }}</p>{% endif %}
+        </article>
+      {% endfor %}</div>
+    </section>
+    {% endif %}
+    <section class="wish-section" aria-labelledby="wishWallTitle"><div class="wish-section-heading"><h2 id="wishWallTitle">漂浮的心愿</h2><span class="wish-hint">等一位有缘人</span></div>
+      <div class="wish-wall">{% for w in wall %}
+        <article class="wish-card{% if w.mine %} is-mine{% endif %}{% if w.left_h|float <= 3 %} is-ending{% endif %}">
+          <div class="wish-card-heading"><h3>{{ w.who or '匿名' }}</h3>{% if w.mine %}<span class="wish-mine">我的</span>{% endif %}<span class="wish-left">{% if w.left_h|float <= 3 %}快到期 · {% endif %}剩 {{ w.left_h }} 小时</span></div>
+          <div class="wish-where"><span>{{ w.day }} · {{ w.time }}</span><span>{{ w.place }}</span></div>
+          <p class="wish-content">{{ w.content }}</p>
+          {% if w.reward %}<span class="wish-reward">悬赏 · {{ w.reward }}</span>{% endif %}
+          <div class="wish-card-foot">
+            <button type="button" class="wish-copy" data-wish-copy="{{ w.id }}" aria-label="复制心愿编号 {{ w.id }}">#{{ w.id }} <span>复制</span></button>
+            {% if w.mine %}<form method="post" action="{{ url_for('player_wish_withdraw', wid=w.id) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="wish-button wish-quiet"{% if why %} disabled aria-describedby="wishWhy"{% endif %}>撤回</button></form>
+            {% elif w.claiming %}<span class="wish-hint">正在被别人摘取…</span>
+            {% else %}<form method="post" action="{{ url_for('player_wish_pick', wid=w.id) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="wish-button"{% if why %} disabled aria-describedby="wishWhy"{% endif %} data-confirm="摘取后会马上建一个专属小群，确定吗？">摘取</button></form>{% endif %}
+          </div>
+          {% if not w.mine %}<p class="wish-hint wish-pick-hint">想摘取？到群里发『摘心愿 {{ w.id }}』</p>{% endif %}
+        </article>
+      {% else %}<div class="wish-empty">{{ admin_app_icon('wish') }}<p>这里还留着空白，<br>等一个想与你相遇的心愿。</p></div>{% endfor %}</div>
+    </section>
+    <p class="wish-hint wish-footnote">挂、撤、摘都要等机器人处理，约半分钟内完成。摘取成功会建一个专属小群，群号会出现在「我的操作」里，也会发到你的专属群。<br>也可以在群里发「摘心愿 编号」；同一个心愿，先摘到的人赴约。</p>
+  </div>
+  <script>
+  (function () {
+    var page = document.querySelector('.wish-page'), content = document.getElementById('wishContent'), count = document.getElementById('wishCount');
+    function updateCount() { count.textContent = '还可写 ' + Math.max(0, content.maxLength - content.value.length) + ' 字'; }
+    content.addEventListener('input', updateCount); updateCount();
+    page.querySelectorAll('[data-confirm]').forEach(function (b) { b.addEventListener('click', function (e) { if (!confirm(b.getAttribute('data-confirm'))) e.preventDefault(); }); });
+    page.querySelectorAll('[data-wish-group]').forEach(function (result) {
+      var match = result.textContent.match(/群号\s*[：:]\s*(\d+)/);
+      if (!match) return;
+      var box = document.createElement('div'), label = document.createElement('span'), button = document.createElement('button'), hint = document.createElement('span');
+      box.className = 'wish-group'; label.textContent = '相遇的小群';
+      button.type = 'button'; button.className = 'wish-copy'; button.dataset.wishCopy = match[1]; button.dataset.copyKind = '群号';
+      button.setAttribute('aria-label', '复制群号 ' + match[1]); button.appendChild(document.createTextNode(match[1]));
+      hint.textContent = '复制'; button.appendChild(hint); box.appendChild(label); box.appendChild(button); result.after(box);
+    });
+    page.querySelectorAll('[data-wish-copy]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        try {
+          await navigator.clipboard.writeText(b.dataset.wishCopy);
+          b.querySelector('span').textContent = '已复制';
+          b.setAttribute('aria-label', '已复制' + (b.dataset.copyKind || '心愿编号') + ' ' + b.dataset.wishCopy);
+          setTimeout(function () { b.querySelector('span').textContent = '复制'; b.setAttribute('aria-label', '复制' + (b.dataset.copyKind || '心愿编号') + ' ' + b.dataset.wishCopy); }, 1800);
+        } catch (_) { /* 无权限时保持编号可选中，静默失败。 */ }
+      });
+    });
+  }());
+  </script>
+  {% if has_pending %}<script>setTimeout(function () { location.reload(); }, 8000);</script>{% endif %}

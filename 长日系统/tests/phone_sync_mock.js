@@ -18,6 +18,7 @@ const cachedGet = k => CACHE[k], cachedSet = (k, v) => { CACHE[k] = v; };
 const getStorageInt = (k, d) => (CACHE[k] ? parseInt(CACHE[k]) : d);
 const isArchiveEnabled = () => true; const BLOCK_UNDO_COOLDOWN_H = 2;
 const buildPhoneReports = () => ({ "林晚": { day: "D2" } });   // 报告函数在同步那一节外面，这里用桩（完整测试见 phone_reports_full.js）
+const phoneApplyBottleOps = () => {}, phoneApplyWishOps = () => {};   // 漂流瓶 / 心愿的网页操作在同步那一节外面，这里用桩（逻辑测试见各自的桩环境脚本）
 const ext = {}; const seal = { ext: { getStringConfig: (e, k) => k === "RP存档服务器地址" ? "https://archive.x/" : "TOK" } };
 const getPrimaryUid = (p, u) => u;
 const getUidByRoleName = (p, n) => Object.entries(KV.a_private_group.QQ).find(([_, v]) => v[0] === n || v[2] === n)?.[0] || null;

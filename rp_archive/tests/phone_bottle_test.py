@@ -21,9 +21,9 @@ bot = app.test_client()
 ROSTER = [{"name": "林晚", "npc": False}, {"name": "周屿", "npc": False}, {"name": "沈知意", "npc": False}]
 def ok(cond, msg):
     if not cond: raise AssertionError(msg)
-def sync(version="1.10.8", done=None, roster=None):
+def sync(version="1.10.8", done=None, roster=None, sms_enabled=True, feature_off=None):
     r = bot.post("/api/phone/sync", headers={"X-Archive-Token": TOKEN}, json={"after": 0, "bottle_ops_done": done or [], "snapshot": {
-        "game_day": "D2", "roster": roster or ROSTER, "rules": {"sms_enabled": True}, "blocks": [], "block_write": True,
+        "game_day": "D2", "roster": roster or ROSTER, "rules": {"sms_enabled": sms_enabled}, "feature_off": feature_off or {}, "blocks": [], "block_write": True,
         "plugin": {"version": version, "params": []}}})
     ok(r.status_code == 200, r.status_code); return r.get_json()
 def player(code):
@@ -99,6 +99,14 @@ ok("没扔出去" in text(lin, "/p/me/bottles") and "大海太安静" in text(li
 for i in range(7): throw(zhou, f"刷{i}")
 ok(c.execute("SELECT COUNT(*) FROM phone_bottle_ops WHERE role='周屿' AND done=0").fetchone()[0] == A._BOTTLE_MAX_PENDING, "pending cap")
 
+# 寄信功能关了 / 这个人被限制寄信 → 漂流瓶也不能用（它是匿名短信的一种）
+n = c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0]
+sync(sms_enabled=False); throw(lin, "寄信关了"); ok(c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0] == n, "sms disabled blocks bottle")
+ok("寄信功能已关闭" in text(lin, "/p/me/bottles"), "reason shown")
+sync(feature_off={"林晚": ["sms"]}); throw(lin, "被限制"); ok(c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0] == n, "restricted user blocked")
+reply(lin, 7, "被限制回信"); ok(c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0] == n, "restricted user cannot reply")
+throw(shen, "别人不受影响"); ok(c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0] == n + 1, "others unaffected")
+sync()
 # 违禁词 / 暂停通讯
 n = c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0]
 throw(shen, "加qq123"); ok(c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0] == n, "blocked word")

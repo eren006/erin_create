@@ -1010,11 +1010,15 @@ ext.onNotCommandReceived = (ctx, msg) => {
 
     // 悬赏心愿：以前只有带句号的「。悬赏心愿」能用；不带句号、以及竖版（上面已换算成横版）都走这里
     if (raw.startsWith("悬赏心愿")) {
+        const wishWebNote = wishWebNotice("悬赏心愿");
+        if (wishWebNote) return seal.replyToSender(ctx, msg, wishWebNote);
         return cmd_bounty_wish.solve(ctx, msg, { args: [], getArgN: () => "", rawText: raw });
     }
 
     // 心愿
     if (raw.startsWith("挂心愿")) {
+        const wishWebNote = wishWebNotice("挂心愿");
+        if (wishWebNote) return seal.replyToSender(ctx, msg, wishWebNote);
         const rest = raw.slice(3).trim();
         return cmd_post_wish.solve(ctx, msg, makeFakeCmdArgs(rest ? rest.split(/\s+/) : []));
     }
@@ -1024,11 +1028,15 @@ ext.onNotCommandReceived = (ctx, msg) => {
     }
 
     if (raw.startsWith("摘心愿")) {
+        const wishWebNote = wishWebNotice("摘心愿");
+        if (wishWebNote) return seal.replyToSender(ctx, msg, wishWebNote);
         const rest = raw.slice(3).trim();
         return cmd_pick_wish.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
     }
 
     if (raw.startsWith("撤心愿")) {
+        const wishWebNote = wishWebNotice("撤心愿");
+        if (wishWebNote) return seal.replyToSender(ctx, msg, wishWebNote);
         const rest = raw.slice(3).trim();
         return cmd_withdraw_wish.solve(ctx, msg, makeFakeCmdArgs(rest ? [rest] : []));
     }
@@ -1138,6 +1146,13 @@ function wishIncrDailyCount(uid, day, type) {
     mainKvSet(key, counts);
 }
 
+function wishDecrDailyCount(uid, day, type) {
+    const key = type === 'post' ? "wish_daily_post_counts" : "wish_daily_pick_counts";
+    const counts = mainKvGet(key, {});
+    const rec = counts[uid];
+    if (rec && rec.day === day && rec.count > 0) { counts[uid] = { day, count: rec.count - 1 }; mainKvSet(key, counts); }
+}
+
 function wishRemoveFromInv(roleKey, code, count) {
     const invs = mainKvGet("global_inventories", {});
     const inv = invs[roleKey] || [];
@@ -1153,6 +1168,12 @@ function wishRemoveFromInv(roleKey, code, count) {
 }
 
 // 兼容 fromId 带/不带 platform 前缀两种历史格式
+// 回复统一走这里：网页手机调用时 ctx.__captureReply 接住提示文字（不往群里发），群里指令照旧直接回复
+function wishSay(ctx, msg, text) {
+    if (ctx && ctx.__captureReply) { ctx.__captureReply(text); return; }
+    return seal.replyToSender(ctx, msg, text);
+}
+
 function wishIsOwner(platform, uid, rawUid, fromId) {
     return fromId === uid || fromId === rawUid || fromId.replace(`${platform}:`, "") === rawUid;
 }
@@ -1200,47 +1221,47 @@ let cmd_post_wish = {};
 cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
     const cfg = mainKvGet("global_feature_toggle", {});
-    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
-    { const _fw = checkTsFeatureWindow("enable_wish_system"); if (!_fw.ok) return seal.replyToSender(ctx, msg, _fw.msg); }
+    if (cfg.enable_wish_system === false) return wishSay(ctx, msg, "🌠 心愿功能已关闭。");
+    { const _fw = checkTsFeatureWindow("enable_wish_system"); if (!_fw.ok) return wishSay(ctx, msg, _fw.msg); }
 
     const platform = msg.platform;
     const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const uid = `${platform}:${rawUid}`;
     const name = getUserRoleName(platform, uid);
     const day = cachedGet("global_days");
-    if (!name || !day) return seal.replyToSender(ctx, msg, !name ? "请先绑定角色" : "请先设置全局天数");
+    if (!name || !day) return wishSay(ctx, msg, !name ? "请先绑定角色" : "请先设置全局天数");
     if (!isUserFeatureEnabled(rawUid, "enable_wish_system"))
-        return seal.replyToSender(ctx, msg, "❌ 你已被限制使用心愿功能");
+        return wishSay(ctx, msg, "❌ 你已被限制使用心愿功能");
 
     const rawFull = msg.message.trim().replace(/^[。.]?\s*挂心愿\s*/, "");
     const pipeIdx = rawFull.indexOf("|");
     const mainPart = pipeIdx !== -1 ? rawFull.slice(0, pipeIdx).trim() : rawFull.trim();
     const customNick = pipeIdx !== -1 ? rawFull.slice(pipeIdx + 1).trim() : "";
-    if (customNick.length > 10) return seal.replyToSender(ctx, msg, "⚠️ 昵称最多10个字");
+    if (customNick.length > 10) return wishSay(ctx, msg, "⚠️ 昵称最多10个字");
 
     const mainArgs = mainPart.split(/\s+/);
     let [rawT, place, ...contentArr] = mainArgs;
     const content = contentArr.join(" ").trim();
-    if (!rawT || !place || !content) return seal.replyToSender(ctx, msg, "用法：挂心愿 1400-1500 地点 内容 [| 昵称]");
+    if (!rawT || !place || !content) return wishSay(ctx, msg, "用法：挂心愿 1400-1500 地点 内容 [| 昵称]");
 
     const timeResult = parseAndValidateTime(rawT, [], 0, "心愿");
-    if (!timeResult.valid) return seal.replyToSender(ctx, msg, timeResult.errorMsg);
+    if (!timeResult.valid) return wishSay(ctx, msg, timeResult.errorMsg);
     const time = timeResult.time;
 
     // 冲突与限制检查
     if (!checkRealityHourLimit(time, ctx, msg)) return;
     const pCheck = checkPlaceCommon(platform, name, place, "挂心愿");
-    if (!pCheck.valid) return seal.replyToSender(ctx, msg, pCheck.errorMsg);
+    if (!pCheck.valid) return wishSay(ctx, msg, pCheck.errorMsg);
 
     const conflicts = checkAcceptanceConflicts(platform, rawUid, name, day, time);
-    if (conflicts.length) return seal.replyToSender(ctx, msg, `⚠️ 时间冲突：\n${conflicts.join('\n')}`);
+    if (conflicts.length) return wishSay(ctx, msg, `⚠️ 时间冲突：\n${conflicts.join('\n')}`);
 
     let pool = WishUtils.getPool();
     const wishMaxConcurrent = getStorageInt("wish_max_concurrent", 3);
-    if (pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId)).length >= wishMaxConcurrent) return seal.replyToSender(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrent}个心愿`);
+    if (pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId)).length >= wishMaxConcurrent) return wishSay(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrent}个心愿`);
     const wishDailyPostLimit = getStorageInt("wish_daily_post_limit", 0);
     if (wishDailyPostLimit > 0 && wishGetDailyCount(uid, day, 'post') >= wishDailyPostLimit) {
-        return seal.replyToSender(ctx, msg, `⚠️ 今日发布心愿次数已达上限（${wishDailyPostLimit}次）`);
+        return wishSay(ctx, msg, `⚠️ 今日发布心愿次数已达上限（${wishDailyPostLimit}次）`);
     }
 
     // Bug2修复：所有验证通过后再扣写信币
@@ -1248,7 +1269,7 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
     if (isLetterSystemEnabled()) {
         wishCoinCheck = checkAndCostLetterCoin(ctx, msg, "wish");
         if (!wishCoinCheck.success) {
-            seal.replyToSender(ctx, msg, wishCoinCheck.errorMsg);
+            wishSay(ctx, msg, wishCoinCheck.errorMsg);
             return seal.ext.newCmdExecuteResult(true);
         }
     }
@@ -1263,7 +1284,7 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
     const _昵称行 = customNick ? `\n🏷️ 显示昵称：${customNick}` : "";
     let wishSuccessMsg = applyMsgTemplate("wish_post_success", { 编号: id, 昵称行: _昵称行.trim(), 费用行: _wishCost.trim() })
         || `✅ 心愿已漂走！编号：${id}\n有效期：24小时${_昵称行}${_wishCost}`;
-    seal.replyToSender(ctx, msg, wishSuccessMsg);
+    wishSay(ctx, msg, wishSuccessMsg);
 
     // 公共频道推送
     if (mainKvGet("wish_public_send", true)) {
@@ -1281,6 +1302,89 @@ cmd_post_wish.solve =(ctx, msg, cmdArgs) => {
 };
 
 // ==========================================
+// 网页手机的心愿操作（主插件 phoneApplyWishOps 通过 globalThis.__changriWishWeb 调用）
+// 不另写一套规则：拼成一条「挂心愿 …」/「撤心愿 编号」交给上面同一个指令函数，开关、时间冲突、地点、上限、扣写信币、公共频道推送都照旧；
+// 指令里要回复的话被 ctx.__captureReply 接住，当作结果文案回报给网页。成功与否按心愿池前后变化判断（模板文案可自定义，不能靠文字）。
+// 网页开着时群里的「挂心愿 / 撤心愿 / 摘心愿 / 悬赏心愿」改成提示去网页（看心愿还在群里）；超过 10 分钟没同步就当没开。
+// ==========================================
+const WISH_WEB_STALE_MS = 10 * 60 * 1000;
+function wishWebNotice(label) {
+    const st = mainKvGet("phone_wish_web", {});
+    if (!st.on || Date.now() - (st.at || 0) > WISH_WEB_STALE_MS) return null;
+    return `🌠 ${label}现在改在网页手机里：${st.url || "存档站 /p"}\n在「发现 → 心愿」里操作，用管理员私发给你的激活码登录。（看心愿还在群里发）`;
+}
+function wishWebRun(platform, roleName, kind, text, args) {
+    const api = getApi();
+    if (!api) return { ok: false, msg: "主插件未加载" };
+    const rawUid = getUidByRoleName(platform, roleName);
+    if (!rawUid) return { ok: false, msg: `找不到角色「${roleName}」` };
+    const ep = api.getSafeEndPoint(platform);
+    if (!ep) return { ok: false, msg: "找不到可用的机器人账号" };
+    const primary = getPrimaryUid(platform, rawUid), uid = `${platform}:${primary}`;
+    if (!isUserFeatureEnabled_wish(primary)) return { ok: false, msg: "❌ 你已被限制使用心愿功能" };
+    const replies = [];
+    const ctx = { endPoint: ep, __captureReply: (t) => replies.push(String(t)) };
+    const msg = { platform, message: text, messageType: "private", sender: { userId: uid } };
+    const before = WishUtils.getPool().map(w => w.id);
+    const cmd = kind === "withdraw" ? cmd_withdraw_wish : (kind === "bounty" ? cmd_bounty_wish : cmd_post_wish);
+    cmd.solve(ctx, msg, { getArgN: (n) => args[n - 1] || "", args, rawText: text });
+    const after = WishUtils.getPool();
+    if (kind === "post" || kind === "bounty") {
+        const created = after.find(w => !before.includes(w.id) && wishIsOwner(platform, uid, primary, w.fromId));
+        if (created) return { ok: true, wishId: created.id, msg: replies[0] || `心愿已漂走，编号 ${created.id}` };
+    } else if (before.includes(args[0]) && !after.some(w => w.id === args[0])) {
+        return { ok: true, wishId: args[0], msg: replies[0] || `已撤回心愿 ${args[0]}` };
+    }
+    return { ok: false, msg: (replies[0] || "没有成功，请稍后再试").replace(/\s+/g, " ") };
+}
+function isUserFeatureEnabled_wish(rawUid) { try { return getApi().isUserFeatureEnabled ? getApi().isUserFeatureEnabled(rawUid, "enable_wish_system") : true; } catch (e) { return true; } }
+function wishWebPost(platform, roleName, v) {
+    const time = String(v.time || "").replace(/:/g, "").trim();   // 1400-1500
+    const place = String(v.place || "").trim(), content = String(v.content || "").trim(), nick = String(v.nick || "").trim();
+    if (!time || !place || !content) return { ok: false, msg: "时间、地点、内容都要填" };
+    if (/\s/.test(place)) return { ok: false, msg: "地点里不要有空格" };
+    if (/[|｜]/.test(place + content + nick)) return { ok: false, msg: "各项里不能带「|」" };
+    const rw = v.reward || null;
+    if (rw && rw.name) {
+        const cnt = parseInt(rw.count);
+        if (!cnt || cnt <= 0) return { ok: false, msg: "悬赏数量要填正整数" };
+        if (/[|｜]/.test(String(rw.name))) return { ok: false, msg: "物品名里不能带「|」" };
+        const text = `悬赏心愿 ${time} ${place} ${content} | ${String(rw.name).trim()} ${cnt}${nick ? " | " + nick : ""}`;
+        return wishWebRun(platform, roleName, "bounty", text, []);
+    }
+    const text = `挂心愿 ${time} ${place} ${content}${nick ? " | " + nick : ""}`;
+    return wishWebRun(platform, roleName, "post", text, text.replace(/^挂心愿\s*/, "").split(/\s+/));
+}
+function wishWebWithdraw(platform, roleName, wishId) {
+    const id = String(wishId || "").toUpperCase();
+    if (!id) return { ok: false, msg: "缺少心愿编号" };
+    return wishWebRun(platform, roleName, "withdraw", `撤心愿 ${id}`, [id]);
+}
+// 摘心愿（异步：要建群）。群号放在 gid 里回报给网页；建群过程中的提示不往群里发，被 reply 接住。
+// 摘取者所在的「专属群」当作 ctx/msg 的落点，finalizeGroupCreation 内部要用到真实的临时消息对象。
+async function wishWebPick(platform, roleName, wishId) {
+    const api = getApi();
+    if (!api) return { ok: false, msg: "主插件未加载" };
+    const rawUid = getUidByRoleName(platform, roleName);
+    if (!rawUid) return { ok: false, msg: `找不到角色「${roleName}」` };
+    const ep = api.getSafeEndPoint(platform);
+    if (!ep) return { ok: false, msg: "找不到可用的机器人账号" };
+    const primary = getPrimaryUid(platform, rawUid);
+    if (!isUserFeatureEnabled_wish(primary)) return { ok: false, msg: "❌ 你已被限制使用心愿功能" };
+    const id = String(wishId || "").toUpperCase();
+    if (!id) return { ok: false, msg: "缺少心愿编号" };
+    const details = getRoleDetails(platform, roleName) || {};
+    const m = seal.newMessage(); m.messageType = "group";
+    m.groupId = `${platform}-Group:${String(details.gid || "0").replace(/\D/g, "") || "0"}`;
+    const ctx = seal.createTempCtx(ep, m);
+    const notes = [];
+    const r = await wishPickCore(platform, primary, roleName, id, ctx, m, (t) => notes.push(String(t)));
+    if (r.ok) return { ok: true, wishId: id, gid: r.gid, msg: r.msg.replace(/\s+/g, " ") };
+    return { ok: false, wishId: id, msg: (notes[0] || r.msg || "没有成功").replace(/\s+/g, " ") };
+}
+globalThis.__changriWishWeb = { post: wishWebPost, withdraw: wishWebWithdraw, pick: wishWebPick };
+
+// ==========================================
 // 看心愿 & 摘心愿
 // ==========================================
 const cmd_view_wish = {
@@ -1293,36 +1397,35 @@ const cmd_view_wish = {
     }
 };
 
-let cmd_pick_wish = {};
-cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
-    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
-    const cfg = mainKvGet("global_feature_toggle", {});
-    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
-    const wid = cmdArgs.getArgN(1)?.toUpperCase();
-    const platform = msg.platform;
-    const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+// 摘心愿核心（群里指令和网页手机共用）。顺序是关键，不要调换：
+//  ① 检查 → ② 同一个 tick 里把心愿从池子里「认领」掉（getPool 到 savePool 之间没有 await，所以两个人同时摘只有一个能成：
+//     后来的看到心愿已经不在了）→ ③ 才 await 建群 → ④ 建群失败就把心愿原样放回池子并退回今日摘取次数（以前失败了心愿凭空没了）
+//     → ⑤ 成功才通知挂心愿的人、发悬赏奖励。
+// 返回 { ok, msg, gid }：msg 是给摘取者的结果文案；群里指令直接回复，网页手机回报给网页。
+async function wishPickCore(platform, rawUid, name, wid, ctx, msg, reply) {
     const uid = `${platform}:${rawUid}`;
-    const name = getUserRoleName(platform, uid);
-    if (!wid || !name) return seal.replyToSender(ctx, msg, !wid ? "格式：摘心愿 编号" : "请先绑定角色");
+    const cfg = mainKvGet("global_feature_toggle", {});
+    if (cfg.enable_wish_system === false) return { ok: false, msg: "🌠 心愿功能已关闭。" };
+    if (!wid || !name) return { ok: false, msg: !wid ? "格式：摘心愿 编号" : "请先绑定角色" };
 
     let pool = WishUtils.getPool();
     const wish = pool.find(w => w.id === wid);
-    if (!wish || wishIsOwner(platform, uid, rawUid, wish.fromId)) return seal.replyToSender(ctx, msg, !wish ? "心愿不存在或已过期" : "不能摘自己的心愿");
+    if (!wish || wishIsOwner(platform, uid, rawUid, wish.fromId)) return { ok: false, msg: !wish ? "心愿不存在或已过期" : "不能摘自己的心愿" };
 
     const fromName = getUserRoleName(platform, wish.fromId) || wish.fromId;
 
     // 摘取冲突双向检查
     const check = (u, n) => checkAcceptanceConflicts(platform, u.replace(`${platform}:`, ""), n, wish.day, wish.time);
     const errs = [...check(uid, name), ...check(wish.fromId, fromName)];
-    if (errs.length) return seal.replyToSender(ctx, msg, `⚠️ 无法建立联系：\n${errs.join('\n')}`);
+    if (errs.length) return { ok: false, msg: `⚠️ 无法建立联系：\n${errs.join('\n')}` };
 
     const wishDailyPickLimit = getStorageInt("wish_daily_pick_limit", 0);
     const currentDay = cachedGet("global_days") || "";
     if (wishDailyPickLimit > 0 && wishGetDailyCount(uid, currentDay, 'pick') >= wishDailyPickLimit) {
-        return seal.replyToSender(ctx, msg, `⚠️ 今日摘取心愿次数已达上限（${wishDailyPickLimit}次）`);
+        return { ok: false, msg: `⚠️ 今日摘取心愿次数已达上限（${wishDailyPickLimit}次）` };
     }
 
-    // 移除并成交
+    // 移除并成交（认领：这一步之前不能有 await）
     WishUtils.savePool(pool.filter(w => w.id !== wid));
     wishIncrDailyCount(uid, currentDay, 'pick');
 
@@ -1332,10 +1435,15 @@ cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
     };
 
     // 异步下发
-    const wishGid = await finalizeGroupCreation(platform, ctx, msg, item, [fromName, name]);
-    if (wishGid !== false) {
-        recordInteractionStat(platform, name, fromName, "wish");
+    const wishGid = await finalizeGroupCreation(platform, ctx, msg, item, [fromName, name], reply);
+    if (wishGid === false) {
+        // 建群失败（群号池没有可用的等）：把心愿原样放回去、退回次数，别让它凭空消失
+        const back = WishUtils.getPool();
+        if (!back.some(w => w.id === wid)) { back.push(wish); WishUtils.savePool(back); }
+        wishDecrDailyCount(uid, currentDay, 'pick');
+        return { ok: false, msg: "⚠️ 没能建立专属小群（暂无可用群号），心愿已放回，请稍后再摘或联系管理员。" };
     }
+    recordInteractionStat(platform, name, fromName, "wish");
 
     // 通知挂心愿者（finalizeGroupCreation 已跳过 sendname，需单独发）
     const { uid: fromUid, gid: fromBindGid } = getRoleDetails(platform, fromName);
@@ -1351,7 +1459,18 @@ cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
     if (wish.rewardCode) wishAddToInv(uid, wish.rewardCode, wish.rewardCount);
     const pickReply = applyMsgTemplate("wish_pick_success", { 群号: wishGid, 悬赏奖励行: _悬赏奖励行.trim() })
         || `🎉 摘取成功！专属小群已建立。\n💬 群号：${wishGid}${_悬赏奖励行}`;
-    seal.replyToSender(ctx, msg, pickReply);
+    return { ok: true, msg: pickReply, gid: wishGid };
+}
+
+let cmd_pick_wish = {};
+cmd_pick_wish.solve =async (ctx, msg, cmdArgs) => {
+    if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
+    const wid = cmdArgs.getArgN(1)?.toUpperCase();
+    const platform = msg.platform;
+    const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
+    const name = getUserRoleName(platform, `${platform}:${rawUid}`);
+    const r = await wishPickCore(platform, rawUid, name, wid, ctx, msg, undefined);
+    seal.replyToSender(ctx, msg, r.msg);
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -1362,7 +1481,7 @@ let cmd_withdraw_wish = {};
 cmd_withdraw_wish.solve =(ctx, msg, cmdArgs) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
     const cfg = mainKvGet("global_feature_toggle", {});
-    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
+    if (cfg.enable_wish_system === false) return wishSay(ctx, msg, "🌠 心愿功能已关闭。");
     const wid = cmdArgs.getArgN(1)?.toUpperCase();
     const platform = msg.platform;
     const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
@@ -1371,19 +1490,19 @@ cmd_withdraw_wish.solve =(ctx, msg, cmdArgs) => {
 
     if (!wid) {
         const myWishes = pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId));
-        return seal.replyToSender(ctx, msg, WishUtils.formatList(myWishes, "你发布的心愿") + "\n\n使用「撤心愿 编号」撤回");
+        return wishSay(ctx, msg, WishUtils.formatList(myWishes, "你发布的心愿") + "\n\n使用「撤心愿 编号」撤回");
     }
 
     const withdrawWish = pool.find(w => w.id === wid);
-    if (!withdrawWish) return seal.replyToSender(ctx, msg, `❌ 找不到编号「${wid}」的心愿，可能已过期或被摘取`);
-    if (!wishIsOwner(platform, uid, rawUid, withdrawWish.fromId)) return seal.replyToSender(ctx, msg, "❌ 该心愿不属于你");
+    if (!withdrawWish) return wishSay(ctx, msg, `❌ 找不到编号「${wid}」的心愿，可能已过期或被摘取`);
+    if (!wishIsOwner(platform, uid, rawUid, withdrawWish.fromId)) return wishSay(ctx, msg, "❌ 该心愿不属于你");
 
     WishUtils.savePool(pool.filter(w => w.id !== wid));
     const _退回行 = withdrawWish.rewardCode ? `\n🎁 悬赏物品「${withdrawWish.rewardName}」×${withdrawWish.rewardCount} 已退回背包。` : "";
     if (withdrawWish.rewardCode) wishAddToInv(uid, withdrawWish.rewardCode, withdrawWish.rewardCount);
     const withdrawReply = applyMsgTemplate("wish_withdraw_success", { 编号: wid, 悬赏退回行: _退回行.trim() })
         || `✅ 已撤回心愿 ${wid}${_退回行}`;
-    seal.replyToSender(ctx, msg, withdrawReply);
+    wishSay(ctx, msg, withdrawReply);
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -1396,23 +1515,23 @@ cmd_bounty_wish.help = "挂出带物品奖励的心愿\n格式：悬赏心愿 �
 cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
     if (!requireApi(ctx, msg)) return seal.ext.newCmdExecuteResult(true);
     const cfg = mainKvGet("global_feature_toggle", {});
-    if (cfg.enable_wish_system === false) return seal.replyToSender(ctx, msg, "🌠 心愿功能已关闭。");
-    if (cachedGet("wish_bounty_enabled") === "false") return seal.replyToSender(ctx, msg, "🎁 悬赏心愿功能已关闭。");
+    if (cfg.enable_wish_system === false) return wishSay(ctx, msg, "🌠 心愿功能已关闭。");
+    if (cachedGet("wish_bounty_enabled") === "false") return wishSay(ctx, msg, "🎁 悬赏心愿功能已关闭。");
 
     const platform = msg.platform;
     const rawUid = getPrimaryUid(platform, msg.sender.userId.replace(`${platform}:`, ""));
     const uid = `${platform}:${rawUid}`;
     const name = getUserRoleName(platform, uid);
     const day = cachedGet("global_days");
-    if (!name) return seal.replyToSender(ctx, msg, "请先绑定角色");
-    if (!day) return seal.replyToSender(ctx, msg, "请先设置全局天数");
+    if (!name) return wishSay(ctx, msg, "请先绑定角色");
+    if (!day) return wishSay(ctx, msg, "请先设置全局天数");
     if (!isUserFeatureEnabled(rawUid, "enable_wish_system"))
-        return seal.replyToSender(ctx, msg, "❌ 你已被限制使用心愿功能");
+        return wishSay(ctx, msg, "❌ 你已被限制使用心愿功能");
 
     // 无前缀/竖版写法由分派入口换算好传进来（cmdArgs.rawText），带句号的注册指令照旧读原消息
     const rawFull = String(cmdArgs && cmdArgs.rawText != null ? cmdArgs.rawText : msg.message).trim().replace(/^[。.]?\s*悬赏心愿\s*/, "");
     const pipeIdx = rawFull.search(/[|｜]/);
-    if (pipeIdx === -1) return seal.replyToSender(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量 [| 昵称]\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1 | 神秘人A");
+    if (pipeIdx === -1) return wishSay(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量 [| 昵称]\n示例：悬赏心愿 1400-1500 图书馆 陪我看书 | 滋补汤 1 | 神秘人A");
 
     const wishPart = rawFull.slice(0, pipeIdx).trim();
     const afterFirstPipe = rawFull.slice(pipeIdx + 1);
@@ -1425,49 +1544,49 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
         rewardPart = afterFirstPipe.trim();
         customNick = "";
     }
-    if (customNick.length > 10) return seal.replyToSender(ctx, msg, "⚠️ 昵称最多10个字");
+    if (customNick.length > 10) return wishSay(ctx, msg, "⚠️ 昵称最多10个字");
 
     const wishArgs = wishPart.split(/\s+/);
     const rawT = wishArgs[0], place = wishArgs[1];
     const content = wishArgs.slice(2).join(" ").trim();
-    if (!rawT || !place || !content) return seal.replyToSender(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量");
+    if (!rawT || !place || !content) return wishSay(ctx, msg, "格式：悬赏心愿 时间 地点 内容 | 物品名 数量");
 
     const rewardArgs = rewardPart.split(/\s+/);
-    if (rewardArgs.length < 2) return seal.replyToSender(ctx, msg, "❌ 悬赏格式：| 物品名 数量");
+    if (rewardArgs.length < 2) return wishSay(ctx, msg, "❌ 悬赏格式：| 物品名 数量");
     const rewardCount = parseInt(rewardArgs[rewardArgs.length - 1]);
-    if (isNaN(rewardCount) || rewardCount <= 0) return seal.replyToSender(ctx, msg, "❌ 悬赏数量必须为正整数");
+    if (isNaN(rewardCount) || rewardCount <= 0) return wishSay(ctx, msg, "❌ 悬赏数量必须为正整数");
     const rewardInput = rewardArgs.slice(0, -1).join(" ");
 
     const reg = mainKvGet("item_registry", {});
     const rewardItem = Object.values(reg).find(r => r.code === rewardInput.toUpperCase() || r.name === rewardInput);
-    if (!rewardItem) return seal.replyToSender(ctx, msg, `❌ 找不到物品「${rewardInput}」`);
+    if (!rewardItem) return wishSay(ctx, msg, `❌ 找不到物品「${rewardInput}」`);
 
     const roleKey = uid;
     if (!wishCheckInv(roleKey, rewardItem.code, rewardCount)) {
-        return seal.replyToSender(ctx, msg, `❌ 背包中「${rewardItem.name}」数量不足（需要 ${rewardCount}）`);
+        return wishSay(ctx, msg, `❌ 背包中「${rewardItem.name}」数量不足（需要 ${rewardCount}）`);
     }
 
     const timeResult = parseAndValidateTime(rawT, [], 0, "心愿");
-    if (!timeResult.valid) return seal.replyToSender(ctx, msg, timeResult.errorMsg);
+    if (!timeResult.valid) return wishSay(ctx, msg, timeResult.errorMsg);
     const time = timeResult.time;
     if (!checkRealityHourLimit(time, ctx, msg)) return;
     const pCheck = checkPlaceCommon(platform, name, place, "悬赏心愿");
-    if (!pCheck.valid) return seal.replyToSender(ctx, msg, pCheck.errorMsg);
+    if (!pCheck.valid) return wishSay(ctx, msg, pCheck.errorMsg);
     const conflicts = checkAcceptanceConflicts(platform, rawUid, name, day, time);
-    if (conflicts.length) return seal.replyToSender(ctx, msg, `⚠️ 时间冲突：\n${conflicts.join('\n')}`);
+    if (conflicts.length) return wishSay(ctx, msg, `⚠️ 时间冲突：\n${conflicts.join('\n')}`);
 
     let pool = WishUtils.getPool();
     const wishMaxConcurrentB = getStorageInt("wish_max_concurrent", 3);
-    if (pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId)).length >= wishMaxConcurrentB) return seal.replyToSender(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrentB}个心愿`);
+    if (pool.filter(w => wishIsOwner(platform, uid, rawUid, w.fromId)).length >= wishMaxConcurrentB) return wishSay(ctx, msg, `⚠️ 最多同时挂${wishMaxConcurrentB}个心愿`);
     const wishDailyPostLimitB = getStorageInt("wish_daily_post_limit", 0);
     if (wishDailyPostLimitB > 0 && wishGetDailyCount(uid, day, 'post') >= wishDailyPostLimitB) {
-        return seal.replyToSender(ctx, msg, `⚠️ 今日发布心愿次数已达上限（${wishDailyPostLimitB}次）`);
+        return wishSay(ctx, msg, `⚠️ 今日发布心愿次数已达上限（${wishDailyPostLimitB}次）`);
     }
 
     let wishCoinCheck = null;
     if (isLetterSystemEnabled()) {
         wishCoinCheck = checkAndCostLetterCoin(ctx, msg, "wish");
-        if (!wishCoinCheck.success) { seal.replyToSender(ctx, msg, wishCoinCheck.errorMsg); return seal.ext.newCmdExecuteResult(true); }
+        if (!wishCoinCheck.success) { wishSay(ctx, msg, wishCoinCheck.errorMsg); return seal.ext.newCmdExecuteResult(true); }
     }
 
     wishRemoveFromInv(roleKey, rewardItem.code, rewardCount);
@@ -1480,7 +1599,7 @@ cmd_bounty_wish.solve = (ctx, msg, cmdArgs) => {
 
     const _b昵称行 = customNick ? `\n🏷️ 显示昵称：${customNick}` : "";
     const _b费用行 = wishCoinCheck?.cost > 0 ? `\n💰 已消耗写信币 ${wishCoinCheck.cost} 枚` : "";
-    seal.replyToSender(ctx, msg, applyMsgTemplate("wish_bounty_post_success", {
+    wishSay(ctx, msg, applyMsgTemplate("wish_bounty_post_success", {
         编号: id, 悬赏物: rewardItem.name, 悬赏数量: rewardCount, 昵称行: _b昵称行.trim(), 费用行: _b费用行.trim()
     }) || `✅ 悬赏心愿已发出！编号：${id}\n🎁 悬赏：${rewardItem.name} ×${rewardCount}（已从背包扣除）\n有效期：24小时${_b昵称行}${_b费用行}`);
 

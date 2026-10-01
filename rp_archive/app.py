@@ -1569,6 +1569,8 @@ def _migrate(conn):
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_moment_comments_moment ON moment_comments(moment_id)")
+    if "wish_web" not in _col_names(conn, "phone_settings"):
+        conn.execute("ALTER TABLE phone_settings ADD COLUMN wish_web INTEGER NOT NULL DEFAULT 0")  # 网页心愿（开着时群里的挂心愿/撤心愿停用）
     if "bottle_web" not in _col_names(conn, "phone_settings"):
         conn.execute("ALTER TABLE phone_settings ADD COLUMN bottle_web INTEGER NOT NULL DEFAULT 0")  # 网页漂流瓶（开着时群里的漂流瓶停用）
     if "comm_paused" not in _col_names(conn, "phone_settings"):
@@ -1729,6 +1731,32 @@ def _migrate(conn):
             ok          INTEGER NOT NULL DEFAULT 0,
             result      TEXT    NOT NULL DEFAULT '',
             created_at  INTEGER NOT NULL
+        )
+    """)
+
+    # ── 31. 网页心愿：心愿池只有一个，在机器人里；网页看的是快照里的那份，挂/撤先排队交插件执行（同群里的「挂心愿 / 撤心愿」同一套规则）──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_wish_ops (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id     INTEGER NOT NULL,
+            role        TEXT    NOT NULL,
+            kind        TEXT    NOT NULL,
+            payload     TEXT    NOT NULL DEFAULT '{}',
+            done        INTEGER NOT NULL DEFAULT 0,
+            ok          INTEGER NOT NULL DEFAULT 0,
+            result      TEXT    NOT NULL DEFAULT '',
+            wish_id     TEXT    NOT NULL DEFAULT '',
+            created_at  INTEGER NOT NULL
+        )
+    """)
+
+    # 网页心愿：刚被摘走/撤回的心愿，在快照追上之前先从心愿墙上藏起来（别人手里的旧页面点进去会白跑一趟）
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_wish_gone (
+            show_id    INTEGER NOT NULL,
+            wish_id    TEXT    NOT NULL,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (show_id, wish_id)
         )
     """)
 
@@ -5759,7 +5787,7 @@ def _phone_comm_pause_guard():
     if request.method != "POST" or not request.path.startswith("/p/me/"):
         return None
     path = request.path
-    key = _PAUSE_FORMS.get(path) or ("phone_flash" if re.fullmatch(r"/p/me/g/\d+/send", path) or path == "/p/me/bottles/throw"
+    key = _PAUSE_FORMS.get(path) or ("phone_flash" if re.fullmatch(r"/p/me/g/\d+/send", path) or path == "/p/me/bottles/throw" or path == "/p/me/wishes/post" or re.fullmatch(r"/p/me/wishes/[A-Za-z0-9]+/(withdraw|pick)", path)
                                      or re.fullmatch(r"/p/me/bottles/\d+/reply", path) else None)
     if not key or (path == "/p/me/lovemail" and request.form.get("action") == "revoke"):
         return None
@@ -6481,12 +6509,13 @@ def api_phone_sync():
                            (show["id"], role, blob, now))
         db.commit()
     lovemails, lm_revokes = _lm_for_bot(db, show["id"], data.get("lovemail_done"), data.get("lovemail_revoke_done"))
-    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "bottle_web": _phone_bottle_on(db, show["id"]), "events": events, "shop_events": shop_events,
+    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "bottle_web": _phone_bottle_on(db, show["id"]), "wish_web": _phone_wish_on(db, show["id"]), "events": events, "shop_events": shop_events,
                     "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done")),
                     "lovemails": lovemails, "lovemail_revokes": lm_revokes,
                     "block_ops": _block_ops_for_bot(db, show["id"], data.get("block_ops_done")),
                     "admin_ops": _admin_ops_for_bot(db, show["id"], data.get("admin_ops_done")),
                     "bottle_ops": _bottle_ops_for_bot(db, show["id"], data.get("bottle_ops_done")),
+                    "wish_ops": _wish_ops_for_bot(db, show["id"], data.get("wish_ops_done")),
                     # 群消息：插件照短信计当日次数和冷却（不记互动统计），游标 phone_group_cursor
                     "group_events": [{"id": r["id"], "from_role": r["from_role"], "timestamp": r["created_at"], "day_key": r["day_key"]}
                                      for r in db.execute("SELECT id, from_role, created_at, day_key FROM phone_group_msgs "
@@ -6638,7 +6667,7 @@ def player_discover():
         "SELECT role_name, content, created_at, (SELECT COUNT(*) FROM moment_images i WHERE i.moment_id=m.id) AS n "
         "FROM moments m WHERE show_id=? AND deleted=0 ORDER BY id DESC LIMIT 1", (sid,)).fetchone()
     return render_template("phone.html", mode="discover", owner=owner, sid=sid, csrf=_phone_csrf(),
-                           phone_admin=(owner == PHONE_ADMIN), moments_latest=latest, bottle_on=_phone_bottle_on(db, sid),
+                           phone_admin=(owner == PHONE_ADMIN), moments_latest=latest, bottle_on=_phone_bottle_on(db, sid), wish_on=_phone_wish_on(db, sid),
                            has_maps=bool(_phone_maps(db, sid, owner == PHONE_ADMIN)))
 
 def _phone_maps(db, sid, is_admin):
@@ -7690,8 +7719,9 @@ def _phone_bottle_on(db, sid):
     row = db.execute("SELECT bottle_web FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
     return bool(row and row["bottle_web"])
 
-def _bottle_state(db, sid):
-    """(能不能用, 原因)：开关开着、没暂停、机器人同步新鲜（网页操作要靠机器人执行）、在档期内"""
+def _bottle_state(db, sid, owner=None):
+    """(能不能用, 原因)：开关开着、没暂停、机器人同步新鲜（网页操作要靠机器人执行）、在档期内；
+    漂流瓶是匿名短信的一种，跟「寄信」共用开关：全局寄信关了、或这个人被限制寄信，都不能用（插件里也会再校验一次）"""
     if not _phone_bottle_on(db, sid):
         return False, "网页漂流瓶没有开启"
     if _phone_comm_paused(db, sid):
@@ -7702,6 +7732,11 @@ def _bottle_state(db, sid):
     show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
     if _schedule_zone(dict(show)) != "main":
         return False, "不在档期内，暂时不能用"
+    snap = sync["snap"]
+    if (snap.get("rules") or {}).get("sms_enabled") is False:
+        return False, "寄信功能已关闭，漂流瓶暂时不能用"
+    if owner and "sms" in set((snap.get("feature_off") or {}).get(owner) or []):
+        return False, "你被限制使用寄信功能，漂流瓶也不能用"
     return True, ""
 
 def _store_drift_event(show, data):
@@ -7787,7 +7822,7 @@ def player_bottles():
         return redirect(url_for("admin_phone_bottles"))
     if not _phone_bottle_on(db, sid):
         return redirect(url_for("player_discover"))
-    can, why = _bottle_state(db, sid)
+    can, why = _bottle_state(db, sid, owner)
     threads = _bottle_threads(db, sid, owner)
     return render_template("phone.html", mode="bottles", owner=owner, sid=sid, csrf=_phone_csrf(), can=can, why=why,
                            threads=threads, has_pending=any(t["state"] == "pending" for t in threads),
@@ -7809,7 +7844,7 @@ def player_bottle(bid):
         msgs.append({"mine": True, "text": o["content"], "time": "发送中…", "pending": True})
     failed = db.execute("SELECT result FROM phone_bottle_ops WHERE show_id=? AND role=? AND kind='reply' AND bottle_id=? AND done=1 AND ok=0 "
                         "AND created_at>? ORDER BY id DESC LIMIT 1", (sid, owner, bid, int(time.time() * 1000) - 600_000)).fetchone()
-    can, why = _bottle_state(db, sid)
+    can, why = _bottle_state(db, sid, owner)
     return render_template("phone.html", mode="bottle", owner=owner, sid=sid, csrf=_phone_csrf(), can=can, why=why, bottle=b,
                            bottle_id=bid, i_threw=(b["thrower"] == owner), tag_known=not b["guess"], msgs=msgs,
                            has_pending=any(m["pending"] for m in msgs), failed=(failed["result"] if failed else ""),
@@ -7846,7 +7881,7 @@ def player_bottle_throw():
     if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
         _bottle_flash("❌ 页面过期了，刷新后再试"); return redirect(back)
     db = get_db()
-    can, why = _bottle_state(db, sid)
+    can, why = _bottle_state(db, sid, owner)
     if not can:
         _bottle_flash("❌ " + why); return redirect(back)
     text, err = _bottle_check_text(db, sid, owner, request.form.get("text"))
@@ -7873,7 +7908,7 @@ def player_bottle_reply(bid):
     b = db.execute("SELECT * FROM phone_drift WHERE show_id=? AND bottle_id=?", (sid, bid)).fetchone()
     if not b or owner not in (b["thrower"], b["catcher"]):
         return redirect(url_for("player_bottles"))
-    can, why = _bottle_state(db, sid)
+    can, why = _bottle_state(db, sid, owner)
     if not can:
         _bottle_flash("❌ " + why); return redirect(back)
     text, err = _bottle_check_text(db, sid, owner, request.form.get("text"))
@@ -7904,6 +7939,216 @@ def admin_phone_bottles():
     pending = db.execute("SELECT COUNT(*) FROM phone_bottle_ops WHERE show_id=? AND done=0", (sid,)).fetchone()[0]
     return render_template("phone.html", mode="admin_bottles", owner="管理员", sid=sid, csrf=_phone_csrf(), phone_admin=True,
                            bottles=rows, bottle_on=_phone_bottle_on(db, sid), pending=pending)
+
+# ── 网页心愿（挂心愿 / 撤心愿 + 心愿墙）──────────────────────────────────────────────
+# 心愿池只有一个，在机器人里；网页看的是插件同步快照里的那份（snapshot.wishes），挂/撤先排队（phone_wish_ops），
+# 机器人下一次同步（约半分钟）按群里「挂心愿 / 撤心愿」同一套规则执行（开关、时间冲突、地点、上限、扣写信币、公共频道推送都在插件里），回报后这里显示结果。
+# 后台「网页心愿」开关只决定谁来操作：打开后群里的「挂心愿 / 撤心愿」改成提示去网页；「看心愿 / 摘心愿 / 悬赏心愿」这一版还在群里。
+# 心愿对别人是匿名的（只有性别和昵称），所以快照里的 from_role 只用来判断「哪些是我的」，不展示。
+_WISH_MAX_CONTENT = 60
+_WISH_MAX_PENDING = 3
+
+def _phone_wish_on(db, sid):
+    row = db.execute("SELECT wish_web FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
+    return bool(row and row["wish_web"])
+
+def _wish_ops_for_bot(db, sid, done):
+    """机器人回报 [{id, ok, msg, wish_id}] 先落库，再把还没执行的网页心愿操作交给它（每次最多 50 条）"""
+    if isinstance(done, list):
+        for d in done[:200]:
+            if isinstance(d, dict) and str(d.get("id", "")).isdigit():
+                op = db.execute("SELECT kind FROM phone_wish_ops WHERE show_id=? AND id=? AND done=0", (sid, int(d["id"]))).fetchone()
+                if not op:
+                    continue   # 已经记过的重复回报：不重复处理
+                wid = str(d.get("wish_id") or "")[:20]
+                db.execute("UPDATE phone_wish_ops SET done=1, ok=?, result=?, wish_id=? WHERE show_id=? AND id=?",
+                           (1 if d.get("ok") else 0, str(d.get("msg") or "")[:200], wid, sid, int(d["id"])))
+                if d.get("ok") and wid and op["kind"] in ("pick", "withdraw"):
+                    db.execute("INSERT OR REPLACE INTO phone_wish_gone (show_id, wish_id, created_at) VALUES (?,?,?)", (sid, wid, int(time.time() * 1000)))
+        db.commit()
+    return [{"id": r["id"], "role": r["role"], "kind": r["kind"], "payload": r["payload"]}
+            for r in db.execute("SELECT * FROM phone_wish_ops WHERE show_id=? AND done=0 ORDER BY id LIMIT 50", (sid,))]
+
+def _wish_state(db, sid, owner):
+    """(能不能用, 原因)：开关开着、没暂停、机器人同步新鲜、在档期内、插件里心愿开着且这个人没被限制"""
+    if not _phone_wish_on(db, sid):
+        return False, "网页心愿没有开启"
+    if _phone_comm_paused(db, sid):
+        return False, _PAUSE_MSG
+    sync = _phone_sync_row(db, sid)
+    if not sync or not _phone_day(sync, int(time.time() * 1000))[2]:
+        return False, "机器人暂时没有同步，心愿先歇一会儿"
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    if _schedule_zone(dict(show)) != "main":
+        return False, "不在档期内，暂时不能用"
+    snap = sync["snap"]
+    rule = (snap.get("rules") or {}).get("wish") or {}
+    if rule.get("enabled") is False:
+        return False, "心愿功能已关闭"
+    if "wish" in set((snap.get("feature_off") or {}).get(owner) or []):
+        return False, "你被限制使用心愿功能"
+    if rule and rule.get("has_day") is False:
+        return False, "还没有设置游戏天数，暂时不能挂心愿"
+    return True, ""
+
+def _wish_wall(db, sid, owner):
+    """心愿墙：快照里 24 小时内还漂着的心愿（新的在前），标出哪些是我的；别人的发布者不给"""
+    sync = _phone_sync_row(db, sid)
+    now = int(time.time() * 1000)
+    out = []
+    gone = {r["wish_id"] for r in db.execute("SELECT wish_id FROM phone_wish_gone WHERE show_id=? AND created_at>?", (sid, now - 15 * 60_000))}
+    claiming = {json.loads(r["payload"] or "{}").get("wish_id") for r in db.execute(
+        "SELECT payload FROM phone_wish_ops WHERE show_id=? AND kind='pick' AND done=0", (sid,))}
+    for w in (sync["snap"].get("wishes") if sync else None) or []:
+        left = 24 * 3600_000 - (now - int(w.get("ts") or 0))
+        if left <= 0 or w.get("id") in gone:
+            continue
+        g = w.get("gender") or ""
+        out.append({"id": w.get("id"), "day": w.get("day"), "time": w.get("time"), "place": w.get("place"), "content": w.get("content"),
+                    "who": ((("👨 " if g == "男" else "👩 " if g == "女" else "") + (w.get("nick") or "")).strip()),
+                    "reward": w.get("reward") or "", "left_h": max(1, math.ceil(left / 3600_000)), "mine": w.get("from_role") == owner,
+                    "claiming": w.get("id") in claiming,
+                    "ts": int(w.get("ts") or 0)})
+    return sorted(out, key=lambda x: -x["ts"])
+
+def _wish_reward_options(db, sid, owner, snap):
+    """悬赏物品可选项：这个人背包里有的物品/货币（来自插件每 2 分钟的报告）；悬赏被关掉时为空"""
+    if ((snap.get("rules") or {}).get("wish") or {}).get("bounty_enabled") is False:
+        return []
+    row = db.execute("SELECT data FROM phone_reports WHERE show_id=? AND role=?", (sid, owner)).fetchone()
+    try: rpg = (json.loads(row["data"]).get("rpg") or {}) if row else {}
+    except (ValueError, TypeError): rpg = {}
+    out = []
+    for key in ("items", "currencies"):
+        for it in rpg.get(key) or []:
+            if it.get("name") and int(it.get("count") or 0) > 0 and "|" not in it["name"] and "｜" not in it["name"]:
+                out.append({"name": it["name"], "count": int(it["count"])})
+    return out
+
+def _wish_places(db, sid):
+    row = db.execute("SELECT value FROM site_config WHERE show_id=? AND key='available_places'", (sid,)).fetchone()
+    try: return list(json.loads(row["value"]).keys()) if row and row["value"] else []
+    except Exception: return []
+
+@app.route("/p/me/wishes")
+def player_wishes():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    if owner == PHONE_ADMIN or not _phone_wish_on(db, sid):
+        return redirect(url_for("player_discover"))
+    can, why = _wish_state(db, sid, owner)
+    now = int(time.time() * 1000)
+    pending = [dict(r, p=json.loads(r["payload"] or "{}")) for r in db.execute(
+        "SELECT * FROM phone_wish_ops WHERE show_id=? AND role=? AND (done=0 OR (ok=0 AND created_at>?) OR (ok=1 AND kind='pick' AND created_at>?)) "
+        "ORDER BY id DESC LIMIT 20", (sid, owner, now - 3600_000, now - 24 * 3600_000))]
+    sync = _phone_sync_row(db, sid)
+    return render_template("phone.html", mode="wishes", owner=owner, sid=sid, csrf=_phone_csrf(), can=can, why=why,
+                           rewards=_wish_reward_options(db, sid, owner, sync["snap"] if sync else {}),
+                           wall=_wish_wall(db, sid, owner), pending=pending, has_pending=any(not o["done"] for o in pending),
+                           places=_wish_places(db, sid), max_content=_WISH_MAX_CONTENT, flash=session.pop("phone_flash", None))
+
+def _wish_guard(back_endpoint="player_wishes"):
+    who = _phone_current()
+    if not who:
+        return None, redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return None, redirect(url_for("player_discover"))
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+        return None, redirect(url_for(back_endpoint))
+    db = get_db()
+    can, why = _wish_state(db, sid, owner)
+    if not can:
+        session["phone_flash"] = "❌ " + why
+        return None, redirect(url_for(back_endpoint))
+    if owner not in _phone_roster(_phone_sync_row(db, sid)):
+        session["phone_flash"] = "❌ " + _ROLE_GONE_MSG
+        return None, redirect(url_for(back_endpoint))
+    if db.execute("SELECT COUNT(*) FROM phone_wish_ops WHERE show_id=? AND role=? AND done=0", (sid, owner)).fetchone()[0] >= _WISH_MAX_PENDING:
+        session["phone_flash"] = "⏳ 前面几条还在等机器人处理，稍等一下"
+        return None, redirect(url_for(back_endpoint))
+    return (sid, owner, db), None
+
+@app.route("/p/me/wishes/post", methods=["POST"])
+def player_wish_post():
+    got, resp = _wish_guard()
+    if resp: return resp
+    sid, owner, db = got
+    f = request.form
+    t1, t2 = (f.get("t1") or "").strip(), (f.get("t2") or "").strip()
+    place, content, nick = (f.get("place") or "").strip()[:30], (f.get("content") or "").strip(), (f.get("nick") or "").strip()
+    err = None
+    if not (re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t1) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t2) and t1 < t2):
+        err = "❌ 时间要选开始和结束，且结束晚于开始（不能跨日）"
+    elif not place or re.search(r"\s", place):
+        err = "❌ 地点要填，且不要有空格"
+    elif not content or len(content) > _WISH_MAX_CONTENT:
+        err = f"❌ 内容要填，最多 {_WISH_MAX_CONTENT} 字"
+    elif len(nick) > 10 or re.search(r"[|｜]", nick + place + content):
+        err = "❌ 昵称最多 10 个字，且各项里不能带「|」"
+    elif _too_repetitive(content):
+        err = _REPEAT_MSG
+    elif _blocked_hit(sid, owner, "心愿", place, content, nick):
+        err = BLOCKED_MSG
+    payload = {"time": f"{t1}-{t2}", "place": place, "content": content, "nick": nick}
+    rname = (f.get("reward") or "").strip()
+    if not err and rname:
+        sync = _phone_sync_row(db, sid)
+        opts = {o["name"]: o["count"] for o in _wish_reward_options(db, sid, owner, sync["snap"] if sync else {})}
+        try: rcount = int(f.get("reward_count") or 0)
+        except ValueError: rcount = 0
+        if rname not in opts: err = "❌ 悬赏物品不在你的背包里（或悬赏功能已关闭）"
+        elif not (1 <= rcount <= opts[rname]): err = f"❌ 悬赏数量要在 1~{opts[rname]} 之间"
+        else: payload["reward"] = {"name": rname, "count": rcount}
+    if err:
+        session["phone_flash"] = err
+        return redirect(url_for("player_wishes"))
+    db.execute("INSERT INTO phone_wish_ops (show_id, role, kind, payload, created_at) VALUES (?,?,'post',?,?)",
+               (sid, owner, json.dumps(payload, ensure_ascii=False), int(time.time() * 1000)))
+    db.commit()
+    session["phone_flash"] = "🌠 已交给机器人，约半分钟内漂出去（结果显示在下面）"
+    return redirect(url_for("player_wishes"))
+
+@app.route("/p/me/wishes/<wid>/pick", methods=["POST"])
+def player_wish_pick(wid):
+    got, resp = _wish_guard()
+    if resp: return resp
+    sid, owner, db = got
+    wid = wid.upper()
+    w = next((x for x in _wish_wall(db, sid, owner) if x["id"] == wid), None)
+    if not w:
+        session["phone_flash"] = "❌ 这个心愿已经不在了（过期、被摘走或被撤回）"
+    elif w["mine"]:
+        session["phone_flash"] = "❌ 不能摘自己的心愿"
+    elif w["claiming"]:
+        session["phone_flash"] = "⏳ 这个心愿正在被别人摘取，稍等一下看结果"
+    else:
+        db.execute("INSERT INTO phone_wish_ops (show_id, role, kind, payload, created_at) VALUES (?,?,'pick',?,?)",
+                   (sid, owner, json.dumps({"wish_id": wid}), int(time.time() * 1000)))
+        db.commit()
+        session["phone_flash"] = "🌠 已交给机器人建小群，约半分钟内出结果（群号会显示在下面）"
+    return redirect(url_for("player_wishes"))
+
+@app.route("/p/me/wishes/<wid>/withdraw", methods=["POST"])
+def player_wish_withdraw(wid):
+    got, resp = _wish_guard()
+    if resp: return resp
+    sid, owner, db = got
+    wid = wid.upper()
+    mine = next((w for w in _wish_wall(db, sid, owner) if w["id"] == wid and w["mine"]), None)
+    if not mine:
+        session["phone_flash"] = "❌ 找不到这个心愿，可能已过期、被摘取或不属于你"
+        return redirect(url_for("player_wishes"))
+    db.execute("INSERT INTO phone_wish_ops (show_id, role, kind, payload, created_at) VALUES (?,?,'withdraw',?,?)",
+               (sid, owner, json.dumps({"wish_id": wid}), int(time.time() * 1000)))
+    db.commit()
+    session["phone_flash"] = "↩️ 已交给机器人，约半分钟内撤回"
+    return redirect(url_for("player_wishes"))
+
 
 @app.route("/p/me/stats")
 def player_stats():
@@ -8700,13 +8945,14 @@ def _plugin_status(db, sid):
     can = vt >= _PLUGIN_MIN_VERSION
     can_official = vt >= _PLUGIN_OFFICIAL_VERSION
     can_bottle = vt >= _PLUGIN_BOTTLE_VERSION
+    can_wish = vt >= _PLUGIN_BOTTLE_VERSION and bool(plug.get("wish_web"))   # 社交卫星也要加载（它提供网页心愿的执行入口）
     ago_txt = "刚刚" if ago < 1 else (f"{ago} 分钟前" if ago < 120 else f"{ago // 60} 小时前")
     level, note = "ok", ""
     if not can:
         level, note = "warn", f"（{'插件版本太旧，' if ver else '插件还没带版本号，'}需要 ≥ {'.'.join(map(str, _PLUGIN_MIN_VERSION))} 才能在网页上设置）"
     elif not fresh:
         level, note = "bad", "（超过一段时间没同步，机器人可能掉线了）"
-    return {"known": True, "version": ver or "旧版（<1.10.4）", "ago": ago, "fresh": fresh, "can": can, "can_official": can_official, "can_bottle": can_bottle, "level": level,
+    return {"known": True, "version": ver or "旧版（<1.10.4）", "ago": ago, "fresh": fresh, "can": can, "can_official": can_official, "can_bottle": can_bottle, "can_wish": can_wish, "level": level,
             "text": f"插件 {ver or '旧版'} · 最后同步 {ago_txt}{note}", "params": plug.get("params") or []}
 
 @app.route("/p/admin/settings")
@@ -9150,6 +9396,13 @@ def admin_phone_codes():
             db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, ?) "
                        "ON CONFLICT(show_id) DO UPDATE SET web_send=excluded.web_send",
                        (sid, 1 if request.form.get("on") == "1" else 0))
+        elif action == "wish_web":
+            st = _plugin_status(db, sid)
+            if request.form.get("on") == "1" and not st.get("can_wish"):
+                return "插件要升级到 %s 或更高（社交卫星也要加载）并同步一次，才能打开网页心愿" % ".".join(map(str, _PLUGIN_BOTTLE_VERSION)), 409
+            db.execute("INSERT INTO phone_settings (show_id, wish_web) VALUES (?, ?) "
+                       "ON CONFLICT(show_id) DO UPDATE SET wish_web=excluded.wish_web",
+                       (sid, 1 if request.form.get("on") == "1" else 0))
         elif action == "bottle_web":
             st = _plugin_status(db, sid)
             if request.form.get("on") == "1" and not st.get("can_bottle"):
@@ -9216,6 +9469,7 @@ def admin_phone_codes():
     return render_template("admin_phone_codes.html", rows=rows, show=show,
                            theme_settings=phone_theme(sid), base_url=_phone_base_url(),
                            web_send=_phone_web_send_on(db, sid), bottle_web=_phone_bottle_on(db, sid), can_bottle=_plugin_status(db, sid).get("can_bottle"),
+                           wish_web=_phone_wish_on(db, sid), can_wish=_plugin_status(db, sid).get("can_wish"),
                            comm_paused=_phone_comm_paused(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
                            song_daily=_song_daily_cap(db, sid), song_default=_SONG_DEFAULT_DAILY,
                            admin_code=(db.execute("SELECT code FROM phone_admin_codes WHERE show_id=?", (sid,)).fetchone() or {"code": None})["code"],
