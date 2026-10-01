@@ -268,7 +268,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
       <a href="player_guide.html" target="_blank">玩家指南</a>
       <a href="changri_wishes.html">许愿墙</a>
     </div>
-    <div class="nav-meta">SYSTEM · v1.10.2</div>
+    <div class="nav-meta">SYSTEM · v1.10.3</div>
   </div>
 </nav>
 
@@ -284,7 +284,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
     <div class="hero-stats">
       <div class="hero-stat"><b>10</b><span>个子系统</span></div>
       <div class="hero-stat"><b>200+</b><span>条指令</span></div>
-      <div class="hero-stat"><b>v1.10.2</b><span>当前版本</span></div>
+      <div class="hero-stat"><b>v1.10.3</b><span>当前版本</span></div>
     </div>
     <div class="hero-cta">
       <a class="btn btn-light" onclick="showTab('manual')">进入指令手册 →</a>
@@ -461,9 +461,20 @@ document.getElementById("subsysGrid").innerHTML = SUBSYSTEMS.map(s => `
 // ========================
 const CHANGELOG = [
   {
+    version: "1.10.3",
+    date: "2026-10-01",
+    latest: true,
+    groups: [
+      { type: "feat", title: "新功能", items: [
+        "机器人里才会变的数据（地点钥匙、战斗属性、玩家技能、拍卖快照）现在每 2 分钟自动同步到存档网页，不用再发「。推送全部」；网页上对应的只读表会自己更新",
+        "RP 后台手机适配：底部导航栏、表格可横滑、按钮输入框更好点；网页手机对话页顶部的每日额度统一放到名字下面一行"
+      ]}
+    ]
+  },
+  {
     version: "1.10.2",
     date: "2026-09-30",
-    latest: true,
+    latest: false,
     groups: [
       { type: "feat", title: "新功能", items: [
         "网页手机底部重新整理为「消息 / 发现 / 角色 / 我的」。「发现」页收纳朋友圈、心动信箱、点歌台、小游戏、使用指南，顶部有每日一句（一言 + 今日诗词，点一下切换）；消息页只留搜索和对话",
