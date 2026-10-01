@@ -7,10 +7,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import app as A
 
+original_theme = A.phone_theme
+A.app.jinja_env.globals["phone_theme"] = lambda *args: original_theme(None)
+
 with A.app.test_request_context("/p/me"):
     html = A.render_template("phone.html", mode="inbox", sid=901, owner="测试角色",
                              threads=[], status={"can": False}, revision="", public=None)
-script = html[html.index("  var scope ="):html.index("  function readKey(other)")]
+script = html[html.rfind("  var scope =", 0, html.index("prefKey = 'phone:appearance:'")):html.index("  function readKey(other)")]
 harness = r"""
 const vm = require('node:vm'), assert = require('node:assert/strict');
 const source = SOURCE;

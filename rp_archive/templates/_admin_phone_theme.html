@@ -1,0 +1,35 @@
+<section class="pc-add" aria-labelledby="phoneThemeHeading">
+  <h3 id="phoneThemeHeading">手机主题与文案</h3>
+  <p class="pc-intro">仅应用于当前季度。管理统一界面用语；默认外观可配套选择，玩家仍可自行选择配色、背景和字号。</p>
+  <form method="post" id="phoneThemeForm">
+    <input type="hidden" name="theme_csrf" value="{{ session.theme_csrf }}">
+    <input type="hidden" name="action" value="phone_theme">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+      <label>文案方案 <select name="copy" id="phoneCopy">{% for key,t in phone_themes.items() %}<option value="{{ key }}"{% if theme_settings['copy'] == key %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></label>
+      <label>默认外观 <select name="visual" id="phoneVisual">{% for key,t in phone_themes.items() %}<option value="{{ key }}"{% if theme_settings.visual == key %} selected{% endif %}>{{ t.name }}</option>{% endfor %}</select></label>
+      <button type="button" class="pc-btn ghost" id="phoneThemePair">使用配套外观</button>
+    </div>
+    <details><summary>自定义文案（留空跟随方案）</summary>
+      {% for key,label in [('messages','消息页名称'),('public','公开播报名称'),('moments','朋友圈名称'),('new','新信息按钮'),('brand','系统水印'),('empty','消息空状态')] %}
+      <label style="display:block;margin:10px 0">{{ label }}<input style="display:block;width:100%;padding:8px;box-sizing:border-box" name="word_{{ key }}" maxlength="100" value="{{ theme_settings.custom.get(key,'') }}" placeholder="{{ theme_settings.words[key] }}"></label>
+      {% endfor %}
+    </details>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
+      <button type="button" class="pc-btn ghost" id="phoneThemePreview">预览未保存设置</button>
+      <button type="button" class="pc-btn ghost" id="phoneThemeReset">恢复现代默认（保存后生效）</button>
+      <button class="pc-btn" type="submit">保存本季主题</button>
+    </div>
+  </form>
+  <iframe id="phoneThemeFrame" title="手机主题预览（示例内容）" hidden style="width:min(100%,400px);height:640px;border:1px solid var(--border);border-radius:18px;margin-top:16px"></iframe>
+</section>
+<script>
+(function(){
+ const f=document.getElementById('phoneThemeForm'), frame=document.getElementById('phoneThemeFrame');
+ const copies={{ phone_copy|tojson }};
+ function labels(){f.querySelectorAll('[name^="word_"]').forEach(e=>e.placeholder=copies[f.elements.copy.value][e.name.slice(5)]);}
+ document.getElementById('phoneCopy').addEventListener('change',labels);
+ document.getElementById('phoneThemePair').onclick=()=>{f.elements.visual.value=f.elements.copy.value;};
+ document.getElementById('phoneThemeReset').onclick=()=>{f.elements.copy.value='modern';f.elements.visual.value='modern';f.querySelectorAll('[name^="word_"]').forEach(e=>e.value='');labels();};
+ document.getElementById('phoneThemePreview').onclick=()=>{const query=new URLSearchParams(new FormData(f));query.delete('action');query.delete('theme_csrf');frame.src={{ url_for('admin_phone_theme_preview')|tojson }}+'?'+query;frame.hidden=false;};
+})();
+</script>

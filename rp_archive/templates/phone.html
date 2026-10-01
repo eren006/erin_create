@@ -1,3 +1,4 @@
+{% set skin = phone_theme(sid if sid is defined else none, phone_skin_override if phone_skin_override is defined else none) %}
 <!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -571,6 +572,7 @@ a { color: var(--link); text-decoration: none; }
 .nick-hint { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
 .profile-flash { margin: 10px var(--gutter) 0; }
 </style>
+{% include '_phone_skin.html' %}
 </head>
 <body>
 {% macro npc(name) %}{% if name in (phone_npcs or []) %}<span class="npc-tag">NPC</span>{% endif %}{% endmacro %}
@@ -608,13 +610,13 @@ a { color: var(--link); text-decoration: none; }
   {% if admin_as %}
   <header class="bar">
     <a class="back" href="{{ url_for('admin_phone_index') }}">角色</a>
-    <div class="title">信息<small>管理 · 以 {{ owner }} 的视角</small></div>
+    <div class="title">{{ skin.words.messages }}<small>管理 · 以 {{ owner }} 的视角</small></div>
     <div class="right"></div>
     {% include "_phone_quota.html" %}
   </header>
   {% else %}
   <header class="bar tab-bar">
-    <div class="tab-head"><h1>信息</h1></div>
+    <div class="tab-head"><h1>{{ skin.words.messages }}</h1></div>
     <div class="tab-sub keep">{% include "_phone_quota.html" %}</div>
   </header>
   {% endif %}
@@ -628,7 +630,7 @@ a { color: var(--link); text-decoration: none; }
     <a class="row public-row" data-other="__public__" data-received-ts="{{ public.ts }}" href="{{ url_for('player_phone_public') }}">
       <div class="avatar public-avatar">📢</div>
       <div class="body">
-        <div class="top"><span class="name">公开播报</span><span class="time">{{ public.game_day }} {{ public.time }}</span></div>
+        <div class="top"><span class="name">{{ skin.words.public }}</span><span class="time">{{ public.game_day }} {{ public.time }}</span></div>
         <div class="preview">{{ public.preview }}</div>
       </div>
     </a>
@@ -654,7 +656,7 @@ a { color: var(--link); text-decoration: none; }
     </a>
     {% endif %}
     {% else %}
-    <div class="empty">这里还很安静。开季后，群里的短信往来和收到的礼物会留在这里。{% if status.can %}<br>也可以点下方「新信息」开始对话。{% endif %}</div>
+    <div class="empty">{{ skin.words.empty }}{% if status.can %}<br>也可以点下方「{{ skin.words.new }}」开始对话。{% endif %}</div>
     {% endfor %}
   </div>
 
@@ -663,8 +665,8 @@ a { color: var(--link); text-decoration: none; }
 
 {% elif mode == 'public' %}
   <header class="bar">
-    <a class="back" href="{{ url_for('player_phone_inbox') }}">信息</a>
-    <div class="title">公开播报</div>
+    <a class="back" href="{{ url_for('player_phone_inbox') }}">{{ skin.words.messages }}</a>
+    <div class="title">{{ skin.words.public }}</div>
     <div class="right"></div>
   </header>
   {% include '_phone_public_ticker.html' %}
@@ -698,14 +700,14 @@ a { color: var(--link); text-decoration: none; }
 {% elif mode == 'moments' %}
   {% if mine_only %}
   <header class="bar">
-    <a class="back" href="{{ url_for('player_moments') }}">朋友圈</a>
+    <a class="back" href="{{ url_for('player_moments') }}">{{ skin.words.moments }}</a>
     <div class="title">我的朋友圈</div>
     <div class="right">{% if not why %}<button class="icon-btn" id="mcOpen" type="button" aria-haspopup="dialog" aria-label="发朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>{% endif %}</div>
   </header>
   {% else %}
   <header class="bar">
     <a class="back" href="{{ url_for('player_discover') }}">发现</a>
-    <div class="title">朋友圈</div>
+    <div class="title">{{ skin.words.moments }}</div>
     <div class="right">
       <a class="icon-btn" href="{{ url_for('player_moments', mine=1) }}" aria-label="我的朋友圈" title="我的朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg></a>
       {% if not why %}<button class="icon-btn" id="mcOpen" type="button" aria-haspopup="dialog" aria-label="发朋友圈" title="发朋友圈"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>{% endif %}
@@ -906,7 +908,7 @@ a { color: var(--link); text-decoration: none; }
   <div class="scroll list" id="discoverList">
     <div class="daily-card" id="dailyQuote" role="button" tabindex="0" aria-label="每日一句，点一下换一句" hidden><div class="q"></div><div class="src"></div></div>
     <div class="disc-group">
-      <a class="row" data-other="__moments__"{% if moments_latest %} data-received-ts="{{ moments_latest['created_at'] }}"{% endif %} href="{{ url_for('player_moments') }}"><div class="avatar tile">📷</div><span class="name">朋友圈</span><span class="chev" aria-hidden="true">›</span></a>
+      <a class="row" data-other="__moments__"{% if moments_latest %} data-received-ts="{{ moments_latest['created_at'] }}"{% endif %} href="{{ url_for('player_moments') }}"><div class="avatar tile">📷</div><span class="name">{{ skin.words.moments }}</span><span class="chev" aria-hidden="true">›</span></a>
       {% if not phone_admin %}<a class="row" data-other="__lovemail__"{% if lovemail_last %} data-received-ts="{{ lovemail_last }}"{% endif %} href="{{ url_for('player_lovemail') }}"><div class="avatar tile">💌</div><span class="name">心动信箱</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
     </div>
     <div class="disc-group">
@@ -916,7 +918,7 @@ a { color: var(--link); text-decoration: none; }
       {% endif %}
       <a class="row" href="{{ url_for('phone_guide') }}"><div class="avatar tile">📱</div><span class="name">使用指南</span><span class="chev" aria-hidden="true">›</span></a>
     </div>
-    <div class="disc-mark">长日将尽 · 小手机</div>
+    <div class="disc-mark">{{ skin.words.brand }}</div>
   </div>
   <style>
   .daily-card { margin: var(--gap, 12px) var(--gutter, 18px); padding: 14px 16px; border-radius: 14px; background: var(--theirs); cursor: pointer; min-height: 84px; box-sizing: border-box; }
@@ -1082,7 +1084,7 @@ a { color: var(--link); text-decoration: none; }
 
 {% elif mode == 'stats' %}
   <header class="bar">
-    <a class="back" href="{{ url_for('player_phone_inbox') }}">信息</a>
+    <a class="back" href="{{ url_for('player_phone_inbox') }}">{{ skin.words.messages }}</a>
     <div class="title">时间线与统计<small>{% if report %}{{ report.day }} · {{ updated }} 更新{% else %}{{ owner }}{% endif %}</small></div>
     <div class="right"></div>
   </header>
@@ -1141,7 +1143,7 @@ a { color: var(--link); text-decoration: none; }
     {% if report and stale %}<p class="song-note">⚠️ 机器人有一阵子没同步了，上面可能不是最新的。</p>{% elif report and view in ('counts', 'arc') %}<p class="song-note">约每 2 分钟更新，最近同步时间见顶部。</p>{% elif report and view != 'interact' %}<p class="song-note">机器人每 2 分钟更新一次，跟群里发同名指令看到的是同一份数据。</p>{% endif %}
   </div>
 
-  {% if view == 'arc' %}<footer class="phone-watermark">长日小手机系统</footer>{% endif %}
+  {% if view == 'arc' %}<footer class="phone-watermark">{{ skin.words.brand }}</footer>{% endif %}
 
 {% elif mode == 'group_new' %}
   <header class="bar">
@@ -1252,7 +1254,7 @@ a { color: var(--link); text-decoration: none; }
   <div class="scroll list">
     <a class="row public-row" href="{{ url_for('phone_guide') }}"><div class="avatar public-avatar">📱</div><div class="body"><div class="top"><span class="name">小手机</span></div><div class="preview">管理员指南：发码、网页发送、维护删除</div></div></a>
     <a class="row public-row" href="{{ url_for('player_phone_public') }}"><div class="avatar public-avatar">📢</div><div class="body"><div class="top"><span class="name">公开播报 · 点歌</span></div><div class="preview">看点歌人、删播报和点歌</div></div></a>
-    <a class="row public-row" href="{{ url_for('player_moments') }}"><div class="avatar moments-avatar">📷</div><div class="body"><div class="top"><span class="name">朋友圈</span></div><div class="preview">删朋友圈、评论、图片</div></div></a>
+    <a class="row public-row" href="{{ url_for('player_moments') }}"><div class="avatar moments-avatar">📷</div><div class="body"><div class="top"><span class="name">{{ skin.words.moments }}</span></div><div class="preview">删朋友圈、评论、图片</div></div></a>
     {% for r in roles %}
     <div class="row admin-role">
       <a class="avatar" data-name="{{ r.name }}" href="{{ url_for('admin_phone_inbox', role=r.name) }}">{{ r.name[:1] }}</a>
@@ -1311,7 +1313,7 @@ a { color: var(--link); text-decoration: none; }
 {% elif mode == 'new' %}
   <header class="bar">
     <a class="back" href="{{ url_for('player_phone_inbox') }}">取消</a>
-    <div class="title">新信息</div>
+    <div class="title">{{ skin.words.new }}</div>
     <div class="right"></div>
   </header>
   <form class="alias-box" id="aliasForm" method="post" action="{{ url_for('player_alias_create') }}">
@@ -1356,7 +1358,7 @@ a { color: var(--link); text-decoration: none; }
 
 {% else %}
   <header class="bar">
-    <a class="back" href="{{ purl('player_phone_inbox', _as=admin_as) }}">信息</a>
+    <a class="back" href="{{ purl('player_phone_inbox', _as=admin_as) }}">{{ skin.words.messages }}</a>
     {% if group %}<div class="title"><div class="avatar head group-avatar">{{ group.name[:1] }}</div>{{ group.name }}<small>群聊 · {{ group.n }} 人</small></div>
     {% elif alias_thread == 'out' %}<div class="title">{% set _w = other.partition('＠')[0] %}<div class="avatar head" data-name="{{ _w }}">{{ _w[:1] }}</div>{{ disp(_w) if disp else _w }}<small>你的化名：{{ other.partition('＠')[2] }}</small></div>
     {% elif alias_thread == 'back' %}<div class="title"><div class="avatar head public-avatar">?</div>{{ other }}<small>匿名</small></div>
@@ -1411,7 +1413,7 @@ a { color: var(--link); text-decoration: none; }
       {% endfor %}
       {% if flash %}<div class="notice">{{ flash }}</div>{% endif %}
     </div>
-    <div class="chat-mark" aria-hidden="true">长日将尽 · 小手机</div>
+    <div class="chat-mark" aria-hidden="true">{{ skin.words.brand }}</div>
   </div>
   <div class="new-message-anchor"><button class="new-message" id="newMessage" type="button" hidden>有新信息 ↓</button></div>
   {% if alias_thread or group %}{% set status = dict(status, gift=None) %}{% endif %}
@@ -1571,7 +1573,7 @@ a { color: var(--link); text-decoration: none; }
 <div class="bottom-dock"><nav class="phone-nav" aria-label="管理导航">
   <a href="{{ url_for('admin_phone_index') }}"{% if mode in ('admin_index', 'inbox', 'thread') %} aria-current="page"{% endif %}><span aria-hidden="true">▤</span>角色</a>
   <a href="{{ url_for('player_phone_public') }}"{% if mode == 'public' %} aria-current="page"{% endif %}><span aria-hidden="true">📢</span>播报</a>
-  <a href="{{ url_for('player_moments') }}"{% if mode == 'moments' %} aria-current="page"{% endif %}><span aria-hidden="true">◎</span>朋友圈</a>
+  <a href="{{ url_for('player_moments') }}"{% if mode == 'moments' %} aria-current="page"{% endif %}><span aria-hidden="true">◎</span>{{ skin.words.moments }}</a>
 </nav></div>
 {% else %}{% include '_phone_nav.html' %}{% endif %}
 
@@ -1592,7 +1594,7 @@ a { color: var(--link); text-decoration: none; }
     <button type="button" class="choice" data-font="standard" aria-pressed="false">标准</button>
     <button type="button" class="choice" data-font="large" aria-pressed="false">大字</button>
   </div></fieldset>
-  <fieldset><legend>主题色</legend><div class="choices">
+  <fieldset><legend>主题色</legend><div class="choices"><button type="button" class="choice" data-theme="system" aria-pressed="false">跟随团主题</button>
     {% for value, label, color in [('purple','紫','#6854bc'),('blue','蓝','#3267a8'),('green','绿','#37765d'),('pink','粉','#a44770'),('orange','橙','#a45427'),('ink','墨','#505763')] %}
     <button type="button" class="choice" data-theme="{{ value }}" aria-pressed="false"><i style="--swatch:{{ color }}" aria-hidden="true"></i>{{ label }}</button>
     {% endfor %}
@@ -1766,7 +1768,7 @@ a { color: var(--link); text-decoration: none; }
 
   var phone = document.querySelector('.phone'), prefKey = 'phone:appearance:' + JSON.stringify(scope),
       pinsKey = 'phone:pins:' + JSON.stringify(scope),
-      themes = {purple:'#6854bc', blue:'#3267a8', green:'#37765d', pink:'#a44770', orange:'#a45427', ink:'#505763'},
+      themes = {system:{{ skin.style.accent|tojson }}, purple:'#6854bc', blue:'#3267a8', green:'#37765d', pink:'#a44770', orange:'#a45427', ink:'#505763'},
       walls = ['default', 'paper', 'mist', 'sage', 'rose'], prefs = {}, pins = [];
   function loadPersonal() {
     prefs = {}; pins = [];
@@ -1776,7 +1778,7 @@ a { color: var(--link); text-decoration: none; }
       var savedPins = JSON.parse(localStorage.getItem(pinsKey) || '[]');
       if (Array.isArray(savedPins)) pins = savedPins.filter(function (n) { return typeof n === 'string'; });
     } catch (_) {}
-    if (!Object.prototype.hasOwnProperty.call(themes, prefs.theme)) prefs.theme = 'purple';
+    if (!Object.prototype.hasOwnProperty.call(themes, prefs.theme)) prefs.theme = 'system';
     if (!walls.includes(prefs.wall)) prefs.wall = 'default';
     if (!['standard', 'large'].includes(prefs.font)) prefs.font = 'standard';
   }
@@ -1873,7 +1875,7 @@ a { color: var(--link); text-decoration: none; }
       if (r.ok) { delete window.PHONE_AVATARS[me]; avRemove.hidden = true; applyAvatars(); }
     });
     document.getElementById('appearanceReset').addEventListener('click', function () {
-      prefs = {theme:'purple', wall:'default', font:'standard'};
+      prefs = {theme:'system', wall:'default', font:'standard'};
       try { localStorage.removeItem(prefKey); } catch (_) {}
       applyPersonal();
     });
@@ -1893,7 +1895,7 @@ a { color: var(--link); text-decoration: none; }
       var isUnread = false;
       try { isUnread = Number(row.dataset.receivedTs) > (Number(localStorage.getItem(readKey(row.dataset.other))) || 0) || (!!row.dataset.alsoTs && Number(row.dataset.alsoTs) > (Number(localStorage.getItem(readKey(row.dataset.also))) || 0)); } catch (_) {}
       row.classList.toggle('unread', isUnread);
-      var label = row.dataset.other === '__moments__' ? '朋友圈' : (row.dataset.other === '__public__' ? '公开播报' : row.dataset.other);
+      var label = row.dataset.other === '__moments__' ? {{ skin.words.moments|tojson }} : (row.dataset.other === '__public__' ? {{ skin.words.public|tojson }} : row.dataset.other);
       if (isUnread) row.setAttribute('aria-label', label + '，有新内容');
       else row.removeAttribute('aria-label');
     });

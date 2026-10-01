@@ -1456,6 +1456,8 @@ def _migrate(conn):
             web_send INTEGER NOT NULL DEFAULT 0
         )
     """)
+    if "theme_config" not in _col_names(conn, "phone_settings"):
+        conn.execute("ALTER TABLE phone_settings ADD COLUMN theme_config TEXT NOT NULL DEFAULT '{}'")
     if "stickers" not in _col_names(conn, "phone_settings"):
         # 网页手机表情面板（一行一个 emoji/颜文字），空 = 用默认那套
         conn.execute("ALTER TABLE phone_settings ADD COLUMN stickers TEXT NOT NULL DEFAULT ''")
@@ -5610,6 +5612,42 @@ def _blocked_hit(sid, role, field, *texts):
             pass
     return hit
 
+PHONE_THEMES = {
+    'modern': {'name':'现代', 'accent':'#6854bc', 'light':['#ffffff','#f0eff2','#111114','#707079'], 'dark':['#101014','#25252b','#f2f2f5','#a0a0aa'], 'radius':'18px', 'font':'sans-serif'},
+    'classic': {'name':'中国古风', 'accent':'#934432', 'light':['#faf5e9','#eee4d2','#332b24','#796857'], 'dark':['#1d1915','#302820','#f0e5d0','#c0aa8e'], 'radius':'10px', 'font':'serif'},
+    'scifi': {'name':'科幻', 'accent':'#196a88', 'light':['#edf6fa','#dcebf2','#163340','#516d7c'], 'dark':['#09161f','#142c3a','#dceff8','#90b4c6'], 'radius':'8px', 'font':'sans-serif'},
+    'medieval': {'name':'欧洲中世纪', 'accent':'#793746', 'light':['#f7efdd','#eaddc2','#3c2d25','#7c6652'], 'dark':['#21191c','#38272c','#f1e2cb','#c2a58b'], 'radius':'12px', 'font':'serif'},
+    'republic': {'name':'民国', 'accent':'#315d50', 'light':['#f5f1e7','#e4e6dc','#24382f','#657266'], 'dark':['#141e1a','#26372e','#e7eee4','#a4b6a6'], 'radius':'6px', 'font':'serif'},
+}
+PHONE_COPY = {
+ 'modern': {'messages':'信息','public':'公开播报','moments':'朋友圈','new':'新信息','brand':'长日小手机系统','empty':'这里还很安静，新的消息会留在这里。'},
+ 'classic': {'messages':'尺素','public':'风闻','moments':'雅集','new':'寄尺素','brand':'长日尺素局','empty':'此间尚无来书，静候故人落笔。'},
+ 'scifi': {'messages':'通讯','public':'公共频道','moments':'动态频道','new':'建立通讯','brand':'长日通讯终端','empty':'暂无通讯记录，等待新的信号接入。'},
+ 'medieval': {'messages':'书信','public':'王国公告','moments':'旅人见闻','new':'寄出书信','brand':'长日信使公会','empty':'信匣尚空，信使仍在路上。'},
+ 'republic': {'messages':'信件','public':'今日公报','moments':'街巷见闻','new':'写信','brand':'长日书信局','empty':'今日尚无来信，且候邮差叩门。'},
+}
+
+def phone_theme(sid=None, override=None):
+    config = {}
+    if sid and override is None:
+        row = get_db().execute('SELECT theme_config FROM phone_settings WHERE show_id=?', (sid,)).fetchone()
+        try: config = json.loads(row['theme_config'] or '{}') if row else {}
+        except (ValueError, TypeError): config = {}
+    if not isinstance(config, dict): config = {}
+    if override is not None: config = override
+    visual = config.get('visual', 'modern'); copy = config.get('copy', 'modern')
+    if visual not in PHONE_THEMES: visual = 'modern'
+    if copy not in PHONE_COPY: copy = 'modern'
+    words = dict(PHONE_COPY[copy])
+    custom = config.get('words', {})
+    if not isinstance(custom, dict): custom = {}
+    for key in words:
+        if isinstance(custom.get(key), str) and custom[key].strip(): words[key] = custom[key].strip()[:100]
+    return {'visual':visual, 'copy':copy, 'style':PHONE_THEMES[visual], 'words':words, 'custom':custom}
+
+app.jinja_env.globals.update(phone_theme=phone_theme, phone_themes=PHONE_THEMES, phone_copy=PHONE_COPY)
+
+
 def _phone_web_send_on(db, sid):
     row = db.execute("SELECT web_send FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
     return bool(row and row["web_send"])
@@ -8399,6 +8437,17 @@ def admin_moment_image(image_id):
     return send_file(os.path.join(MOMENT_IMAGE_DIR, row["thumb"] if request.args.get("s") == "thumb" else row["file"]),
                      mimetype="image/jpeg")
 
+@app.route('/admin/phone_theme_preview')
+@require_admin
+def admin_phone_theme_preview():
+    if not get_db().execute('SELECT id FROM shows WHERE id=? AND tenant_id=?',(get_show_id(),current_tenant_id())).fetchone(): abort(404)
+    visual, copy = request.args.get('visual', 'modern'), request.args.get('copy', 'modern')
+    if visual not in PHONE_THEMES or copy not in PHONE_COPY: abort(400)
+    config = {'visual':visual, 'copy':copy, 'words':{key:request.args.get('word_'+key,'')[:100] for key in PHONE_COPY['modern']}}
+    return render_template('phone.html', mode='inbox', sid=get_show_id(), owner='主题预览', threads=[],
+                           status={'can':False}, public=None, phone_skin_override=config, revision='')
+
+
 @app.route("/admin/phone_codes", methods=["GET", "POST"])
 @require_admin
 def admin_phone_codes():
@@ -8421,7 +8470,15 @@ def admin_phone_codes():
     if request.method == "POST":
         action = request.form.get("action")
         now = int(time.time() * 1000)
-        if action == "web_send":
+        if action == "phone_theme":
+            if not db.execute('SELECT id FROM shows WHERE id=? AND tenant_id=?',(sid,tid)).fetchone(): abort(404)
+            if not hmac.compare_digest(request.form.get('theme_csrf',''), session.get('theme_csrf') or '-'): abort(403)
+            visual, copy = request.form.get('visual'), request.form.get('copy')
+            if visual not in PHONE_THEMES or copy not in PHONE_COPY: abort(400)
+            words = {key: request.form.get('word_'+key, '').strip()[:100] for key in PHONE_COPY['modern']}
+            config = json.dumps({'visual':visual, 'copy':copy, 'words':words}, ensure_ascii=False)
+            db.execute("INSERT INTO phone_settings (show_id, theme_config) VALUES (?,?) ON CONFLICT(show_id) DO UPDATE SET theme_config=excluded.theme_config", (sid, config))
+        elif action == "web_send":
             if request.form.get("on") == "1" and not sync:
                 return "机器人还没有同步本季规则，暂时不能打开网页发送", 409
             db.execute("INSERT INTO phone_settings (show_id, web_send) VALUES (?, ?) "
@@ -8482,8 +8539,9 @@ def admin_phone_codes():
     sync_ago = None
     if sync and sync["synced_at"]:
         sync_ago = max(0, int(time.time() * 1000) - sync["synced_at"]) // 60000
+    session.setdefault("theme_csrf", secrets.token_urlsafe(24))
     return render_template("admin_phone_codes.html", rows=rows, show=show,
-                           base_url=_phone_base_url(),
+                           theme_settings=phone_theme(sid), base_url=_phone_base_url(),
                            web_send=_phone_web_send_on(db, sid), comm_paused=_phone_comm_paused(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
                            song_daily=_song_daily_cap(db, sid), song_default=_SONG_DEFAULT_DAILY,
                            admin_code=(db.execute("SELECT code FROM phone_admin_codes WHERE show_id=?", (sid,)).fetchone() or {"code": None})["code"],

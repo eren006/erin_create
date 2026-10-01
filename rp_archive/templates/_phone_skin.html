@@ -1,0 +1,13 @@
+<style>
+:root { --bg: {{ skin.style.light[0] }}; --theirs: {{ skin.style.light[1] }}; --text: {{ skin.style.light[2] }}; --muted: {{ skin.style.light[3] }}; --bar: {{ skin.style.light[0] }}; --mine: {{ skin.style.accent }}; --mine-text: #fff; --theirs-text: var(--text); --line: color-mix(in srgb,var(--text) 14%,var(--bg)); }
+@media (prefers-color-scheme: dark) { :root { --bg: {{ skin.style.dark[0] }}; --theirs: {{ skin.style.dark[1] }}; --text: {{ skin.style.dark[2] }}; --muted: {{ skin.style.dark[3] }}; --bar: {{ skin.style.dark[0] }}; } }
+.phone .bar .title, .phone .bar h1, .phone .profile-name h1 { font-family: {{ skin.style.font }}; }
+.phone .broadcast, .phone .library-card, .phone .arc-card, .phone .count-tile { border-radius: {{ skin.style.radius }}; }
+{% if skin.visual != 'modern' %}
+.phone .bubble { border-radius: {{ skin.style.radius }}; }
+.phone .chat { background-image: linear-gradient(135deg, color-mix(in srgb,var(--mine) 5%,transparent), transparent); }
+{% endif %}
+{% if skin.visual == 'scifi' %}
+.phone .chat { background-image: linear-gradient(color-mix(in srgb,var(--mine) 7%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--mine) 7%,transparent) 1px,transparent 1px); background-size: 24px 24px; }
+{% endif %}
+</style>
