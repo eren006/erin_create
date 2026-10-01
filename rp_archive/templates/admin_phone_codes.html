@@ -25,12 +25,35 @@
 .pc-npc { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
 .pc-ops { display: flex; gap: 6px; flex-wrap: wrap; }
 .pc-ops form { display: inline; }
+.pc-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 18px; }
+.pc-pill { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+.pc-pill small { color: var(--muted); font-size: 11px; }
+.pc-pill b { font-size: 13px; }
+.pc-pill b.on { color: var(--green); } .pc-pill b.off { color: var(--muted); } .pc-pill b.warn { color: var(--gold); } .pc-pill b.bad { color: var(--red); }
+.pc-h { font-size: 15px; margin: 26px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.pc-switch-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.pc-switch-head label { font-size: 13px; color: var(--text); font-weight: 600; }
+.pc-state { font-size: 12px; border: 1px solid var(--border); border-radius: 12px; padding: 1px 10px; color: var(--muted); }
+.pc-state.on { color: var(--green); border-color: var(--green); }
+.pc-state.bad { color: var(--red); border-color: var(--red); }
+.pc-more summary { font-size: 12px; color: var(--muted); cursor: pointer; }
+.pc-more-body { font-size: 12px; color: var(--muted); line-height: 1.8; margin-top: 6px; }
 .pc-empty { color: var(--muted); padding: 40px 0; text-align: center; }
 @media (max-width: 600px) { .pc-table th:nth-child(3), .pc-table td:nth-child(3) { display: none; } }
 </style>
 {% endblock %}
 
 {% block body %}
+{% macro switch_card(title, action, on, can, on_btn, off_btn, state_on, state_off, confirm_on='', bad_when_on=False) -%}
+  <div class="pc-add pc-switch">
+    <div class="pc-switch-head"><label>{{ title }}</label><span class="pc-state {{ ('bad' if bad_when_on else 'on') if on else '' }}">{{ state_on if on else state_off }}</span></div>
+    <form method="post"{% if confirm_on and not on %} onsubmit="return confirm({{ confirm_on|tojson }})"{% endif %}>
+      <input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="on" value="{{ '0' if on else '1' }}">
+      <button class="pc-btn{{ ' ghost' if on != bad_when_on else '' }}" type="submit"{% if not on and not can %} disabled{% endif %}>{{ off_btn if on else on_btn }}</button>
+    </form>
+    <details class="pc-more"><summary>说明</summary><div class="pc-more-body">{{ caller() }}</div></details>
+  </div>
+{%- endmacro %}
 <div class="container" style="max-width:860px;margin:0 auto;padding:24px 16px;">
   <h2 style="margin-bottom:8px;">📱 小手机 <a href="{{ url_for('phone_guide') }}" target="_blank" rel="noopener" style="font-size:13px;font-weight:400;">管理员指南 ›</a></h2>
   {% if not show %}
@@ -41,66 +64,38 @@
     玩家看到的跟群里实际收到的一样：误送、改内容、换落款都不会提示；礼物只显示收到的。本季 <b>{{ show['name'] }}</b> 结束后所有码自动失效。<br>
     玩家入口：<code>{{ base_url }}/p</code>（输码），或直接点专属链接。码泄露了就点「重置」，旧码和已经打开的页面立即失效。
   </p>
-  {% include '_admin_phone_theme.html' %}
-  <div class="pc-add">
-    <label>临时暂停所有通讯</label>
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <form method="post" onsubmit="return {{ 'true' if comm_paused else 'confirm(\'暂停后玩家不能发短信、礼物、群聊、点歌、朋友圈、心动信，确定吗？\')' }}">
-        <input type="hidden" name="action" value="comm_pause">
-        <input type="hidden" name="on" value="{{ '0' if comm_paused else '1' }}">
-        <button class="pc-btn{{ '' if comm_paused else ' ghost' }}" type="submit">{{ '恢复通讯' if comm_paused else '暂停所有通讯' }}</button></form>
-      <span style="font-size:13px;">当前：<b style="color:{{ 'var(--red)' if comm_paused else 'var(--green)' }}">{{ '已暂停' if comm_paused else '正常' }}</b></span>
-    </div>
-    <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+  <div class="pc-overview">
+    <div class="pc-pill"><small>通讯</small><b class="{{ 'bad' if comm_paused else 'on' }}">{{ '已暂停' if comm_paused else '正常' }}</b></div>
+    <div class="pc-pill"><small>机器人同步</small>{% if sync_ago is none %}<b class="bad">从未同步</b>{% elif sync_fresh %}<b class="on">正常 · {{ sync_ago }} 分钟前</b>{% else %}<b class="warn">{{ sync_ago }} 分钟前</b>{% endif %}</div>
+    <div class="pc-pill"><small>网页发送</small><b class="{{ 'on' if web_send else 'off' }}">{{ '已打开' if web_send else '关闭' }}</b></div>
+    <div class="pc-pill"><small>网页漂流瓶</small><b class="{{ 'on' if bottle_web else 'off' }}">{{ '已打开' if bottle_web else '关闭' }}</b></div>
+    <div class="pc-pill"><small>网页心愿</small><b class="{{ 'on' if wish_web else 'off' }}">{{ '已打开' if wish_web else '关闭' }}</b></div>
+    <div class="pc-pill"><small>插件</small><b class="{{ 'on' if (can_bottle and can_wish) else 'warn' }}">{{ plugin_version or '未知' }}{% if not (can_bottle and can_wish) %} · 部分功能需升级{% endif %}</b></div>
+  </div>
+  <h3 class="pc-h">通讯与玩法开关</h3>
+  {% call switch_card('临时暂停所有通讯', 'comm_pause', comm_paused, True, '暂停所有通讯', '恢复通讯', '已暂停', '正常', confirm_on='暂停后玩家不能发短信、礼物、群聊、点歌、朋友圈、心动信，确定吗？', bad_when_on=True) %}
       暂停期间，玩家网页手机上的短信、礼物、群聊、匿名对话、点歌、朋友圈（发帖/评论/点赞）、写心动信都发不出去，页面顶部会提示「通讯暂时关闭」；已有内容照常能看，小游戏不受影响。<br>
       不影响 QQ 群里的指令，也不会拦住已经在信池里的心动信（到点照常派送）。和下面的「网页发送」开关互相独立，恢复后原来的设置不变。
-    </div>
-  </div>
-  <div class="pc-add">
-    <label>网页发送（机器人挂了时的备用通道）</label>
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <form method="post"><input type="hidden" name="action" value="web_send">
-        <input type="hidden" name="on" value="{{ '0' if web_send else '1' }}">
-        <button class="pc-btn{{ ' ghost' if web_send else '' }}" type="submit" {% if not web_send and not has_sync %}disabled{% endif %}>{{ '关闭网页发送' if web_send else '打开网页发送' }}</button></form>
-      <span style="font-size:13px;">当前：<b style="color:{{ 'var(--green)' if web_send else 'var(--muted)' }}">{{ '已打开' if web_send else '已关闭' }}</b></span>
-    </div>
-    <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+  {% endcall %}
+  {% call switch_card('网页发送（机器人挂了时的备用通道）', 'web_send', web_send, has_sync, '打开网页发送', '关闭网页发送', '已打开', '已关闭') %}
       打开后玩家可以在网页手机里直接发短信、送自定义礼物，收件人在网页上看到，<b>不会发进 QQ 群</b>。
       混乱效果、冷却、每日上限、功能权限、拉黑都照机器人最后一次同步的规则执行，次数跟群里共用。<br>
       机器人同步：{% if sync_ago is none %}<b style="color:var(--red)">从未同步</b>（插件升级到 1.9.0 并开启存档传输后才会同步，没同步过网页不能发送）
       {% elif sync_fresh %}<b style="color:var(--green)">正常</b>（{{ sync_ago }} 分钟前）
       {% else %}<b style="color:var(--gold)">{{ sync_ago }} 分钟前</b>（机器人可能挂了：网页照最后一次的规则继续工作，每日次数改按自然日算）{% endif %}
       {% if zone != 'main' %}<br>现在不在主档期内，玩家暂时发不了。{% endif %}
-    </div>
-  </div>
-  <div class="pc-add">
-    <label>网页心愿（挂心愿 / 悬赏 / 摘心愿 / 撤心愿 搬到小手机）</label>
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <form method="post"><input type="hidden" name="action" value="wish_web">
-        <input type="hidden" name="on" value="{{ '0' if wish_web else '1' }}">
-        <button class="pc-btn{{ ' ghost' if wish_web else '' }}" type="submit" {% if not wish_web and not can_wish %}disabled{% endif %}>{{ '关闭网页心愿' if wish_web else '打开网页心愿' }}</button></form>
-      <span style="font-size:13px;">当前：<b style="color:{{ 'var(--green)' if wish_web else 'var(--muted)' }}">{{ '已打开（群里的挂心愿 / 撤心愿已停用）' if wish_web else '已关闭（用群里的心愿）' }}</b></span>
-    </div>
-    <div style="font-size:12px;color:var(--muted);line-height:1.8;">
-      心愿池只有一个（在机器人里），群里和网页是<b>同一批心愿</b>。打开后玩家在小手机「发现 → 心愿」里看心愿墙、挂心愿（可带悬赏）、摘别人的心愿、撤自己的心愿。所有操作交给机器人<b>按先后顺序一个一个</b>处理（约半分钟内）：规则和群里一样（心愿开关、开放时间、时间冲突、数量上限、写信币都照旧），摘取会建专属小群；两个人同时摘同一个，先到的成功；建群失败心愿会放回。群里发「挂心愿 / 悬赏心愿 / 摘心愿 / 撤心愿」会提示去网页，只有「看心愿」还在群里。关掉就回群里用。
-      需要插件 1.10.8 或更高、社交卫星已加载并同步过一次才能打开{% if not can_wish %}（<b style="color:var(--gold)">目前插件版本不够、社交卫星没加载或还没同步</b>）{% endif %}。
-    </div>
-  </div>
-  <div class="pc-add">
-    <label>网页漂流瓶（和群里的漂流瓶二选一）</label>
-    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <form method="post"><input type="hidden" name="action" value="bottle_web">
-        <input type="hidden" name="on" value="{{ '0' if bottle_web else '1' }}">
-        <button class="pc-btn{{ ' ghost' if bottle_web else '' }}" type="submit" {% if not bottle_web and not can_bottle %}disabled{% endif %}>{{ '关闭网页漂流瓶' if bottle_web else '打开网页漂流瓶' }}</button></form>
-      <span style="font-size:13px;">当前：<b style="color:{{ 'var(--green)' if bottle_web else 'var(--muted)' }}">{{ '已打开（群里的漂流瓶已停用）' if bottle_web else '已关闭（用群里的漂流瓶）' }}</b></span>
-    </div>
-    <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+  {% endcall %}
+  {% call switch_card('网页漂流瓶（和群里的漂流瓶二选一）', 'bottle_web', bottle_web, can_bottle, '打开网页漂流瓶', '关闭网页漂流瓶', '已打开（群里已停用）', '已关闭（用群里的）') %}
       瓶子池只有一个（在机器人里），群里和网页的是<b>同一批瓶子、同一套编号</b>：群里扔的网页上接着回，网页扔的群里用「漂流瓶 编号 内容」也能回。
       这个开关只决定谁来操作：打开后玩家在小手机「发现 → 漂流瓶」里扔瓶、回信（机器人约半分钟内处理），群里发「漂流瓶」会提示去网页，两边不会各发一份；关掉就回群里用。
       抽人规则都在机器人里（不抽 NPC、不抽拉黑了抛瓶人的人），对方只看到「漂流瓶 #号」。需要插件 1.10.8 或更高并同步过一次才能打开{% if not can_bottle %}（<b style="color:var(--gold)">目前插件版本不够或还没同步</b>）{% endif %}。
       注：这套记录上线之前群里扔的旧瓶子没有内容，网页上看不到，之后的都有。
-    </div>
-  </div>
+  {% endcall %}
+  {% call switch_card('网页心愿（挂 / 悬赏 / 摘 / 撤 搬到小手机）', 'wish_web', wish_web, can_wish, '打开网页心愿', '关闭网页心愿', '已打开（群里除「看心愿」外已停用）', '已关闭（用群里的）') %}
+      心愿池只有一个（在机器人里），群里和网页是<b>同一批心愿</b>。打开后玩家在小手机「发现 → 心愿」里看心愿墙、挂心愿（可带悬赏）、摘别人的心愿、撤自己的心愿。所有操作交给机器人<b>按先后顺序一个一个</b>处理（约半分钟内）：规则和群里一样（心愿开关、开放时间、时间冲突、数量上限、写信币都照旧），摘取会建专属小群；两个人同时摘同一个，先到的成功；建群失败心愿会放回。群里发「挂心愿 / 悬赏心愿 / 摘心愿 / 撤心愿」会提示去网页，只有「看心愿」还在群里。关掉就回群里用。
+      需要插件 1.10.8 或更高、社交卫星已加载并同步过一次才能打开{% if not can_wish %}（<b style="color:var(--gold)">目前插件版本不够、社交卫星没加载或还没同步</b>）{% endif %}。
+  {% endcall %}
+  <h3 class="pc-h">手机码</h3>
   <div class="pc-add">
     <label>管理员手机码（用它进网页手机是「管理身份」：能用任何角色的视角查看，能删短信、礼物、朋友圈、评论、图片、点歌、头像；不能发）</label>
     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
@@ -112,43 +107,6 @@
     </div>
     <div style="font-size:12px;color:var(--muted);">只给管理员自己用，别发给玩家。本季结束后自动失效。</div>
   </div>
-  <div class="pc-add">
-    <label>点歌（一律匿名；这里能看到是谁点的）</label>
-    <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;">
-      <input type="hidden" name="action" value="song_daily">
-      每人每天最多点 <input type="number" name="n" min="0" max="50" value="{{ song_daily }}" style="width:70px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font:inherit;"> 首
-      <button class="pc-btn ghost sm" type="submit">保存</button>
-      <span style="font-size:12px;color:var(--muted);">填 0 恢复默认（{{ song_default }} 首）</span>
-    </form>
-    {% if songs %}
-    <table class="pc-table" style="margin-top:6px;">
-      <thead><tr><th>时间</th><th>点歌人</th><th>给</th><th>歌</th><th>寄语</th><th></th></tr></thead>
-      <tbody>
-      {% for sg in songs %}
-        <tr>
-          <td style="white-space:nowrap;font-size:12px;">{{ sg.time }}</td>
-          <td>{{ sg.from_role }}</td>
-          <td>{{ sg.to_role or '大家' }}</td>
-          <td>{{ sg.song_name }}<span style="color:var(--muted);font-size:12px;"> - {{ sg.artists }} · {{ '网易云' if sg.platform == '163' else 'QQ音乐' }}{% if not sg.announced %} · 待播{% endif %}</span></td>
-          <td style="font-size:12px;">{{ sg.message }}</td>
-          <td><form method="post" onsubmit="return confirm('删除这条点歌？网页上的播报也会一起消失（已经发到公告群的撤不回来）。')">
-            <input type="hidden" name="action" value="delete_song"><input type="hidden" name="id" value="{{ sg.id }}">
-            <button class="pc-btn ghost sm" type="submit">删除</button></form></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-    {% else %}<div style="font-size:12px;color:var(--muted);">本季还没有人点歌。</div>{% endif %}
-  </div>
-  <form method="post" class="pc-add">
-    <input type="hidden" name="action" value="stickers">
-    <label>表情面板（网页发送时输入框旁的 ☺，一行一个 emoji 或颜文字，每个不超过 20 字，最多 60 个；留空 = 用默认那套）</label>
-    <textarea name="stickers" rows="5" placeholder="{{ stickers_default }}">{{ stickers_custom }}</textarea>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-      <button class="pc-btn" type="submit">保存表情面板</button>
-      {% if stickers_custom %}<button class="pc-btn ghost" type="submit" onclick="this.form.stickers.value=''">恢复默认</button>{% endif %}
-    </div>
-  </form>
   <form method="post" class="pc-add">
     <input type="hidden" name="action" value="add_roles">
     <label>手动添加角色（一行一个，名字要跟群里「创建新角色」时的本名完全一致）</label>
@@ -189,6 +147,46 @@
   {% else %}
     <div class="pc-empty">存档站还没见过本季的角色：插件不会主动同步角色名单，角色参与场次或收发短信礼物后才会自动出现。<br>开季前可以用上面的输入框手动添加。</div>
   {% endif %}
+  <h3 class="pc-h">玩法设置</h3>
+  <div class="pc-add">
+    <label>点歌（一律匿名；这里能看到是谁点的）</label>
+    <form method="post" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;">
+      <input type="hidden" name="action" value="song_daily">
+      每人每天最多点 <input type="number" name="n" min="0" max="50" value="{{ song_daily }}" style="width:70px;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:5px 8px;font:inherit;"> 首
+      <button class="pc-btn ghost sm" type="submit">保存</button>
+      <span style="font-size:12px;color:var(--muted);">填 0 恢复默认（{{ song_default }} 首）</span>
+    </form>
+    {% if songs %}
+    <table class="pc-table" style="margin-top:6px;">
+      <thead><tr><th>时间</th><th>点歌人</th><th>给</th><th>歌</th><th>寄语</th><th></th></tr></thead>
+      <tbody>
+      {% for sg in songs %}
+        <tr>
+          <td style="white-space:nowrap;font-size:12px;">{{ sg.time }}</td>
+          <td>{{ sg.from_role }}</td>
+          <td>{{ sg.to_role or '大家' }}</td>
+          <td>{{ sg.song_name }}<span style="color:var(--muted);font-size:12px;"> - {{ sg.artists }} · {{ '网易云' if sg.platform == '163' else 'QQ音乐' }}{% if not sg.announced %} · 待播{% endif %}</span></td>
+          <td style="font-size:12px;">{{ sg.message }}</td>
+          <td><form method="post" onsubmit="return confirm('删除这条点歌？网页上的播报也会一起消失（已经发到公告群的撤不回来）。')">
+            <input type="hidden" name="action" value="delete_song"><input type="hidden" name="id" value="{{ sg.id }}">
+            <button class="pc-btn ghost sm" type="submit">删除</button></form></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div style="font-size:12px;color:var(--muted);">本季还没有人点歌。</div>{% endif %}
+  </div>
+  <form method="post" class="pc-add">
+    <input type="hidden" name="action" value="stickers">
+    <label>表情面板（网页发送时输入框旁的 ☺，一行一个 emoji 或颜文字，每个不超过 20 字，最多 60 个；留空 = 用默认那套）</label>
+    <textarea name="stickers" rows="5" placeholder="{{ stickers_default }}">{{ stickers_custom }}</textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="pc-btn" type="submit">保存表情面板</button>
+      {% if stickers_custom %}<button class="pc-btn ghost" type="submit" onclick="this.form.stickers.value=''">恢复默认</button>{% endif %}
+    </div>
+  </form>
+  <h3 class="pc-h">外观</h3>
+  {% include '_admin_phone_theme.html' %}
   {% endif %}
 </div>
 <script>

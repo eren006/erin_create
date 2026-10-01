@@ -131,4 +131,12 @@ adm.post("/admin/phone_codes", data={"action": "bottle_web", "on": "1"})
 sync(roster=[r for r in ROSTER if r["name"] != "林晚"])
 n = c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0]
 throw(lin, "我还能扔吗"); ok(c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0] == n, "removed role cannot throw")
+# 使用指南里「现在哪些功能怎么用」：按开关现算
+adm.post("/admin/phone_codes", data={"action": "bottle_web", "on": "0"}); sync()
+g = text(lin, "/p/guide"); ok("现在哪些功能怎么用" in g and "群里发「漂流瓶 内容」" in g, "guide: bottle in group when web off")
+adm.post("/admin/phone_codes", data={"action": "bottle_web", "on": "1"}); sync()
+g = text(lin, "/p/guide"); ok("网页（发现 → 漂流瓶）" in g and "群里的「漂流瓶」指令已停用" in g, "guide: bottle on web when switch on")
+sync(sms_enabled=False); g = text(lin, "/p/guide"); ok("暂未开放（和寄信共用开关）" in g, "guide: bottle unavailable when 寄信 off")
+sync()
+ok("现在哪些功能怎么用" in pa.get("/p/guide").get_data(as_text=True), "guide shown to admin phone too")
 print("ALL OK")

@@ -90,6 +90,10 @@ noscript .b { display: block; margin-bottom: 6px; }
   ("图片空间满了？", "「朋友圈管理」里看用量，删掉旧季度的图片。用到 90% 后台会有红字提醒，满了玩家就发不了图。"),
   ("其它能调的", "每人每天点歌数、表情面板在「小手机」页；每人图片张数在「朋友圈管理」；违禁词在存档站的 <code>blocklist.txt</code>，改完立即生效。"),
 ] %}
+{% if overview %}
+{% set player = [("现在哪些功能怎么用？", overview)] + player %}
+{% set admin = [("现在哪些功能怎么用？", overview)] + admin %}
+{% endif %}
 <div class="phone">
   <header>
     <a class="back" href="{{ back }}">‹ 返回</a>

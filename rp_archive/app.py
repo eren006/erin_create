@@ -5315,6 +5315,56 @@ def _phone_security_headers(resp):
         resp.headers["X-Robots-Tag"]    = "noindex, nofollow"
     return resp
 
+def _phone_feature_overview(db, sid):
+    """使用指南里「现在哪些功能怎么用」：按后台开关和插件同步来的规则现算，开关一改这一页就跟着变，不用手改文字。
+    返回 HTML 字符串（都是代码里的常量文字，不含用户输入）；没有本季信息时返回空。"""
+    if not sid:
+        return ""
+    now = int(time.time() * 1000)
+    sync = _phone_sync_row(db, sid)
+    snap = (sync["snap"] if sync else None) or {}
+    rules = snap.get("rules") or {}
+    fresh = bool(sync) and _phone_day(sync, now)[2]
+    web_send, bottle_web, wish_web = _phone_web_send_on(db, sid), _phone_bottle_on(db, sid), _phone_wish_on(db, sid)
+    sms_on, gift_on = rules.get("sms_enabled", True) is not False, rules.get("gift_enabled", True) is not False
+    lm_on = (rules.get("lovemail") or {}).get("enabled", True) is not False
+    wish_on = (rules.get("wish") or {}).get("enabled", True) is not False
+    rows = []
+    if not sms_on and not gift_on:
+        rows.append(("📮 短信 / 礼物", "本季暂未开放"))
+    else:
+        parts = []
+        for label, on in (("短信", sms_on), ("礼物", gift_on)):
+            if not on:
+                parts.append(f"{label}暂未开放")
+            else:
+                parts.append(f"{label}在网页上发（群里发会提示你来这里）" if web_send else f"{label}在群里发指令（网页上只能看）")
+        rows.append(("📮 短信 / 礼物", "；".join(parts)))
+    rows.append(("🎭 匿名对话", "网页（消息 →「＋」→ 匿名发起）" if web_send and sms_on else "网页发送打开后可用，现在暂未开放"))
+    rows.append(("💌 心动信", "网页（发现 → 心动信箱）或群里都可以，每晚统一派送" if lm_on else "本季暂未开放"))
+    rows.append(("🎵 点歌", "网页（发现 → 点歌台）或群里发「点歌 歌名」都可以"))
+    if not sms_on:
+        rows.append(("🍾 漂流瓶", "本季暂未开放（和寄信共用开关）"))
+    elif bottle_web:
+        rows.append(("🍾 漂流瓶", "网页（发现 → 漂流瓶）；群里的「漂流瓶」指令已停用，群里扔的瓶子也能在网页上接着回"))
+    else:
+        rows.append(("🍾 漂流瓶", "群里发「漂流瓶 内容」"))
+    if not wish_on:
+        rows.append(("🌠 心愿", "本季暂未开放"))
+    elif wish_web:
+        rows.append(("🌠 心愿", "网页（发现 → 心愿）：挂、悬赏、摘、撤都在这里；群里只剩「看心愿」"))
+    else:
+        rows.append(("🌠 心愿", "群里发「挂心愿 / 摘心愿 / 撤心愿」"))
+    rows.append(("📷 朋友圈 · 🎮 小游戏", "网页（发现）"))
+    if GROUP_CHAT_ON:
+        rows.append(("👥 群聊", "网页发送打开时，在「＋ 新信息」里发起"))
+    out = "<b>现在这个季度，各功能在哪里用：</b><br>" + "<br>".join(f"{n}：{w}" for n, w in rows)
+    if _phone_comm_paused(db, sid):
+        out = "⚠️ 现在通讯暂时关闭，发不出去，稍后开放。<br>" + out
+    elif not fresh:
+        out += "<br><br>机器人最近没有同步，网页上发起的操作可能会慢一些才生效。"
+    return out
+
 @app.route("/p/guide")
 def phone_guide():
     """网页手机里的「小手机」对话：按身份只给一组问题——管理员手机码或团后台管理员看管理篇，其余（含没登录）看玩家篇"""
@@ -5324,7 +5374,9 @@ def phone_guide():
         back = url_for("admin_phone_index") if who[1] == PHONE_ADMIN else url_for("player_phone_inbox")
     else:
         back = url_for("admin_phone_codes") if is_admin else url_for("phone_code_entry")
-    return render_template("phone_guide.html", audience="admin" if is_admin else "player", back=back)
+    sid = who[0] if who else (session.get("view_show_id") if is_admin else None)
+    return render_template("phone_guide.html", audience="admin" if is_admin else "player", back=back,
+                           overview=_phone_feature_overview(get_db(), sid) if sid else "")
 
 @app.route("/p", methods=["GET", "POST"])
 def phone_code_entry():
@@ -9466,10 +9518,11 @@ def admin_phone_codes():
     if sync and sync["synced_at"]:
         sync_ago = max(0, int(time.time() * 1000) - sync["synced_at"]) // 60000
     session.setdefault("theme_csrf", secrets.token_urlsafe(24))
+    pst = _plugin_status(db, sid)
     return render_template("admin_phone_codes.html", rows=rows, show=show,
                            theme_settings=phone_theme(sid), base_url=_phone_base_url(),
-                           web_send=_phone_web_send_on(db, sid), bottle_web=_phone_bottle_on(db, sid), can_bottle=_plugin_status(db, sid).get("can_bottle"),
-                           wish_web=_phone_wish_on(db, sid), can_wish=_plugin_status(db, sid).get("can_wish"),
+                           web_send=_phone_web_send_on(db, sid), bottle_web=_phone_bottle_on(db, sid), can_bottle=pst.get("can_bottle"),
+                           wish_web=_phone_wish_on(db, sid), can_wish=pst.get("can_wish"), plugin_version=(pst.get("version") if pst.get("known") else None),
                            comm_paused=_phone_comm_paused(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
                            song_daily=_song_daily_cap(db, sid), song_default=_SONG_DEFAULT_DAILY,
                            admin_code=(db.execute("SELECT code FROM phone_admin_codes WHERE show_id=?", (sid,)).fetchone() or {"code": None})["code"],
