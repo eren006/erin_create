@@ -297,7 +297,7 @@
 <div class="sync-tip">
   💡 <b>同步流程：</b>
   在网页添加待拍卖物品并保存后，机器人 2 分钟内自动激活；
-  发送&nbsp;<code>上传拍卖</code>&nbsp;可将机器人当前拍卖状态推送到此页面查看。
+  机器人当前的拍卖状态也会自动同步到右侧快照里（约 2 分钟内）。
 </div>
 
 <div class="auctions-layout">
@@ -368,7 +368,7 @@
       <div class="panel-body">
         {% if snapshot %}
         <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">
-          共 {{ snapshot|length }} 件 · 上次推送于机器人发送「上传拍卖」时
+          共 {{ snapshot|length }} 件 · 机器人自动同步
         </div>
         {% for id, item in snapshot.items() %}
         {% set status_label = "进行中" if item.status == "active" else ("已成交" if item.status == "settled" else "已流拍") %}
@@ -403,7 +403,7 @@
         </div>
         {% endfor %}
         {% else %}
-        <div class="empty-note">暂无快照<br>在机器人中发送「上传拍卖」即可推送</div>
+        <div class="empty-note">暂无快照<br>机器人里有拍卖后会自动同步到这里</div>
         {% endif %}
       </div>
     </div>

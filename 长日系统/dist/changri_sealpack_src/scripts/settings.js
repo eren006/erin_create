@@ -2505,6 +2505,46 @@ async function autoPullTick() {
 if (globalThis.__changriAutoPullTimer) clearInterval(globalThis.__changriAutoPullTimer);
 globalThis.__changriAutoPullTimer = setInterval(autoPullTick, AUTO_PULL_INTERVAL_MS);
 
+// ── 自动推送「机器人说了算」的数据 ─────────────────────────────────────────────
+// 钥匙、战斗属性、玩家技能、拍卖快照只会在机器人里变（网页端只读展示），以前要管理员发「。推送全部」才会上去。
+// 现在每个检查周期顺手比一下：内容变了就推，没变不推。这些键不在 /api/config 里，推上去不会让自动拉取误以为「网页端有改动」。
+// 不碰网页端可编辑的内容（地点列表、物品池子、技能定义等），免得拿机器人里的旧值盖掉网页上刚改的。
+const LIVE_PUSH_KEYS = ["place_keys", "battle_attrs", "player_skills"];
+const _livePushLast = globalThis.__changriLivePushLast || (globalThis.__changriLivePushLast = {});
+async function autoPushLive() {
+    if ((mainStorGet("auto_pull_enabled") || "on") === "off") return;   // 跟自动同步总开关一起关
+    const main = getMainExt();
+    if (!main) return;
+    const base  = (seal.ext.getStringConfig(main.ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+    const token = seal.ext.getStringConfig(main.ext, "RP存档Token") || "";
+    if (!base || !token) return;
+    const headers = { "Content-Type": "application/json", "X-Archive-Token": token };
+    const payload = {};
+    for (const key of LIVE_PUSH_KEYS) {
+        const val = mainStorGet(key);
+        if (val === null || val === undefined || val === "") continue;
+        if (_livePushLast[key] !== apHash(String(val))) payload[key] = val;
+    }
+    try {
+        if (Object.keys(payload).length) {
+            const resp = await fetch(`${base}/api/sync_config`, { method: "POST", headers, body: JSON.stringify(payload) });
+            if (!resp.ok) throw new Error(`sync_config 返回 ${resp.status}`);
+            for (const [k, v] of Object.entries(payload)) _livePushLast[k] = apHash(String(v));
+        }
+        const auction = mainKvGet("auction_items", {});
+        const aHash = apHash(JSON.stringify(auction));
+        if (_livePushLast.__auction !== aHash) {
+            const resp = await fetch(`${base}/api/auction_snapshot`, { method: "POST", headers, body: JSON.stringify({ snapshot: auction }) });
+            if (!resp.ok) throw new Error(`auction_snapshot 返回 ${resp.status}`);
+            _livePushLast.__auction = aHash;
+        }
+    } catch (e) {
+        console.error("[自动推送] 失败（下个周期重试）: " + e.message);
+    }
+}
+if (globalThis.__changriLivePushTimer) clearInterval(globalThis.__changriLivePushTimer);
+globalThis.__changriLivePushTimer = setInterval(() => { autoPushLive().catch(e => console.error("[自动推送] " + e.message)); }, AUTO_PULL_INTERVAL_MS);
+
 let cmd_auto_pull = seal.ext.newCmdItemInfo();
 cmd_auto_pull.name = "自动拉取";
 cmd_auto_pull.help = "【管理员】网页端有改动时机器人自动拉取（每 2 分钟检查一次，默认开启）\n使用方法：。自动拉取 开启/关闭/状态/立即检查/通知开启/通知关闭\n自动拉取到网页端的改动后，会往后台群发一条合并转发说明改了什么；没有改动就不说话";

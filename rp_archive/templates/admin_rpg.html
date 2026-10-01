@@ -978,7 +978,7 @@
       <div class="rpg-panel">
         <div class="rpg-panel-title">
           战斗基础属性 <span class="badge" id="ba-count">0</span>
-          <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">只读 · 机器人「推送全部」后更新</span>
+          <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">只读 · 机器人里有变化会自动同步过来</span>
         </div>
         <div style="overflow-x:auto;">
           <table class="reg-table" id="ba-table">
@@ -1006,7 +1006,7 @@
       <div class="rpg-panel">
         <div class="rpg-panel-title">
           技能分配
-          <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">只读 · 行=角色 · 列=技能 · 机器人「推送全部」后更新</span>
+          <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;">只读 · 行=角色 · 列=技能 · 机器人里有变化会自动同步过来</span>
         </div>
         <div id="ps-empty" class="pending-empty" style="display:none;">暂无技能或角色</div>
         <div style="overflow-x:auto;">
@@ -2463,7 +2463,7 @@ var BATTLE_CONFIG = (function() {
   var names = Object.keys(all).sort();
   document.getElementById('ba-count').textContent = names.length;
   if (!names.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="reg-empty">暂无数据（有人参战后，机器人「推送全部」才会出现）</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="reg-empty">暂无数据（有人参战后会自动同步过来）</td></tr>';
     return;
   }
   names.forEach(function(name) {

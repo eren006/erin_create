@@ -510,7 +510,7 @@ select.cfg-input { cursor: pointer; }
   <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;
               padding:11px 16px;margin-bottom:20px;font-size:13px;color:var(--muted);">
     修改后点击保存，机器人 2 分钟内会自动同步（不需要发指令）；同步后会往后台群发一条说明改了什么的合并转发。
-    如需将机器人里改过的设置推送到此 UI，在群里用「。设置」改完后回复「确认」，或发 <b style="color:var(--accent)">。推送全部</b>。
+    在群里用「。设置」改完后回复「确认」，改动也会自动同步到这里。
   </div>
 
   {% if current_show and not current_show.is_current and not current_show.booked %}
@@ -520,7 +520,7 @@ select.cfg-input { cursor: pointer; }
     <span style="font-size:16px;">⚠️</span>
     <span>
       当前查看的是非活跃季「<b>{{ current_show.name }}</b>」，此处保存的配置
-      <b>不会</b>被「。拉取全部」读取（机器人只拉取活跃季的配置）。
+      <b>不会</b>被机器人同步（机器人只同步活跃季的配置）。
       如需修改机器人配置，请先在「<a href="{{ url_for('admin_shows') }}"
       style="color:#e8a020;text-decoration:underline;">季管理</a>」切换到活跃季。
     </span>
@@ -1524,7 +1524,7 @@ initSimpleAliasEditor('gift-aliases-input', 'gift-aliases-list', 'giftAliasAddRo
 /* ── 私约名称管理：默认资源改名 + 额外资源增删改 ──────────────────────────
    改一处（这里的 name 字段），机器人那边指令触发/群名/时间线/计数显示四处一起变。
    ⚠️ 这里的重名/保留词校验只在浏览器里做，不是服务器强制的——如果两个人分头改出了重名，
-   机器人「拉取全部」时目前不会报错阻止，只会在多个资源同名时按后出现的那个当命中，
+   机器人同步时目前不会报错阻止，只会在多个资源同名时按后出现的那个当命中，
    这个校验缺口目前只在客户端做了提醒，还没有做成服务器端强制拒绝。 */
 (function() {
   var DEFAULT_ID = '私密';
