@@ -166,9 +166,9 @@
             {% if m.get('visible') %}<span class="badge-unlocked" style="color:var(--green);">玩家可见</span>{% else %}<span class="badge-unlocked">仅后台</span>{% endif %}
           </div>
           <div class="actions">
-            <button class="btn-toggle" onclick="openMapEditor({{ mname|tojson }})">编辑</button>
-            <button class="btn-toggle" onclick="renameMap({{ mname|tojson }})">改名</button>
-            <button class="btn-del" onclick="deleteMap({{ mname|tojson }})">删除</button>
+            <button class="btn-toggle" onclick='openMapEditor({{ mname|tojson }})'>编辑</button>
+            <button class="btn-toggle" onclick='renameMap({{ mname|tojson }})'>改名</button>
+            <button class="btn-del" onclick='deleteMap({{ mname|tojson }})'>删除</button>
           </div>
         </div>
         {% endfor %}
