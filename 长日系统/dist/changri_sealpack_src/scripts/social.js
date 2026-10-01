@@ -1661,6 +1661,7 @@ async function handleNaturalGift(ctx, msg, platform, toname, giftInput, customSe
     // 自定义礼物留言刷重复：先拦，不占次数和冷却（预设礼物 # 开头是后台写好的，不查）
     if (!giftInput.startsWith('#')) {
         const _api = getApi();
+        if (_api && _api.squashRepeats) giftInput = _api.squashRepeats(giftInput);   // 刷重复就自动精简，不拦
         if (_api && _api.isTooRepetitive && _api.isTooRepetitive(giftInput)) return seal.replyToSender(ctx, msg, _api.TOO_REPEAT_MSG);
     }
 

@@ -62,7 +62,7 @@ def post(cl, **kw):
     d = {"t1": "14:00", "t2": "15:00", "place": "咖啡厅", "content": "想喝咖啡", "nick": "", "csrf": tok_of(cl)}; d.update(kw)
     return cl.post("/p/me/wishes/post", data=d)
 n0 = lambda: c.execute("SELECT COUNT(*) FROM phone_wish_ops").fetchone()[0]
-post(lin, csrf="bad"); post(lin, t1="15:00", t2="14:00"); post(lin, place="咖 啡"); post(lin, content=""); post(lin, content="字" * 61)
+post(lin, csrf="bad"); post(lin, t1="15:00", t2="14:00"); post(lin, place="咖 啡"); post(lin, content=""); post(lin, content="".join(chr(0x4e00 + i * 7) for i in range(61)))   # 61 个各不相同的字：超长要拒绝（全是同一个字会被自动精简，不算超长）
 post(lin, nick="一二三四五六七八九十十一"); post(lin, content="a|b"); post(lin, content="加qq123")
 ok(n0() == 0, "invalid posts rejected")
 post(lin, content="想喝咖啡", nick="小林")

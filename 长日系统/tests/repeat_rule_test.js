@@ -2,9 +2,9 @@
 // 用法：node 长日系统/tests/repeat_rule_test.js ，通过时打印 REPEAT OK
 const fs = require("fs"), path = require("path");
 const src = fs.readFileSync(path.join(__dirname, "..", "长日系统.js"), "utf8");
-const i = src.indexOf("function repeatsPhrase"), j = src.indexOf("// ── 寄信 · 前置校验", i);
+const i = src.indexOf("const REPEAT_DELIM"), j = src.indexOf("// ── 寄信 · 前置校验", i);
 if (i < 0 || j < 0) throw new Error("截取失败");
-const isTooRepetitive = new Function(src.slice(i, j) + "; return isTooRepetitive;")();
+const { isTooRepetitive, squashRepeats } = new Function(src.slice(i, j) + "; return { isTooRepetitive, squashRepeats };")();
 const cases = [
   ["还没找到，还没找到，还没找到", true], ["还没找到，我要炸掉房间，还没找到，后来又说还没找到", true], ["我要炸掉房间".repeat(5), true], ["（性情言论）".repeat(5), true],
   ["还没找到，还没找到", false], ["还没找到还没找到", false], ["哈哈哈哈哈", false], ["我不知道，真的不知道，谁来告诉我", false],
@@ -12,4 +12,6 @@ const cases = [
   ["啊".repeat(12), true], ["啊".repeat(11), false],
 ];
 for (const [t, want] of cases) if (isTooRepetitive(t) !== want) throw new Error("规则不一致：" + t.slice(0, 14) + " 期望 " + want);
+const squashCases = [["还没找到，还没找到，还没找到", "还没找到，还没找到"], ["还没找到，我要炸掉房间，还没找到，后来又说还没找到", "还没找到，我要炸掉房间，还没找到，后来又说"], ["我要炸掉房间我要炸掉房间我要炸掉房间我要炸掉房间我要炸掉房间", "我要炸掉房间我要炸掉房间"], ["（性情言论）（性情言论）（性情言论）（性情言论）（性情言论）", "（性情言论）（性情言论）"], ["还没找到还没找到还没找到还没找到还没找到还没找到我要炸掉房间我要炸掉房间我要炸掉房间我要炸掉房间我要炸掉房间（性情言论）（性情言论）（性情言论）（性情言论）（性情言论）", "还没找到还没找到我要炸掉房间我要炸掉房间（性情言论）（性情言论）"], ["哈哈哈哈哈哈哈哈哈哈", "哈哈哈哈哈哈"], ["还没找到，还没找到", "还没找到，还没找到"], ["今天的排练很辛苦，大家都累坏了。", "今天的排练很辛苦，大家都累坏了。"], ["我不知道，真的不知道，谁来告诉我", "我不知道，真的不知道，谁来告诉我"]];
+for (const [t, want] of squashCases) { const got = squashRepeats(t); if (got !== want) throw new Error("精简结果不一致：" + t.slice(0, 12) + " → " + got); if (isTooRepetitive(got) && got.length < 60) throw new Error("精简后还在被拦：" + got); }
 console.log("REPEAT OK");

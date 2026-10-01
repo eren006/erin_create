@@ -2055,6 +2055,7 @@ const changriApi = {
     // 存储（带缓存，卫星读写主存储必须走这两对函数；JSON key 用 kvGet/kvSet，裸串用 kvGetRaw/kvSetRaw）
     kvGetRaw: cachedGet,
     kvSetRaw: cachedSet,
+    squashRepeats,     // 重复太多就自动精简（社交插件送礼留言用）
     isTooRepetitive,   // 社交插件送礼留言用（函数声明会提升；提示文案是后面才定义的 const，不能在这里直接引用，用 getter 读取时再取）
     get TOO_REPEAT_MSG() { return TOO_REPEAT_MSG; },
     kvGet,
@@ -7235,18 +7236,59 @@ ext.cmdMap["查看功能权限"] = cmd_view_user_feature;
 // 一条消息里刷重复：同一个字连续 12 遍以上、2~20 字的一小段连续 3 遍以上（小段要含 2 种以上不同的字，「哈哈哈哈哈哈」不算）、
 // 长文本里不同的字太少。跟存档站网页手机的 _too_repetitive 同一套规则。寄信 / 送礼留言 / 心动信共用
 const TOO_REPEAT_MSG = "❌ 内容里重复太多了，精简一下再发";
-// 同一小段（4 个字，含 2 种以上不同的字）在一条消息里出现 3 次以上：哪怕中间隔着别的字、标点也算（最多只能出现 2 次）。
+// 按标点/空白切成小句（split 带分隔符：偶数下标是小句）。4 字小段不跨标点，至少含 2 种不同的字（「哈哈哈哈」不算）。
+const REPEAT_DELIM = /([\s，。！？、；：,.!?;:…~～·\-—"“”'‘’（）()\[\]【】《》「」『』*_]+)/;
+function clauseGrams(parts) {
+    const counts = new Map();
+    for (let k = 0; k < parts.length; k += 2) {
+        const c = parts[k].slice(0, 2000), done = new Set();
+        for (let x = 0; x + 4 <= c.length; x++) {
+            const g = c.substr(x, 4);
+            if (done.has(g) || new Set(g).size < 2) continue;
+            done.add(g);
+            counts.set(g, (counts.get(g) || 0) + (c.split(g).length - 1));
+        }
+    }
+    return counts;
+}
+// 同一小段（4 个字）在一条消息里出现 3 次以上：哪怕中间隔着别的字、标点也算（最多只能出现 2 次）。
 // 更长的短语重复 3 次，它开头的 4 个字也一定出现 3 次，所以只查 4 字就够。
 function repeatsPhrase(text) {
-    const t = String(text || "").replace(/[\s，。！？、；：,.!?;:…~～·\-—"“”'‘’（）()\[\]【】《》「」『』*_]/g, "").slice(0, 2000);
-    const seen = new Set();
-    for (let i = 0; i + 4 <= t.length; i++) {
-        const g = t.substr(i, 4);
-        if (seen.has(g)) continue;
-        seen.add(g);
-        if (new Set(g).size >= 2 && t.split(g).length - 1 >= 3) return true;
-    }
+    for (const n of clauseGrams(String(text || "").split(REPEAT_DELIM)).values()) if (n >= 3) return true;
     return false;
+}
+// 重复太多时自动精简，不拦：①同一个字连着超过 6 个压成 6 个；②一小段（2~20 字）连着重复 3 次以上只留 2 次；
+// ③同一小段（4 字）在整条消息里出现超过 2 次，后面多出来的删掉（整句都是它就删整句，否则只删这几个字）。没有重复就原样返回。
+// 跟存档站网页手机的 _squash_repeats 同一套规则（有对照测试）。
+function squashRepeats(text) {
+    let t = String(text || "");
+    t = t.replace(/(\S)\1{6,}/g, (m, c) => c.repeat(6));
+    t = t.replace(/(\S[\s\S]{1,19}?)\1{2,}/g, (m, c) => new Set(c).size >= 2 ? c + c : m);
+    let changed = false;
+    for (let n = 0; n < 40; n++) {
+        const parts = t.split(REPEAT_DELIM);
+        let g = null;
+        for (const [k, v] of clauseGrams(parts)) if (v >= 3) { g = k; break; }
+        if (!g) break;
+        changed = true;
+        let kept = 0;
+        for (let k = 0; k < parts.length; k += 2) {
+            const c = parts[k]; let pos = 0, out = "";
+            for (;;) {
+                const x = c.indexOf(g, pos);
+                if (x < 0) { out += c.slice(pos); break; }
+                out += c.slice(pos, x);
+                kept++;
+                if (kept <= 2) out += g;
+                pos = x + 4;
+            }
+            if (kept > 2 && out !== c && out.replace(/ /g, "").length <= 1) { out = ""; if (k + 1 < parts.length) parts[k + 1] = ""; }
+            parts[k] = out;
+        }
+        t = parts.join("");
+    }
+    if (changed) t = t.replace(/([，。！？、；,.!?;])\1+/g, "$1").replace(/^[ ，、；,;]+|[ ，、；,;]+$/g, "");
+    return t;
 }
 function isTooRepetitive(text) {
     const t = String(text || "").replace(/\s+/g, "");
@@ -7396,6 +7438,7 @@ function pickTornPage(chaosConfig, a_private_group, platform, senderUid, trueRec
 
 // ── 寄信 · 主流程：校验 → 侵蚀 → 落款/误投/残页 → 投递/存档/计数/公开 ──
 async function handleNaturalChaosLetter(ctx, msg, platform, sendname, toname, contentOriginal) {
+    contentOriginal = squashRepeats(contentOriginal);   // 刷重复就自动精简（同一小段最多留 2 次），不拦
     if (isTooRepetitive(contentOriginal)) return seal.replyToSender(ctx, msg, TOO_REPEAT_MSG);
     const st = chaosLetterPrecheck(ctx, msg, platform, sendname, toname);
     if (!st) return;
@@ -12120,6 +12163,7 @@ cmd_send_lovemail.solve =(ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
 
+    content = squashRepeats(content);   // 刷重复就自动精简，不拦
     if (isTooRepetitive(content)) {
         seal.replyToSender(ctx, msg, TOO_REPEAT_MSG);
         return seal.ext.newCmdExecuteResult(true);

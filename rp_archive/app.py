@@ -5623,21 +5623,67 @@ _PHONE_MAX_LEN       = 500
 _REPEAT_RUN   = re.compile(r"(\S)\1{11,}")                 # 同一个字/符号连着 12 次以上
 _REPEAT_CHUNK = re.compile(r"(\S.{1,19}?)\1{2,}", re.S)      # 一小段（2~20 字）连着重复 3 次以上
 
-_REPEAT_PUNCT = re.compile(r"[\s，。！？、；：,.!?;:…~～·\-—\"“”'‘’（）()\[\]【】《》「」『』*_]")
+_REPEAT_PUNCT = re.compile(r"([\s，。！？、；：,.!?;:…~～·\-—\"“”'‘’（）()\[\]【】《》「」『』*_]+)")
+
+def _clause_grams(parts):
+    """按标点/空白切成小句（parts 是 re.split 带分隔符的结果：偶数下标是小句）。返回 {4 字小段: 在所有小句里出现的次数}，
+    小段不跨标点，至少含 2 种不同的字（「哈哈哈哈」这种不算）。"""
+    counts = {}
+    for k in range(0, len(parts), 2):
+        c = parts[k][:2000]
+        done = set()
+        for x in range(len(c) - 3):
+            g = c[x:x + 4]
+            if g in done or len(set(g)) < 2:
+                continue
+            done.add(g)
+            counts[g] = counts.get(g, 0) + c.count(g)
+    return counts
 
 def _repeats_phrase(text):
-    """同一小段（4 个字，含 2 种以上不同的字）在一条消息里出现 3 次以上：哪怕中间隔着别的字、标点也算（最多只能出现 2 次）。
+    """同一小段（4 个字）在一条消息里出现 3 次以上：哪怕中间隔着别的字、标点也算（最多只能出现 2 次）。
     更长的短语重复 3 次，它开头的 4 个字也一定出现 3 次，所以只查 4 字就够。"""
-    t = _REPEAT_PUNCT.sub("", text or "")[:2000]
-    seen = set()
-    for i in range(len(t) - 3):
-        g = t[i:i + 4]
-        if g in seen:
-            continue
-        seen.add(g)
-        if len(set(g)) >= 2 and t.count(g) >= 3:
-            return True
-    return False
+    parts = _REPEAT_PUNCT.split(text or "")
+    return any(n >= 3 for n in _clause_grams(parts).values())
+
+def _squash_repeats(text):
+    """重复太多时自动精简，不拦：①同一个字连着超过 6 个压成 6 个；②一小段（2~20 字）连着重复 3 次以上只留 2 次；
+    ③同一小段（4 字）在整条消息里出现超过 2 次，后面多出来的删掉（整句都是它就删整句，否则只删这几个字）。没有重复就原样返回。"""
+    t = text or ""
+    t = re.sub(r"(\S)\1{6,}", lambda m: m.group(1) * 6, t)
+    t = re.sub(r"(\S.{1,19}?)\1{2,}", lambda m: m.group(1) * 2 if len(set(m.group(1))) >= 2 else m.group(0), t, flags=re.S)
+    changed = False
+    for _ in range(40):
+        parts = _REPEAT_PUNCT.split(t)
+        counts = _clause_grams(parts)
+        g = next((g for g, n in counts.items() if n >= 3), None)
+        if not g:
+            break
+        changed = True
+        kept = 0
+        for k in range(0, len(parts), 2):
+            c, pos, out = parts[k], 0, ""
+            while True:
+                x = c.find(g, pos)
+                if x < 0:
+                    out += c[pos:]
+                    break
+                out += c[pos:x]
+                kept += 1
+                if kept <= 2:
+                    out += g
+                pos = x + 4
+            if kept > 2 and out != c:
+                # 这一句里被删掉了重复的部分：剩下的太短（<=1 个字）就整句不要
+                if len(out.replace(" ", "")) <= 1:
+                    out = ""
+                    if k + 1 < len(parts):
+                        parts[k + 1] = ""
+            parts[k] = out
+        t = "".join(parts)
+    if changed:
+        t = re.sub(r"([，。！？、；,.!?;])\1+", r"\1", t).strip(" ，、；,;")
+    return t
 
 def _too_repetitive(text):
     """一条消息里刷重复：同一个字连续很多遍、同一小段连续重复很多遍、同一小段（4 字以上）出现超过 2 次（不要求连着）、长文本里不同的字太少。「哈哈哈哈哈」这种正常的语气词不拦。"""
@@ -6076,7 +6122,9 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name="", preset_i
         return False, "❌ 内容不能为空"
     if len(text) > _PHONE_MAX_LEN:
         return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
-    if not preset and _too_repetitive(text):   # 预设礼物的内容是后台写好的，不查
+    if not preset:
+        text = _squash_repeats(text)   # 刷重复就自动精简（同一小段最多留 2 次），不拦；预设礼物的内容是后台写好的，不查
+    if not preset and _too_repetitive(text):   # 精简后还是刷屏（比如长文本全是那几个字）才拦
         return False, _REPEAT_MSG
     if not preset and _blocked_hit(sid, owner, "礼物" if kind == "gift" else "短信", gift_name, text):
         return False, BLOCKED_MSG
@@ -6355,6 +6403,7 @@ def _alias_send(db, sid, tid, owner, key, text):
         return False, "❌ 内容不能为空"
     if len(text) > _PHONE_MAX_LEN:
         return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
+    text = _squash_repeats(text)
     if _too_repetitive(text):
         return False, _REPEAT_MSG
     if _blocked_hit(sid, owner, "匿名短信", text):
@@ -6921,6 +6970,7 @@ def player_moment_post():
         return _moment_json(False, f"一条最多 {_MOMENT_MAX_IMAGES} 张图")
     if _blocked_hit(sid, owner, "朋友圈", text):
         return _moment_json(False, BLOCKED_MSG)
+    text = _squash_repeats(text)
     if _too_repetitive(text):
         return _moment_json(False, "内容里重复太多了，精简一下再发")
     day_start = int(datetime.now(TZ_BEIJING).replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
@@ -7016,6 +7066,7 @@ def player_moment_comment(mid):
         return _moment_json(False, f"评论最多 {_MOMENT_MAX_COMMENT} 字")
     if _blocked_hit(sid, owner, "朋友圈评论", text):
         return _moment_json(False, BLOCKED_MSG)
+    text = _squash_repeats(text)
     if _too_repetitive(text):
         return _moment_json(False, "内容里重复太多了，精简一下再发")
     reply_to = (request.form.get("reply_to") or "").strip()
@@ -7467,6 +7518,7 @@ def _song_create(db, sid, tid, from_role, to_role, song, message, source):
         return False, f"❌ 寄语最多 {_SONG_MAX_MSG} 字", None
     if _blocked_hit(sid, from_role, "点歌寄语", to_role, message):
         return False, BLOCKED_MSG, None
+    message = _squash_repeats(message)
     if _too_repetitive(message):
         return False, _REPEAT_MSG, None
     cap = _song_daily_cap(db, sid)
@@ -7926,6 +7978,7 @@ def _bottle_check_text(db, sid, owner, text):
         return None, "❌ 内容不能为空"
     if len(text) > _BOTTLE_MAX:
         return None, f"❌ 最多 {_BOTTLE_MAX} 字"
+    text = _squash_repeats(text)
     if _too_repetitive(text):
         return None, _REPEAT_MSG
     if _blocked_hit(sid, owner, "漂流瓶", text):
@@ -8151,6 +8204,7 @@ def player_wish_post():
     f = request.form
     t1, t2 = (f.get("t1") or "").strip(), (f.get("t2") or "").strip()
     place, content, nick = (f.get("place") or "").strip()[:30], (f.get("content") or "").strip(), (f.get("nick") or "").strip()
+    content = _squash_repeats(content)   # 刷重复就自动精简，不拦
     err = None
     if not (re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t1) and re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", t2) and t1 < t2):
         err = "❌ 时间要选开始和结束，且结束晚于开始（不能跨日）"
@@ -8419,6 +8473,7 @@ def _group_send(db, sid, owner, gid, text, alias):
         return False, "❌ 内容不能为空"
     if len(text) > _PHONE_MAX_LEN:
         return False, f"❌ 太长了，最多 {_PHONE_MAX_LEN} 字"
+    text = _squash_repeats(text)
     if _too_repetitive(text):
         return False, _REPEAT_MSG
     if alias:
@@ -8709,6 +8764,7 @@ def _lm_send(db, sid, tid, owner, to_role, content, signature):
         return False, "❌ 信里不能带 [CQ:…] 这样的代码"
     if _blocked_hit(sid, owner, "心动信", content, signature):
         return False, BLOCKED_MSG
+    content = _squash_repeats(content)
     if _too_repetitive(content):
         return False, _REPEAT_MSG
     db.execute("""INSERT INTO phone_lovemails (tenant_id, show_id, from_role, to_role, content, signature, game_day, created_at)
