@@ -36,8 +36,11 @@
         <button data-tool="rect">▭ 画区块</button>
         <select id="pmKind"></select>
         <button data-tool="door">🚪 门</button>
-        <button data-tool="mark">📍 标记</button>
+        <button data-tool="path">〰 画路径</button>
+        <select id="pmPathKind"></select>
+        <button data-tool="mark">🌳 放装饰</button>
         <select id="pmIcon"></select>
+        <select id="pmSize" title="装饰大小"><option value="1">小 1格</option><option value="2">中 2格</option><option value="3">大 3格</option></select>
         <span class="sp"></span>
         <button id="pmUndo">↩ 撤销</button>
       </div>
@@ -51,6 +54,8 @@
         <select id="pmSelKind"></select>
         <select id="pmSelPlace" title="关联到已录入的地点"></select>
         <select id="pmSelIcon" style="display:none;"></select>
+        <select id="pmSelSize" style="display:none;"><option value="1">小 1格</option><option value="2">中 2格</option><option value="3">大 3格</option></select>
+        <select id="pmSelPath" style="display:none;"></select>
         <button id="pmDup">复制</button>
         <button id="pmDel" class="del">删除</button>
       </div>
@@ -66,7 +71,7 @@
       </div>
       <div class="pm-tip">
         <b>怎么拼：</b>选「画区块」，在格子上拖出一个矩形（房间、建筑、广场、草地、水域、道路）；选中后改名字或类型，拖动移动，拖右下角缩放。
-        「门」点在两个房间之间的墙边；「标记」点一格放个小图标。房屋就用「房间」拼，城市就用「建筑」+「道路」+「广场」拼。
+        「门」点在两个房间之间的墙边；「画路径」选石板路、土路、河流、围栏、城墙后在格子上按住拖一笔；「放装饰」选树、花、石头、帐篷、长椅等图标和大小，点一下放一个（可以连着点）。房屋就用「房间」拼，城市就用「建筑」+「路径」+「广场」+装饰拼。
       </div>
     </div>
   </div>
@@ -74,7 +79,9 @@
 <script>
 (function () {
   var PM = window.PlaceMap, C = PM.C;
-  var ICONS = ['🔑', '🪜', '🛏️', '🍳', '🚽', '🛁', '🪑', '📚', '⛲', '🌳', '⛪', '🏰', '🏪', '🍺', '⚔️', '💰', '🚪', '❓', '📍'];
+  function iconOptions() {   // 按类分组的 <optgroup>
+    return PM.DECOR.map(function (g) { return '<optgroup label="' + g[0] + '">' + g[1].map(function (i) { return '<option value="' + i + '">' + i + '</option>'; }).join('') + '</optgroup>'; }).join('');
+  }
   var maps = {{ (place_maps or {})|tojson }};
   var places = {{ (places or {})|tojson }}, placeNames = Object.keys(places);
   var cur = null, name = '', cfg = null, tool = 'select', sel = -1, hist = [], drag = null, preview = null;
@@ -84,8 +91,9 @@
   var kindPairs = Object.keys(PM.KINDS).map(function (k) { return [k, PM.KINDS[k].label]; });
   fill($('pmKind'), kindPairs.filter(function (p) { return true; })); $('pmKind').value = 'room';
   fill($('pmSelKind'), kindPairs);
-  var iconPairs = ICONS.map(function (i) { return [i, i]; });
-  fill($('pmIcon'), iconPairs); fill($('pmSelIcon'), iconPairs);
+  $('pmIcon').innerHTML = iconOptions(); $('pmSelIcon').innerHTML = iconOptions(); $('pmIcon').value = '🌳';
+  var pathPairs = Object.keys(PM.PATHS).map(function (k) { return [k, PM.PATHS[k].label]; });
+  fill($('pmPathKind'), pathPairs); fill($('pmSelPath'), pathPairs);
 
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
   function snap() { hist.push(JSON.stringify({ w: cfg.w, h: cfg.h, items: cfg.items })); if (hist.length > 60) hist.shift(); }
@@ -102,7 +110,11 @@
         o += '<rect x="' + it.x * C + '" y="' + it.y * C + '" width="' + it.w * C + '" height="' + it.h * C + '" fill="none" stroke="#8b7cf6" stroke-width="3" stroke-dasharray="6 4"/>';
         o += '<rect x="' + ((it.x + it.w) * C - 12) + '" y="' + ((it.y + it.h) * C - 12) + '" width="12" height="12" fill="#8b7cf6"/>';
       } else if (it.t === 'mark') {
-        o += '<rect x="' + it.x * C + '" y="' + it.y * C + '" width="' + C + '" height="' + C + '" fill="none" stroke="#8b7cf6" stroke-width="3" stroke-dasharray="6 4"/>';
+        var sz = it.s || 1;
+        o += '<rect x="' + it.x * C + '" y="' + it.y * C + '" width="' + sz * C + '" height="' + sz * C + '" fill="none" stroke="#8b7cf6" stroke-width="3" stroke-dasharray="6 4"/>';
+      } else if (it.t === 'path') {
+        o += '<path d="' + it.pts.map(function (p, i) { return (i ? 'L' : 'M') + (p[0] * C + C / 2) + ' ' + (p[1] * C + C / 2); }).join('') + '" fill="none" stroke="#8b7cf6" stroke-width="3" stroke-dasharray="6 4" stroke-linecap="round" stroke-linejoin="round"/>';
+        it.pts.forEach(function (p) { o += '<circle cx="' + (p[0] * C + C / 2) + '" cy="' + (p[1] * C + C / 2) + '" r="3" fill="#8b7cf6"/>'; });
       }
     }
     if (preview) o += '<rect x="' + preview.x * C + '" y="' + preview.y * C + '" width="' + preview.w * C + '" height="' + preview.h * C + '" fill="rgba(139,124,246,.25)" stroke="#8b7cf6" stroke-width="2"/>';
@@ -146,16 +158,22 @@
 
   function sync() {   // 选中项 → 属性栏
     var it = sel >= 0 ? cfg.items[sel] : null, bar = $('pmSel');
-    bar.style.display = it && (it.t === 'rect' || it.t === 'mark') ? '' : 'none';
+    bar.style.display = it && (it.t === 'rect' || it.t === 'mark' || it.t === 'path') ? '' : 'none';
     if (!it) return;
-    var isRect = it.t === 'rect';
+    var isRect = it.t === 'rect', isMark = it.t === 'mark', isPath = it.t === 'path';
     $('pmSelKind').style.display = isRect ? '' : 'none';
-    $('pmSelIcon').style.display = isRect ? 'none' : '';
     $('pmSelPlace').style.display = isRect ? '' : 'none';
+    $('pmSelIcon').style.display = isMark ? '' : 'none';
+    $('pmSelSize').style.display = isMark ? '' : 'none';
+    $('pmSelPath').style.display = isPath ? '' : 'none';
+    $('pmName').style.display = isPath ? 'none' : '';
+    $('pmDup').style.display = isPath ? 'none' : '';
     if (isRect) { fillPlaceSel(it.place || ''); }
     $('pmName').placeholder = isRect ? '名称（如 客厅）' : '备注（可空，如 钥匙）';
     $('pmName').value = isRect ? (it.name || '') : (it.label || '');
-    if (isRect) $('pmSelKind').value = it.kind; else $('pmSelIcon').value = it.icon;
+    if (isRect) $('pmSelKind').value = it.kind;
+    else if (isMark) { $('pmSelIcon').value = it.icon; $('pmSelSize').value = String(it.s || 1); }
+    else $('pmSelPath').value = it.kind;
     $('pmW').value = cfg.w; $('pmH').value = cfg.h;
   }
 
@@ -165,7 +183,11 @@
     return { cx: Math.max(0, Math.min(cfg.w - 1, Math.floor(fx))), cy: Math.max(0, Math.min(cfg.h - 1, Math.floor(fy))), fx: fx, fy: fy };
   }
   function hit(cx, cy) {   // 最上面的东西：标记 > 区块（后画的、层高的在上）
-    for (var i = cfg.items.length - 1; i >= 0; i--) { var m = cfg.items[i]; if (m.t === 'mark' && m.x === cx && m.y === cy) return i; }
+    for (var i = cfg.items.length - 1; i >= 0; i--) { var m = cfg.items[i], sz = m.s || 1; if (m.t === 'mark' && cx >= m.x && cx < m.x + sz && cy >= m.y && cy < m.y + sz) return i; }
+    for (var j = cfg.items.length - 1; j >= 0; j--) {
+      var q = cfg.items[j];
+      if (q.t === 'path' && q.pts.some(function (p) { return p[0] === cx && p[1] === cy; })) return j;
+    }
     var best = -1, bl = -1;
     cfg.items.forEach(function (it, i) {
       if (it.t === 'rect' && cx >= it.x && cx < it.x + it.w && cy >= it.y && cy < it.y + it.h) {
@@ -193,8 +215,13 @@
       sel = -1; sync(); draw(); return;
     }
     if (tool === 'mark') {
-      snap(); cfg.items.push({ t: 'mark', x: p.cx, y: p.cy, icon: $('pmIcon').value, label: '' });
-      sel = cfg.items.length - 1; setTool('select'); sync(); draw(); return;
+      var ms = +$('pmSize').value || 1;
+      snap(); cfg.items.push({ t: 'mark', x: Math.min(p.cx, cfg.w - ms), y: Math.min(p.cy, cfg.h - ms), s: ms, icon: $('pmIcon').value, label: '' });
+      sel = cfg.items.length - 1; sync(); draw(); return;      // 装饰可以连着点，不退出工具
+    }
+    if (tool === 'path') {
+      snap(); cfg.items.push({ t: 'path', kind: $('pmPathKind').value, pts: [[p.cx, p.cy]] });
+      sel = cfg.items.length - 1; drag = { mode: 'path' }; stage.setPointerCapture(e.pointerId); sync(); draw(); e.preventDefault(); return;
     }
     // 选择/移动/缩放
     var i = hit(p.cx, p.cy);
@@ -205,7 +232,12 @@
       }
     }
     sel = i; sync();
-    if (i >= 0) { snap(); var m = cfg.items[i]; drag = { mode: 'move', dx: p.cx - m.x, dy: p.cy - m.y }; stage.setPointerCapture(e.pointerId); e.preventDefault(); }
+    if (i >= 0) {
+      snap(); var m = cfg.items[i];
+      if (m.t === 'path') drag = { mode: 'movepath', sx: p.cx, sy: p.cy, orig: clone(m.pts) };
+      else drag = { mode: 'move', dx: p.cx - m.x, dy: p.cy - m.y };
+      stage.setPointerCapture(e.pointerId); e.preventDefault();
+    }
     draw();
   });
   stage.addEventListener('pointermove', function (e) {
@@ -214,8 +246,21 @@
     if (drag.mode === 'draw') {
       var x = Math.min(drag.x0, p.cx), y = Math.min(drag.y0, p.cy);
       preview = { x: x, y: y, w: Math.abs(p.cx - drag.x0) + 1, h: Math.abs(p.cy - drag.y0) + 1 }; draw();
+    } else if (drag.mode === 'path') {
+      var pts = cfg.items[sel].pts, last = pts[pts.length - 1];
+      var stepx = Math.sign(p.cx - last[0]), stepy = Math.sign(p.cy - last[1]);
+      while (last[0] !== p.cx || last[1] !== p.cy) {           // 鼠标跳得远时，补上中间的格子，线不断
+        var nx2 = last[0] + (last[0] !== p.cx ? stepx : 0), ny2 = last[1] + (last[1] !== p.cy ? stepy : 0);
+        last = [nx2, ny2]; pts.push(last);
+        if (pts.length > 400) break;
+      }
+      draw();
+    } else if (drag.mode === 'movepath') {
+      var pp = cfg.items[sel], ddx = p.cx - drag.sx, ddy = p.cy - drag.sy;
+      pp.pts = drag.orig.map(function (q) { return [Math.max(0, Math.min(cfg.w - 1, q[0] + ddx)), Math.max(0, Math.min(cfg.h - 1, q[1] + ddy))]; });
+      draw();
     } else if (drag.mode === 'move') {
-      var it = cfg.items[sel], w = it.t === 'rect' ? it.w : 1, h = it.t === 'rect' ? it.h : 1;
+      var it = cfg.items[sel], w = it.t === 'rect' ? it.w : (it.s || 1), h = it.t === 'rect' ? it.h : (it.s || 1);
       var nx = Math.max(0, Math.min(cfg.w - w, p.cx - drag.dx)), ny = Math.max(0, Math.min(cfg.h - h, p.cy - drag.dy));
       if (nx !== it.x || ny !== it.y) { it.x = nx; it.y = ny; draw(); }
     } else if (drag.mode === 'resize') {
@@ -225,6 +270,10 @@
   });
   function end() {
     if (!drag) return;
+    if (drag.mode === 'path') {
+      var cp = cfg.items[sel];
+      if (cp && cp.t === 'path' && cp.pts.length < 2) { cfg.items.splice(sel, 1); sel = -1; hist.pop(); sync(); }   // 只点了一下，不算一条路
+    }
     if (drag.mode === 'draw' && preview) {
       snap(); var k = $('pmKind').value;
       cfg.items.push({ t: 'rect', kind: k, x: preview.x, y: preview.y, w: preview.w, h: preview.h, name: defaultName(k) });
@@ -248,6 +297,8 @@
     if (it.t === 'rect') it.name = this.value; else it.label = this.value; draw();
   };
   $('pmSelKind').onchange = function () { var it = cfg.items[sel]; if (it && it.t === 'rect') { snap(); it.kind = this.value; draw(); } };
+  $('pmSelSize').onchange = function () { var it = cfg.items[sel]; if (it && it.t === 'mark') { snap(); it.s = +this.value; it.x = Math.min(it.x, cfg.w - it.s); it.y = Math.min(it.y, cfg.h - it.s); draw(); } };
+  $('pmSelPath').onchange = function () { var it = cfg.items[sel]; if (it && it.t === 'path') { snap(); it.kind = this.value; draw(); } };
   $('pmSelIcon').onchange = function () { var it = cfg.items[sel]; if (it && it.t === 'mark') { snap(); it.icon = this.value; draw(); } };
   $('pmDel').onclick = function () { if (sel < 0) return; snap(); cfg.items.splice(sel, 1); sel = -1; sync(); draw(); };
   $('pmDup').onclick = function () {
@@ -260,7 +311,9 @@
     var w = Math.max(6, Math.min(60, +$('pmW').value || cfg.w)), h = Math.max(6, Math.min(60, +$('pmH').value || cfg.h));
     if (w === cfg.w && h === cfg.h) return;
     snap(); cfg.w = w; cfg.h = h;
-    cfg.items = cfg.items.filter(function (it) { return it.x < w && it.y < h; });   // 缩小后超出的丢掉，rect 超出的裁剪
+    cfg.items = cfg.items.filter(function (it) { return it.t === 'path' ? true : it.x < w && it.y < h; });
+    cfg.items.forEach(function (it) { if (it.t === 'path') it.pts = it.pts.filter(function (q) { return q[0] < w && q[1] < h; }); });
+    cfg.items = cfg.items.filter(function (it) { return it.t !== 'path' || it.pts.length >= 2; });   // 缩小后超出的丢掉，rect 超出的裁剪
     cfg.items.forEach(function (it) { if (it.t === 'rect') { it.w = Math.min(it.w, w - it.x); it.h = Math.min(it.h, h - it.y); } });
     sel = -1; sync(); draw();
   }

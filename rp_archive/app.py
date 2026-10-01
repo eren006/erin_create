@@ -9888,6 +9888,7 @@ def _save_reward_config_key(db, show_id, tid, key, value_str):
 # 存在 site_config.place_maps：{地点名: {w, h, visible, items:[rect/door/mark]}}。只在网页端，不在 assemble_bot_config 的透传名单里，
 # 所以机器人拉不到、也不会触发「网页端有改动」。渲染见 templates/_place_map_render.html（后台编辑器和小手机共用）。
 _PM_KINDS = {"water", "green", "road", "plaza", "room", "building"}
+_PM_PATHS = {"road", "dirt", "river", "fence", "wall"}
 
 def _clean_place_map(raw):
     if not isinstance(raw, dict):
@@ -9897,7 +9898,7 @@ def _clean_place_map(raw):
         except (TypeError, ValueError): return default
     w, h = _i(raw.get("w"), 6, 60, 20), _i(raw.get("h"), 6, 60, 14)
     items = []
-    for it in (raw.get("items") or [])[:500]:
+    for it in (raw.get("items") or [])[:600]:
         if not isinstance(it, dict): continue
         t = it.get("t")
         if t == "rect" and it.get("kind") in _PM_KINDS:
@@ -9909,7 +9910,15 @@ def _clean_place_map(raw):
             items.append({"t": "door", "o": it["o"], "x": _i(it.get("x"), 0, w), "y": _i(it.get("y"), 0, h)})
         elif t == "mark":
             items.append({"t": "mark", "x": _i(it.get("x"), 0, w - 1), "y": _i(it.get("y"), 0, h - 1),
-                          "icon": str(it.get("icon") or "📍")[:4], "label": str(it.get("label") or "")[:12]})
+                          "s": _i(it.get("s"), 1, 3, 1),
+                          "icon": str(it.get("icon") or "📍")[:8], "label": str(it.get("label") or "")[:12]})
+        elif t == "path" and it.get("kind") in _PM_PATHS:
+            pts = []
+            for q in (it.get("pts") or [])[:400]:
+                if isinstance(q, (list, tuple)) and len(q) == 2:
+                    pts.append([_i(q[0], 0, w - 1), _i(q[1], 0, h - 1)])
+            if len(pts) >= 2:
+                items.append({"t": "path", "kind": it["kind"], "pts": pts})
     return {"w": w, "h": h, "visible": bool(raw.get("visible")), "items": items}
 
 def _place_in_maps(maps):
