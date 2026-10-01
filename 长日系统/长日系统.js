@@ -7235,10 +7235,24 @@ ext.cmdMap["查看功能权限"] = cmd_view_user_feature;
 // 一条消息里刷重复：同一个字连续 12 遍以上、2~20 字的一小段连续 3 遍以上（小段要含 2 种以上不同的字，「哈哈哈哈哈哈」不算）、
 // 长文本里不同的字太少。跟存档站网页手机的 _too_repetitive 同一套规则。寄信 / 送礼留言 / 心动信共用
 const TOO_REPEAT_MSG = "❌ 内容里重复太多了，精简一下再发";
+// 同一小段（4 个字，含 2 种以上不同的字）在一条消息里出现 3 次以上：哪怕中间隔着别的字、标点也算（最多只能出现 2 次）。
+// 更长的短语重复 3 次，它开头的 4 个字也一定出现 3 次，所以只查 4 字就够。
+function repeatsPhrase(text) {
+    const t = String(text || "").replace(/[\s，。！？、；：,.!?;:…~～·\-—"“”'‘’（）()\[\]【】《》「」『』*_]/g, "").slice(0, 2000);
+    const seen = new Set();
+    for (let i = 0; i + 4 <= t.length; i++) {
+        const g = t.substr(i, 4);
+        if (seen.has(g)) continue;
+        seen.add(g);
+        if (new Set(g).size >= 2 && t.split(g).length - 1 >= 3) return true;
+    }
+    return false;
+}
 function isTooRepetitive(text) {
     const t = String(text || "").replace(/\s+/g, "");
     if (/(\S)\1{11,}/.test(t)) return true;
     for (const m of t.matchAll(/(\S[\s\S]{1,19}?)\1{2,}/g)) if (new Set(m[1]).size >= 2) return true;
+    if (repeatsPhrase(text)) return true;
     return t.length >= 60 && new Set(t).size / t.length < 0.12;
 }
 

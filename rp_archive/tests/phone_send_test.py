@@ -241,4 +241,9 @@ ok("已不在名单里" in send(lin, "周屿", "还能发吗"), "removed role ca
 zhou = player("ZHOUYU0001"); ok("已不在名单里" not in zhou.get("/p/me").get_data(as_text=True), "others unaffected")
 ROSTER = ROSTER_FULL; sync(after=10**9)
 ok("已不在名单里" not in lin.get("/p/me").get_data(as_text=True), "role back → notice gone")
+# 重复规则：同一小段（4 字）一条消息里最多出现 2 次，不要求连着
+for t, want in [("还没找到，还没找到，还没找到", True), ("还没找到，我要炸掉房间，还没找到，后来又说还没找到", True), ("我要炸掉房间"*5, True),
+                ("还没找到，还没找到", False), ("还没找到还没找到", False), ("哈哈哈哈哈", False), ("我不知道，真的不知道，谁来告诉我", False),
+                ("今天的排练很辛苦，大家都累坏了。你昨天帮我占了座位，我一直想谢谢你，却又不好意思开口。明天晚上如果有空，我们去天台吹吹风吧，听说那里能看到很亮的星星。", False)]:
+    ok(A._too_repetitive(t) is want, ("repeat rule", t[:12], want))
 print("ALL OK")

@@ -5623,10 +5623,28 @@ _PHONE_MAX_LEN       = 500
 _REPEAT_RUN   = re.compile(r"(\S)\1{11,}")                 # 同一个字/符号连着 12 次以上
 _REPEAT_CHUNK = re.compile(r"(\S.{1,19}?)\1{2,}", re.S)      # 一小段（2~20 字）连着重复 3 次以上
 
+_REPEAT_PUNCT = re.compile(r"[\s，。！？、；：,.!?;:…~～·\-—\"“”'‘’（）()\[\]【】《》「」『』*_]")
+
+def _repeats_phrase(text):
+    """同一小段（4 个字，含 2 种以上不同的字）在一条消息里出现 3 次以上：哪怕中间隔着别的字、标点也算（最多只能出现 2 次）。
+    更长的短语重复 3 次，它开头的 4 个字也一定出现 3 次，所以只查 4 字就够。"""
+    t = _REPEAT_PUNCT.sub("", text or "")[:2000]
+    seen = set()
+    for i in range(len(t) - 3):
+        g = t[i:i + 4]
+        if g in seen:
+            continue
+        seen.add(g)
+        if len(set(g)) >= 2 and t.count(g) >= 3:
+            return True
+    return False
+
 def _too_repetitive(text):
-    """一条消息里刷重复：同一个字连续很多遍、同一小段连续重复很多遍、长文本里不同的字太少。「哈哈哈哈哈」这种正常长度的不算"""
+    """一条消息里刷重复：同一个字连续很多遍、同一小段连续重复很多遍、同一小段（4 字以上）出现超过 2 次（不要求连着）、长文本里不同的字太少。「哈哈哈哈哈」这种正常的语气词不拦。"""
     t = re.sub(r"\s+", "", text or "")
     if _REPEAT_RUN.search(t) or any(len(set(m.group(1))) >= 2 for m in _REPEAT_CHUNK.finditer(t)):
+        return True
+    if _repeats_phrase(text):
         return True
     return len(t) >= 60 and len(set(t)) / len(t) < 0.12
 
