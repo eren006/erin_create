@@ -781,7 +781,7 @@ a { color: var(--link); text-decoration: none; }
   </div>
 </div>
 {% endmacro %}
-<div class="phone" data-mode="{{ mode }}">
+<div class="phone" data-mode="{{ mode }}" data-visual="{{ skin.visual }}">
 {% if comm_paused %}<div class="pause-banner" role="status">通讯暂时关闭了，稍后开放。已有的内容还能看。</div>{% endif %}
 
 {% if mode == 'entry' %}

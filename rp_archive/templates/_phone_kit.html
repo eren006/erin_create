@@ -78,4 +78,74 @@
 @media (prefers-color-scheme: light) {
   .phone .public-ticker, .phone .broadcast { border-color: transparent !important; box-shadow: 0 1px 2px rgba(20,20,40,.04), 0 6px 20px color-mix(in srgb, var(--mine) 11%, transparent); }
 }
+
+/* ── 8. iOS 质感层（2026-10）──────────────────────────────────────────────────────────────────
+   参照 iOS 的设计语言：分组列表的灰底画布 + 白色圆角分组、半透明玻璃材质（顶栏/底栏）、系统分段控件、
+   实心主按钮 + 淡色填充次按钮、圆角方块图标、按下反馈、跟随系统的深浅色。主题色（--mine）就是 iOS 里的 tint。
+   画布只铺在「工具类」页面（发现/心愿/漂流瓶/点歌/心动信箱/小游戏/地图）；信息列表和聊天页保持白底（像「信息」App）。
+   云絮邮局那套是纸质拟物风格，不套玻璃和画布，保留它自己的样子。 */
+.phone { -webkit-font-smoothing: antialiased; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif; }
+@media (prefers-color-scheme: light) { .phone { --ios-canvas: color-mix(in srgb, var(--bg) 94%, #5a5a6e 6%); --ios-group: var(--bg); --ios-thumb: var(--bg); } }
+@media (prefers-color-scheme: dark) { .phone { --ios-canvas: var(--bg); --ios-group: color-mix(in srgb, var(--bg) 88%, #fff 12%); --ios-thumb: color-mix(in srgb, var(--bg) 70%, #fff 30%); } }
+
+/* 画布 + 分组 */
+.phone:is([data-mode="discover"],[data-mode="wishes"],[data-mode="bottles"],[data-mode="song"],[data-mode="games"],[data-mode="maps"],[data-mode="lovemail"]):not([data-visual="cloudpost"]) {
+  background: var(--ios-canvas); --pk-fill: var(--ios-group); }
+.phone:is([data-mode="discover"],[data-mode="wishes"],[data-mode="bottles"],[data-mode="song"],[data-mode="games"],[data-mode="maps"],[data-mode="lovemail"]):not([data-visual="cloudpost"]) .scroll { background: transparent; }
+.phone:is([data-mode="discover"],[data-mode="wishes"],[data-mode="bottles"],[data-mode="song"],[data-mode="games"],[data-mode="maps"],[data-mode="lovemail"]):not([data-visual="cloudpost"]) .disc-group { background: var(--ios-group); border-radius: 12px; }
+.phone[data-visual]:not([data-visual="cloudpost"]) .wish-wall, .phone[data-visual]:not([data-visual="cloudpost"]) .bottle-list, .phone[data-visual]:not([data-visual="cloudpost"]) .wish-operations {
+  background: var(--ios-group); border-radius: 12px; padding: 0 16px; }
+.phone[data-visual]:not([data-visual="cloudpost"]) .wish-card.is-mine { margin: 0 -16px; padding: 16px; border-radius: 0; }
+.phone .wish-empty, .phone .bottle-empty { padding: 36px 16px; }
+
+/* 分段控件：灰色轨道 + 白色滑块 */
+.phone .song-tabs, .phone .lm-tabs { background: color-mix(in srgb, var(--text) 8%, transparent); border-radius: 9px; padding: 2px; gap: 2px; margin: 12px var(--gutter, 18px) 0; }
+.phone .song-tabs button, .phone .lm-tabs a { background: transparent; border-radius: 7px; padding: 7px 4px; color: var(--text); font-size: 13px; font-weight: 500; box-shadow: none; }
+.phone .song-tabs button[aria-pressed="true"], .phone .lm-tabs a[aria-current] { background: var(--ios-thumb); color: var(--text); font-weight: 600; box-shadow: 0 3px 8px rgba(0,0,0,.12), 0 1px 1px rgba(0,0,0,.08); }
+
+/* 按钮：主按钮实心圆角矩形，行内小按钮是淡色填充 */
+.phone .wish-form .wish-button, .phone .bottle-letter button, .phone .song-submit, .phone .song-search button { border-radius: 14px; min-height: 50px; font-size: 17px; letter-spacing: -.01em; }
+.phone .song-search button { min-height: 44px; font-size: 15px; padding: 0 18px; }
+.phone .wish-submit-row, .phone .bottle-letter-foot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.phone .wish-submit-row .wish-button, .phone .bottle-letter-foot button { width: 100%; }
+.phone .wish-card .wish-button:not(.wish-quiet) { background: color-mix(in srgb, var(--mine) 14%, transparent); color: var(--mine); min-height: 34px; padding: 0 16px; border-radius: 17px; font-size: 14px; }
+.phone .wish-card .wish-quiet { background: color-mix(in srgb, var(--text) 8%, transparent); color: var(--text); min-height: 34px; padding: 0 16px; border-radius: 17px; font-size: 14px; }
+.phone button:not(:disabled):active, .phone .wish-copy:active { transform: scale(.97); }
+.phone .disc-group a.row:active, .phone #inbox a.row:active { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.phone button, .phone a.row { transition: transform .15s cubic-bezier(.2,.8,.2,1), background-color .15s; }
+
+/* 对齐：点歌页的搜索行和说明文字跟页面左右边距一致 */
+.phone .song-search { padding-left: var(--gutter, 18px); padding-right: var(--gutter, 18px); }
+.phone .song-note { padding-left: var(--gutter, 18px); padding-right: var(--gutter, 18px); }
+/* 页面里的图标块：主题色淡填充的圆角方块 */
+.phone .app-icon { border-radius: 10px; background: color-mix(in srgb, var(--mine) 12%, transparent); }
+
+/* 右侧的「›」：iOS 的细灰箭头 */
+.phone .disc-group .chev, .phone .row .chev { font-size: 22px; font-weight: 300; line-height: 1; color: color-mix(in srgb, var(--muted) 65%, transparent); }
+
+/* 圆角方块图标（像「设置」里的图标）：每个入口一种淡色 */
+.phone .disc-group .avatar.tile, .phone .disc-group .app-icon { width: 30px; height: 30px; border-radius: 8px; font-size: 17px; display: flex; align-items: center; justify-content: center; flex: none; }
+.phone .disc-group .app-icon svg { width: 22px; height: 22px; }
+.phone .disc-group a.row:nth-child(5n+1) .avatar.tile, .phone .disc-group a.row:nth-child(5n+1) .app-icon { background: color-mix(in srgb, #0a84ff 16%, transparent); }
+.phone .disc-group a.row:nth-child(5n+2) .avatar.tile, .phone .disc-group a.row:nth-child(5n+2) .app-icon { background: color-mix(in srgb, #ff375f 16%, transparent); }
+.phone .disc-group a.row:nth-child(5n+3) .avatar.tile, .phone .disc-group a.row:nth-child(5n+3) .app-icon { background: color-mix(in srgb, #30d158 18%, transparent); }
+.phone .disc-group a.row:nth-child(5n+4) .avatar.tile, .phone .disc-group a.row:nth-child(5n+4) .app-icon { background: color-mix(in srgb, #ff9f0a 20%, transparent); }
+.phone .disc-group a.row:nth-child(5n) .avatar.tile, .phone .disc-group a.row:nth-child(5n) .app-icon { background: color-mix(in srgb, #bf5af2 16%, transparent); }
+
+/* 底部导航：玻璃胶囊（iOS 26 的浮动标签栏）；主题色只用在选中项和中间的「+」上 */
+.phone:not([data-visual="cloudpost"]) .phone-nav {
+  --dock-bg: transparent; background: color-mix(in srgb, var(--bg) 70%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(26px); backdrop-filter: saturate(180%) blur(26px);
+  border: .5px solid color-mix(in srgb, var(--text) 12%, transparent);
+  box-shadow: 0 8px 30px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.35); }
+.phone:not([data-visual="cloudpost"]) .phone-nav a { color: var(--muted); }
+.phone:not([data-visual="cloudpost"]) .phone-nav a[aria-current] { background: color-mix(in srgb, var(--mine) 14%, transparent); color: var(--mine); }
+.phone:not([data-visual="cloudpost"]) .phone-nav a.dock-plus { background: var(--mine); color: var(--mine-text); box-shadow: 0 0 0 6px color-mix(in srgb, var(--bg) 78%, transparent), 0 8px 20px color-mix(in srgb, var(--mine) 40%, transparent); }
+.phone:not([data-visual="cloudpost"]) .phone-nav a.unread span::after { box-shadow: 0 0 0 2px var(--bg); background: #ff453a; }
+.phone:not([data-visual="cloudpost"]) .shop-fab { background: color-mix(in srgb, var(--bg) 78%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border: .5px solid color-mix(in srgb, var(--text) 12%, transparent); }
+
+/* 弹层：背景轻微模糊，卡片圆角更大 */
+.phone dialog.appearance::backdrop, dialog.appearance::backdrop { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); background: rgba(0,0,0,.28); }
+.phone dialog.appearance { border-radius: 24px; }
+@media (prefers-reduced-motion: reduce) { .phone button, .phone a.row { transition: none; } .phone button:active { transform: none; } }
 </style>
