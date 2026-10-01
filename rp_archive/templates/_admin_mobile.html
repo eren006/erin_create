@@ -1,0 +1,89 @@
+{# 后台手机层：只在 ≤720px 生效，电脑端完全不受影响。由 _admin_nav.html 引入（所有 admin* 页面都会带上）。
+   做四件事：① 底部 tab 栏（跟网页手机同款，一级导航搬到拇指够得到的地方）② 表格自动包一层横滑容器
+   ③ 输入框/按钮加大点击区 ④ 把各页写死的多栏布局、右下角浮动的保存提示避开底栏。 #}
+{% set _adm_short = {'overview': '总览', 'library': '资料库', 'economy': '玩法', 'system': '设置', 'players': '玩家', 'season': '季度'} %}
+<nav class="adm-tabbar" aria-label="后台导航">
+  {% for g in _adm_groups %}
+  {% set _parts = g[1].split(' ', 1) %}
+  <a href="{{ url_for(g[2]) }}" class="{{ 'on' if g[0] == _adm_active.group else '' }}">
+    <span class="ic">{{ _parts[0] }}</span><span class="tx">{{ _adm_short.get(g[0], _parts[1]) }}</span>
+  </a>
+  {% endfor %}
+</nav>
+<style>
+.adm-tabbar { display: none; }
+@media (max-width: 720px) {
+  /* ① 底部 tab 栏 */
+  .adm-tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 500;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    border-top: 1px solid var(--border);
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+  }
+  .adm-tabbar a {
+    flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 1px;
+    padding: 5px 0; border-radius: 12px; color: var(--muted); text-decoration: none;
+  }
+  .adm-tabbar .ic { font-size: 20px; line-height: 1.2; filter: grayscale(.85); opacity: .75; }
+  .adm-tabbar .tx { font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .adm-tabbar a.on { color: var(--accent); background: var(--surface2); }
+  .adm-tabbar a.on .ic { filter: none; opacity: 1; }
+  body { padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+  .adm-l1 { display: none; }              /* 一级导航已在底栏 */
+  .adm-l2 { border-top: 0; padding-top: 10px; }
+  .adm-l2 a { padding: 6px 14px; font-size: 13px; }
+
+  /* ② 表格横滑容器（JS 自动包） */
+  .tbl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -2px; }
+  .tbl-scroll > table { width: max-content; min-width: 100%; }
+  .tbl-scroll th { white-space: nowrap; }
+  .tbl-scroll td { max-width: 240px; overflow-wrap: anywhere; }
+
+  /* ③ 点击区：按钮、下拉、文本框至少 40px 高；勾选框和开关不动 */
+  button:not(.show-pill), .btn, [class*="btn-"], select,
+  input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]) { min-height: 40px; }
+  textarea { min-height: 84px; }
+  /* 各页写死 120~260px 宽的输入框，在手机上让它们撑满一行 */
+  input[style*="width:"], input.inp-name, input.inp-desc, select[style*="width:"] { max-width: 100%; }
+  .page, .shop-layout { padding-left: 14px; padding-right: 14px; }
+  .page-title { font-size: 18px; }
+  .card { padding: 16px 14px; }
+  /* 卡片标题栏：标题+说明并排时标题会被挤成竖排，允许换行 */
+  .section-header, .card-header, .panel-header { flex-wrap: wrap; row-gap: 4px; }
+  .section-title, .card-header > :first-child { white-space: nowrap; }
+  .cfg-label { min-width: 0; flex-basis: 100%; }   /* 配置行：名称单独一行，说明和控件在下面，不再把说明挤成竖条 */
+  .cfg-desc { flex-basis: 100%; order: 3; }
+
+  /* ④ 多栏布局压成单栏。有些页面把列宽写在行内 style 里，媒体查询压不住，所以要 !important */
+  .rpg-layout, .pools-layout, .admin-grid-4 { grid-template-columns: 1fr !important; }
+  [style*="grid-template-columns:400px"], [style*="grid-template-columns:360px"] { grid-template-columns: 1fr !important; }
+  .pools-layout > * { position: static !important; }
+  /* 右下角浮动的保存提示/toast，别被底栏盖住 */
+  #toast, .toast, #cfg-toast, #rpg-toast { bottom: calc(80px + env(safe-area-inset-bottom)) !important; }
+  .save-bar { bottom: calc(60px + env(safe-area-inset-bottom)) !important; }
+  #tp { bottom: calc(80px + env(safe-area-inset-bottom)) !important; }
+}
+</style>
+<script>
+// 手机上给每个表格套一层横滑容器（含稍后由脚本动态生成的表格）
+(function () {
+  if (!window.matchMedia) return;
+  var mq = window.matchMedia('(max-width: 720px)');
+  function wrap(root) {
+    (root.querySelectorAll ? root.querySelectorAll('table') : []).forEach(function (t) {
+      if (t.closest('.tbl-scroll') || t.closest('.adm-nav')) return;
+      var w = document.createElement('div');
+      w.className = 'tbl-scroll';
+      t.parentNode.insertBefore(w, t);
+      w.appendChild(t);
+    });
+  }
+  function run() { if (mq.matches) wrap(document); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  new MutationObserver(function (ms) {
+    if (!mq.matches) return;
+    ms.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1) { if (n.tagName === 'TABLE') wrap(n.parentNode); else wrap(n); } }); });
+  }).observe(document.documentElement, { childList: true, subtree: true });
+})();
+</script>

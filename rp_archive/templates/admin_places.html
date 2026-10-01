@@ -83,6 +83,13 @@
 }
 .btn-add-row:hover { border-color:var(--accent); color:var(--accent); }
 
+@media (max-width:720px) {
+  .add-multi-row .inp-name { width:36%; flex:none; min-width:0; }
+  .add-multi-row .inp-desc { width:auto; min-width:0; }
+  .add-row .inp-name, .add-row .inp-desc { width:100%; }
+  .desc-edit input { width:100%; }
+  .add-head-name { width:36% !important; }
+}
 .place-row { transition: transform .2s ease, opacity .2s ease, max-height .25s ease .2s, padding .25s ease .2s; overflow:hidden; }
 .place-row.vanishing { transform:translateX(20px); opacity:0; }
 .place-row.vanished  { max-height:0 !important; padding-top:0 !important; padding-bottom:0 !important; border:none !important; }
@@ -141,7 +148,7 @@
     <!-- 添加地点（多行） -->
     <div style="padding:14px 18px; border-bottom:1px solid var(--border);">
       <div style="display:flex; gap:6px; margin-bottom:6px; font-size:12px; color:var(--muted); padding-left:2px;">
-        <span style="width:160px;">地点名</span>
+        <span class="add-head-name" style="width:160px;">地点名</span>
         <span>描述（可选）</span>
       </div>
       <div id="addRows">
