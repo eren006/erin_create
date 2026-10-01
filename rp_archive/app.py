@@ -9912,6 +9912,16 @@ def _clean_place_map(raw):
                           "icon": str(it.get("icon") or "📍")[:4], "label": str(it.get("label") or "")[:12]})
     return {"w": w, "h": h, "visible": bool(raw.get("visible")), "items": items}
 
+def _place_in_maps(maps):
+    """{地点名: [放了它的地图名]}，地点列表里标出每个地点在哪张地图上"""
+    out = {}
+    for mname, m in maps.items():
+        for it in m.get("items", []):
+            if it.get("t") == "rect" and it.get("place"):
+                out.setdefault(it["place"], [])
+                if mname not in out[it["place"]]: out[it["place"]].append(mname)
+    return out
+
 def _get_maps(db, sid):
     row = db.execute("SELECT value FROM site_config WHERE show_id=? AND key='place_maps'", (sid,)).fetchone()
     try:
@@ -9996,9 +10006,10 @@ def admin_places():
             if is_fetch: return jsonify({"ok": True, "created": created, "skipped": skipped})
 
         elif action == "save_map":
-            name = request.form.get("name","").strip()
-            if name not in _get_places():
-                if is_fetch: return jsonify({"ok": False, "error": "没有这个地点"})
+            # 地图是独立的，名字随便取（一张地图里可以放多个地点），不要求跟地点同名
+            name = request.form.get("name","").strip()[:30]
+            if not name:
+                if is_fetch: return jsonify({"ok": False, "error": "地图要有名字"})
             else:
                 try:
                     cleaned = _clean_place_map(json.loads(request.form.get("map", "")))
@@ -10009,6 +10020,18 @@ def admin_places():
                 maps[name] = cleaned
                 _save_maps(db, sid, tid, maps)
                 if is_fetch: return jsonify({"ok": True})
+
+        elif action == "rename_map":
+            old = request.form.get("name","").strip()
+            new = request.form.get("new_name","").strip()[:30]
+            maps = _get_maps(db, sid)
+            if old in maps and new and (new == old or new not in maps):
+                if new != old:
+                    maps = {(new if k == old else k): v for k, v in maps.items()}   # 保持顺序
+                    _save_maps(db, sid, tid, maps)
+                if is_fetch: return jsonify({"ok": True})
+            elif is_fetch:
+                return jsonify({"ok": False, "error": "新名字已经有一张地图在用了" if new in maps else "找不到这张地图"})
 
         elif action == "delete_map":
             name = request.form.get("name","").strip()
@@ -10023,9 +10046,6 @@ def admin_places():
                 places = _get_places()
                 places.pop(name, None)
                 _save_places(places)
-                maps = _get_maps(db, sid)
-                if maps.pop(name, None) is not None:
-                    _save_maps(db, sid, tid, maps)
                 # clean up keys for this place
                 keys = _get_keys()
                 changed = False
@@ -10119,6 +10139,7 @@ def admin_places():
     return render_template("admin_places.html",
                            places=places,
                            place_maps=_get_maps(db, sid),
+                           place_in_maps=_place_in_maps(_get_maps(db, sid)),
                            keys_by_place=keys_by_place,
                            players=[dict(p) for p in players],
                            orphan_keys=orphan_keys)

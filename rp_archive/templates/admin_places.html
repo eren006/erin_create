@@ -64,6 +64,12 @@
 .btn-sm:hover { border-color:var(--accent); }
 
 /* 多行添加 */
+.place-maps { font-size:11px; font-weight:400; color:var(--muted); margin-top:2px; }
+.map-list { display:flex; flex-direction:column; margin-bottom:12px; }
+.map-row { display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.map-row:last-child { border-bottom:none; }
+.map-name { font-weight:600; color:var(--accent2); min-width:100px; flex:1; }
+.map-meta { font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; }
 .paste-box { margin-top:12px; border:1px dashed var(--border); border-radius:10px; padding:8px 12px; }
 .paste-box summary { cursor:pointer; font-size:13px; color:var(--muted); padding:4px 0; }
 .paste-box textarea { width:100%; margin-top:8px; background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:8px; padding:8px 12px; font-size:13px; font-family:inherit; line-height:1.7; resize:vertical; }
@@ -143,6 +149,37 @@
 
   <div id="banner" style="display:none" class="banner"></div>
 
+  <!-- ── 地图 ───────────────────────────────────────────────────────────── -->
+  <div class="section-card">
+    <div class="section-header">
+      <span class="section-title">🗺 地图</span>
+      <span class="section-meta">自己在格子上拼，一张地图里可以放多个地点；勾了「玩家可见」的会出现在小手机「发现 → 地图」</span>
+    </div>
+    <div style="padding:12px 18px;">
+      {% if place_maps %}
+      <div class="map-list">
+        {% for mname, m in place_maps.items() %}
+        <div class="map-row">
+          <div class="map-name">{{ mname }}</div>
+          <div class="map-meta">
+            {{ m['items']|selectattr('place')|list|length }} 个地点 ·
+            {% if m.get('visible') %}<span class="badge-unlocked" style="color:var(--green);">玩家可见</span>{% else %}<span class="badge-unlocked">仅后台</span>{% endif %}
+          </div>
+          <div class="actions">
+            <button class="btn-toggle" onclick="openMapEditor({{ mname|tojson }})">编辑</button>
+            <button class="btn-toggle" onclick="renameMap({{ mname|tojson }})">改名</button>
+            <button class="btn-del" onclick="deleteMap({{ mname|tojson }})">删除</button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div style="color:var(--muted);font-size:13px;margin-bottom:10px;">还没有地图。新建一张，再把已录入的地点一个个放进去。</div>
+      {% endif %}
+      <button class="btn-add" onclick="newMap()">＋ 新建地图</button>
+    </div>
+  </div>
+
   <!-- ── 地点列表 ───────────────────────────────────────────────────────── -->
   <div class="section-card">
     <div class="section-header">
@@ -190,7 +227,7 @@
       <tbody id="placeTableBody">
         {% for name, data in places.items() %}
         <tr class="place-row" id="pr-{{ loop.index }}">
-          <td class="place-name">{{ name }}</td>
+          <td class="place-name">{{ name }}{% if place_in_maps.get(name) %}<div class="place-maps">🗺 {{ place_in_maps[name]|join('、') }}</div>{% endif %}</td>
           <td>
             <span class="place-desc desc-display" onclick="editDesc(this, '{{ name }}')" title="点击编辑">
               {{ data.desc or '—' }}
@@ -208,7 +245,6 @@
           </td>
           <td>
             <div class="actions">
-              <button class="btn-toggle" data-map-btn="{{ name }}" onclick="openMapEditor('{{ name }}')">{{ '🗺 地图 ✓' if place_maps.get(name) else '🗺 地图' }}</button>
               <button class="btn-toggle" onclick="togglePlace('{{ name }}', {{ loop.index }})">切换锁定</button>
               <button class="btn-del" onclick="deletePlace('{{ name }}', {{ loop.index }})">删除</button>
             </div>
@@ -376,6 +412,24 @@ async function addFromPaste() {
   const entries = parsePlaceLines(document.getElementById("pasteText").value);
   if (!entries.length) { showBanner("先粘贴内容：一行一个地点", false); return; }
   await addPlaces(entries);
+}
+
+function newMap() {
+  const name = (prompt("新地图叫什么？（比如「学校」「主城」「我家」）") || "").trim();
+  if (!name) return;
+  if (document.querySelector(`.map-name`) && [...document.querySelectorAll(".map-name")].some(e => e.textContent.trim() === name)) { alert("已经有同名的地图了，直接点它的「编辑」"); return; }
+  openMapEditor(name);
+}
+async function renameMap(name) {
+  const nn = (prompt("改成什么名字？", name) || "").trim();
+  if (!nn || nn === name) return;
+  const res = await post({ action: "rename_map", name, new_name: nn });
+  if (res.ok) location.reload(); else alert(res.error || "改名失败");
+}
+async function deleteMap(name) {
+  if (!confirm(`删除地图「${name}」？地点本身不会被删除。`)) return;
+  const res = await post({ action: "delete_map", name });
+  if (res.ok) location.reload();
 }
 
 async function addPlaces(preset) {

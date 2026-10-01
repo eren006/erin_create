@@ -290,18 +290,15 @@
   $('pmSave').onclick = async function () {
     var data = { w: cfg.w, h: cfg.h, items: cfg.items, visible: $('pmVisible').checked };
     var res = await postMap({ action: 'save_map', name: name, map: JSON.stringify(data) });
-    if (res.ok) { maps[name] = data; refreshBtn(name); if (window.showBanner) showBanner('地图已保存'); close_(); }
+    if (res.ok) { maps[name] = data; close_(); location.reload(); }
     else alert('保存失败：' + (res.error || '未知原因'));
   };
   $('pmRemove').onclick = async function () {
     if (!maps[name]) { close_(); return; }
     if (!confirm('删除「' + name + '」的地图？')) return;
     var res = await postMap({ action: 'delete_map', name: name });
-    if (res.ok) { delete maps[name]; refreshBtn(name); close_(); }
+    if (res.ok) { delete maps[name]; close_(); location.reload(); }
   };
-  function refreshBtn(n) {
-    document.querySelectorAll('[data-map-btn]').forEach(function (b) { if (b.dataset.mapBtn === n) b.textContent = maps[n] ? '🗺 地图 ✓' : '🗺 地图'; });
-  }
   function close_() { $('pmBack').classList.remove('open'); cfg = null; }
   $('pmClose').onclick = function () { if (!hist.length || confirm('有没保存的改动，确定关闭？')) close_(); };
 
