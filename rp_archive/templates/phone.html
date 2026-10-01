@@ -1571,8 +1571,7 @@ a { color: var(--link); text-decoration: none; }
         <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="kind" value="param"><input type="hidden" name="name" value="{{ p.id }}">
         <span class="nm">{{ p.label }}{% if p.note %}<small>{{ p.note }}</small>{% endif %}</span>
         {% if p.type == 'bool' %}
-        <span class="ct">{{ '开启' if p.value else '关闭' }}</span>
-        <input type="hidden" name="value" value="{{ 'off' if p.value else 'on' }}"><button type="submit" class="ch-btn">{{ '关闭' if p.value else '开启' }}</button>
+        <input type="hidden" name="value" value="{{ 'off' if p.value else 'on' }}"><button type="submit" class="ch-btn ios-switch" role="switch" aria-checked="{{ 'true' if p.value else 'false' }}" aria-label="{{ p.label }}：{{ '已开启，点一下关闭' if p.value else '已关闭，点一下开启' }}">{{ '关闭' if p.value else '开启' }}</button>
         {% elif p.type == 'time' %}
         <input name="value" type="time" value="{{ p.value }}" required><button type="submit" class="ch-btn">保存</button>
         {% else %}

@@ -144,6 +144,82 @@
 .phone:not([data-visual="cloudpost"]) .phone-nav a.unread span::after { box-shadow: 0 0 0 2px var(--bg); background: #ff453a; }
 .phone:not([data-visual="cloudpost"]) .shop-fab { background: color-mix(in srgb, var(--bg) 78%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border: .5px solid color-mix(in srgb, var(--text) 12%, transparent); }
 
+
+/* ── 9. 管理端（管理员手机）套同一套 iOS 风格 ─────────────────────────────────────────────── */
+.phone[data-mode^="admin_"]:not([data-visual="cloudpost"]) { background: var(--ios-canvas); --pk-fill: var(--ios-group); }
+.phone[data-mode^="admin_"]:not([data-visual="cloudpost"]) .scroll { background: transparent; }
+.phone[data-mode^="admin_"] .ch-page, .phone[data-mode^="admin_"] .admin-desktop { padding-bottom: 112px; }   /* 别被底栏挡住 */
+.phone[data-mode^="admin_"] .ch-h { margin: 22px calc(var(--gutter, 18px) + 4px) 8px; font-size: 12px; font-weight: 500; letter-spacing: .12em; color: var(--muted); }
+.phone[data-mode^="admin_"] .ch-note { margin: 8px calc(var(--gutter, 18px) + 4px) 0; }
+.phone[data-mode^="admin_"] .ch-flash { background: color-mix(in srgb, var(--mine) 10%, transparent); border-radius: 12px; padding: 10px 14px; }
+.phone .plugin-chip { border-radius: 12px; background: color-mix(in srgb, var(--text) 6%, transparent); color: var(--text); padding: 9px 14px; }
+.phone .plugin-chip.ok { background: color-mix(in srgb, #34c759 14%, transparent); color: color-mix(in srgb, #34c759 55%, var(--text)); }
+.phone .plugin-chip.warn { background: color-mix(in srgb, #ff9f0a 16%, transparent); color: color-mix(in srgb, #ff9f0a 45%, var(--text)); }
+.phone .plugin-chip.bad { background: color-mix(in srgb, #ff453a 14%, transparent); color: color-mix(in srgb, #ff453a 60%, var(--text)); }
+
+/* 分组列表：白色圆角分组 + 细线 */
+.phone[data-mode^="admin_"] .ch-list { background: var(--ios-group); border: 0; border-radius: 12px; overflow: hidden; }
+.phone[data-mode^="admin_"] .ch-item { padding: 12px 16px; }
+.phone[data-mode^="admin_"] .ch-row { min-height: 52px; }
+.phone[data-mode^="admin_"] .ch-row input[type=number], .phone[data-mode^="admin_"] .ch-row input[type=time] {
+  background: var(--theirs); border: 0; border-radius: 10px; min-height: 36px; padding: 6px 10px; }
+
+/* 按钮：行内是淡色填充小胶囊，表单里的主按钮是整行实心 */
+.phone .ch-btn { border: 0; border-radius: 17px; background: color-mix(in srgb, var(--mine) 14%, transparent); color: var(--mine); font-weight: 600; padding: 0 16px; min-height: 34px; font-size: 14px; }
+.phone .ch-give .ch-btn, .phone .urge-actions .ch-btn:first-child { background: var(--mine); color: var(--mine-text); min-height: 50px; border-radius: 14px; font-size: 17px; width: 100%; }
+.phone .urge-actions .ch-btn + .ch-btn { background: color-mix(in srgb, var(--mine) 14%, transparent); color: var(--mine); border: 0; min-height: 46px; border-radius: 14px; }
+.phone .urge-actions .ch-btn:first-child { border: 0; }
+
+/* 表单控件：白色圆角块，不再是浏览器默认样子 */
+.phone .ch-give { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px var(--gutter, 18px) 0; }
+.phone .ch-give > * { flex: 1 1 100%; }
+.phone .ch-give > input[name=value], .phone .ch-give > select[name=sign], .phone .ch-give > select[name=scope] { flex: 1 1 calc(33.3% - 8px); }
+.phone .ch-give input, .phone .ch-give select, .phone .ch-set input {
+  background: var(--ios-group); border: 0; border-radius: 12px; min-height: 48px; padding: 12px 14px; color: var(--text); font-size: 16px; box-shadow: none; flex-basis: auto; width: auto; }
+.phone .ch-give > input, .phone .ch-give > select { width: 100%; }
+.phone .ch-give input:focus, .phone .ch-give select:focus { outline: 0; box-shadow: 0 0 0 2px var(--pk-focus); }
+.phone .ch-give input[type=time] { min-width: 0; width: 100%; }
+.phone .ch-give details { background: var(--ios-group); border-radius: 12px; padding: 12px 14px; }
+.phone .ch-give summary { font-size: 15px; color: var(--text); cursor: pointer; }
+.phone .ch-give label { font-size: 15px; }
+
+/* 带输入框的参数行：名称独占一行，下面是 输入框 + 单位 + 保存，不再把名字挤成竖排 */
+.phone[data-mode^="admin_"] .ch-row:has(input[type=number], input[type=time]) { flex-wrap: wrap; row-gap: 8px; }
+.phone[data-mode^="admin_"] .ch-row:has(input[type=number], input[type=time]) .nm { flex: 1 1 100%; }
+.phone[data-mode^="admin_"] .ch-row input[type=number], .phone[data-mode^="admin_"] .ch-row input[type=time] { flex: 1 1 120px; min-width: 0; }
+
+/* iOS 开关（管理员手机「设置」里的开关类参数） */
+.phone .ios-switch { position: relative; flex: none; width: 51px; height: 31px; min-height: 0; padding: 0; border: 0; border-radius: 16px; background: color-mix(in srgb, var(--text) 18%, transparent); font-size: 0; color: transparent; transition: background-color .2s; }
+.phone .ios-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%; background: #fff; box-shadow: 0 3px 8px rgba(0,0,0,.16), 0 1px 1px rgba(0,0,0,.16); transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+.phone .ios-switch[aria-checked="true"] { background: #34c759; }
+.phone .ios-switch[aria-checked="true"]::after { transform: translateX(20px); }
+.phone .ios-switch:active { transform: none; }
+.phone .ios-switch:active::after { width: 31px; }
+.phone .ios-switch[aria-checked="true"]:active::after { transform: translateX(16px); }
+
+/* 催戏页：勾选卡片改成分组里的行 */
+.phone .admin-urge .ch-list { background: var(--ios-group); border-radius: 12px; padding: 0 16px; overflow: hidden; }
+.phone .admin-urge .urge-card { background: none; border: 0; border-bottom: .5px solid var(--line); border-radius: 0; margin: 0; padding: 14px 0; box-shadow: none; }
+.phone .admin-urge .urge-card:last-child { border-bottom: 0; }
+.phone .admin-urge .is-overdue { border-inline-start: 0; }
+.phone .urge-filter a { background: color-mix(in srgb, var(--text) 8%, transparent); border: 0; color: var(--text); }
+.phone .urge-actions { margin-top: 20px; }
+.phone .admin-urge .urge-summary .app-icon { width: 56px; height: 56px; border-radius: 14px; }
+
+/* 外观页的选项：未选中是淡灰填充胶囊，选中是主题色实心 */
+.phone .choices .choice { background: var(--pk-fill); border: 0; border-radius: 16px; padding: 8px 14px; font-size: 14px; color: var(--text); box-shadow: none; }
+.phone .choices .choice[aria-pressed="true"] { background: var(--mine); color: var(--mine-text); box-shadow: none; font-weight: 600; }
+.phone .choices .choice i { border-color: color-mix(in srgb, var(--text) 18%, transparent); }
+.phone .admin-appearance .appearance-preview { background: var(--ios-group); border: 0; border-radius: 12px; margin: 14px var(--gutter, 18px) 0; }
+.phone .admin-appearance .choices, .phone .admin-appearance .ch-note { margin-left: calc(var(--gutter, 18px) + 4px); margin-right: calc(var(--gutter, 18px) + 4px); }
+.phone .admin-appearance .ch-note .quiet-button { color: var(--mine); }
+/* 角色列表、漂流瓶总览：白色圆角分组 */
+.phone[data-mode="admin_index"] .admin-roles { margin: 14px var(--gutter, 18px) 0; padding: 0; background: var(--ios-group) !important; border-radius: 12px; overflow: hidden; flex: none; }
+.phone[data-mode="admin_index"] .admin-roles .row { border-bottom: .5px solid var(--line); }
+.phone[data-mode="admin_index"] .admin-roles .row:last-child { border-bottom: 0; }
+.phone .bottle-admin-card { background: var(--ios-group); border: 0; border-radius: 12px; }
+.phone .bottle-admin-intro { border-bottom: 0; }
+
 /* 弹层：背景轻微模糊，卡片圆角更大 */
 .phone dialog.appearance::backdrop, dialog.appearance::backdrop { -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); background: rgba(0,0,0,.28); }
 .phone dialog.appearance { border-radius: 24px; }
