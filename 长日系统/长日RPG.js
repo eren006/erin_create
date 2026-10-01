@@ -5470,9 +5470,6 @@ function sendToBackgroundGroupRPG(platform, text) {
 function broadcastToAllPlayerGroups(platform, text, withAt) {
     const main = getMainExt();
     if (!main) return;
-    // 逐个群发，每条间隔 800ms，别一瞬间往几十个群各发一条（会被平台风控）
-    let _slot = 0;
-    const paced = (fn) => { const d = (_slot++) * 800; if (d === 0) fn(); else setTimeout(() => { try { fn(); } catch (e) { console.error("[定时收集] 发送:", e.message); } }, d); };
     const apg = mainKvGet("a_private_group", {});
     const groups = apg[platform] || {};
     if (withAt) {
@@ -5486,7 +5483,7 @@ function broadcastToAllPlayerGroups(platform, text, withAt) {
                 const m = seal.newMessage();
                 m.messageType = "group";
                 m.groupId = `${platform}-Group:${gid}`;
-                paced(() => seal.replyToSender(seal.createTempCtx(ep, m), m, `[CQ:at,qq=${uid}]\n${text}`));
+                seal.replyToSender(seal.createTempCtx(ep, m), m, `[CQ:at,qq=${uid}]\n${text}`);
             } catch (e) { console.error("[定时收集] broadcast at:", e.message); }
         });
     } else {
@@ -5498,7 +5495,7 @@ function broadcastToAllPlayerGroups(platform, text, withAt) {
                 const m = seal.newMessage();
                 m.messageType = "group";
                 m.groupId = `${platform}-Group:${gid}`;
-                paced(() => seal.replyToSender(seal.createTempCtx(ep, m), m, text));
+                seal.replyToSender(seal.createTempCtx(ep, m), m, text);
             } catch (e) { console.error("[定时收集] broadcast:", e.message); }
         });
     }

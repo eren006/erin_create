@@ -5200,7 +5200,7 @@ function processOverdueBatch(ctx, entries) {
         const h = Math.floor(elapsed / 3600000), m = Math.floor((elapsed % 3600000) / 60000);
         const timeStr = h > 0 ? `${h}h${m}m` : `${m}m`;
 
-        paceSend(() => sendOverdueGroupNotice(ctx, timer, gid, name, timeStr));
+        sendOverdueGroupNotice(ctx, timer, gid, name, timeStr);
 
         const others = (timer.participants || []).filter(p => p !== name);
         const partnerLabel = others.length ? others.join("、") : "大家";
@@ -5217,7 +5217,7 @@ function processOverdueBatch(ctx, entries) {
     });
 
     byPerson.forEach(({ platform, pGid, name, entries: personEntries }) => {
-        paceSend(() => flushPersonalOverdueNotices(ctx, platform, pGid, name, personEntries));
+        flushPersonalOverdueNotices(ctx, platform, pGid, name, personEntries);
     });
 }
 
@@ -5269,7 +5269,7 @@ cmd_batch_notify.solve = (ctx, msg, cmdArgs) => {
                 groupMsg.groupId = `${msg.platform}-Group:${gid}`;
                 const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
                 const reminderMsg = `⏰ 温馨提示：\n本群已开启超过 ${hours} 小时啦～\n\n📋 群号：${gid}\n• 时间：${info.day || ""} ${info.time || ""}\n• 地点：${info.place || ""}\n\n如果互动已结束，请使用「结束私约」/「结束复盘」`;
-                paceSend(() => seal.replyToSender(groupCtx, groupMsg, reminderMsg));
+                seal.replyToSender(groupCtx, groupMsg, reminderMsg);
                 successCount++;
             } catch (e) {
                 failCount++;
@@ -5351,20 +5351,8 @@ cmd_edit_player_group.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["修改玩家群号"] = cmd_edit_player_group;
 
-// 批量发送节流：一次要往很多群/很多人发消息的地方（一键通知、提醒超时、催回……）统一排队，
-// 每条间隔 PACE_GAP_MS 发出，免得一分钟内几十上百条被平台风控。fn 里别依赖"同步已发出"。
-const PACE_GAP_MS = 800;
-let _paceNext = 0;
-function paceSend(fn) {
-    const now = Date.now(), at = Math.max(now, _paceNext);
-    _paceNext = at + PACE_GAP_MS;
-    const run = () => { try { fn(); } catch (e) { console.error("[节流发送] " + (e.message || e)); } };
-    if (at <= now) run(); else setTimeout(run, at - now);
-}
-
 // 「请尽快退出」提醒只对累计未退不超过这个数的人发
 const NOQUIT_REMIND_MAX = 10;
-const ALLOCATE_MAX_TRIES = 20;   // 分配群号时最多连续查多少个候选群
 
 /**
  * 检查指定群号中是否有非NPC的已绑定角色（异步，返回 Promise）
@@ -5455,12 +5443,7 @@ async function allocateGroup(platform, ctx, msg) {
         [freeGroups[i], freeGroups[j]] = [freeGroups[j], freeGroups[i]];
     }
 
-    let _tries = 0;
     for (let gid of freeGroups) {
-        // 候选群一个个查成员（每个都是一次接口调用，命中玩家还会发提醒）：限次数 + 间隔，群号池里大多是玩家所在群时别一口气扫完
-        if (_tries >= ALLOCATE_MAX_TRIES) { console.warn(`[分配群号] 连续 ${_tries} 个候选群都有玩家，先停下，请清理群号池里被占的群`); break; }
-        if (_tries > 0) await new Promise(r => setTimeout(r, 400));
-        _tries++;
         // 先抢占（重新读取防止并发后已被占用），再检查群内成员
         const gl = kvGet("group", []);
         if (!gl.includes(gid)) continue; // 已被其他并发调用占走
@@ -6147,7 +6130,7 @@ cmd_view_expired_groups.solve = (ctx, msg, cmdArgs) => {
                     const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
                     const reminderMsg = `⏰ 温馨提示：\n本群互动时间已经超时了哦～\n\n📋 记录号：${group.indexKey}\n• 时间：${group.day} ${group.time}\n• 地点：${group.place}\n\n如果互动已结束，请使用「结束私约」/「结束复盘」`;
                     
-                    paceSend(() => seal.replyToSender(groupCtx, groupMsg, reminderMsg));
+                    seal.replyToSender(groupCtx, groupMsg, reminderMsg);
                     successCount++;
                 } catch (e) {
                     failCount++;
@@ -12972,8 +12955,8 @@ function phoneApplyUrge(platform, op) {
         const ep = getSafeEndPoint(platform);
         if (!ep) return { ok: false, msg: "找不到可用的机器人账号" };
         const elapsed = Date.now() - st.startTime, h = Math.floor(elapsed / 3600000), mi = Math.floor((elapsed % 3600000) / 60000);
-        paceSend(() => sendOverdueGroupNotice({ endPoint: ep }, timer, gid, name, h > 0 ? `${h}h${mi}m` : `${mi}m`));
-        return { ok: true, msg: `已排队在群 ${gid} @ ${name}` };
+        sendOverdueGroupNotice({ endPoint: ep }, timer, gid, name, h > 0 ? `${h}h${mi}m` : `${mi}m`);
+        return { ok: true, msg: `已在群 ${gid} @ ${name}` };
     } catch (e) { return { ok: false, msg: "执行出错：" + (e.message || e) }; }
 }
 
