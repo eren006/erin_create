@@ -701,6 +701,7 @@ a { color: var(--link); text-decoration: none; }
     </a>
     {% endif %}
     {% if flash %}<div class="notice inbox-flash">{{ flash }}</div>{% endif %}
+    {% if status and status.removed and not admin_as %}<div class="notice inbox-flash">⚠️ {{ status.why }}。已有的记录仍可查看，有疑问请联系管理员。</div>{% endif %}
     {% for t in threads %}
     {% if t.group %}
     <a class="row" data-other="{{ t.other }}" data-received-ts="{{ t.received_ts }}" href="{{ url_for('player_group_thread', gid=t.group.id) }}">

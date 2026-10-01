@@ -5697,6 +5697,7 @@ def _phone_web_send_on(db, sid):
     return bool(row and row["web_send"])
 
 _PAUSE_MSG = "通讯暂时关闭了，稍后开放"
+_ROLE_GONE_MSG = "这个角色已不在名单里（可能已被管理员清除），不能再发送"
 
 def _phone_comm_paused(db, sid):
     """管理员「暂停所有通讯」：短信、礼物、群聊、匿名对话、点歌、朋友圈发帖/评论/点赞、心动信都发不出去，已有内容照常能看"""
@@ -5793,6 +5794,12 @@ def _phone_status(db, sid, role):
         return st
     if not sync:
         st["why"] = "机器人还没同步过规则，暂时不能从网页发送"
+        return st
+    # 插件同步是新鲜的、名单不空、但名单里没有这个角色：多半是被「清除玩家」了。发送入口灰掉并明说，别让人以为是临时出错
+    roster = _phone_roster(sync)
+    if role != PHONE_ADMIN and roster and _phone_day(sync, now)[2] and role not in roster:
+        st["removed"] = True
+        st["why"] = _ROLE_GONE_MSG
         return st
     if _schedule_zone(dict(show)) != "main":
         st["why"] = "不在档期内，暂时不能发送"
@@ -5932,7 +5939,7 @@ def _phone_send(db, sid, tid, owner, kind, to_name, text, gift_name="", preset_i
     if not preset and _blocked_hit(sid, owner, "礼物" if kind == "gift" else "短信", gift_name, text):
         return False, BLOCKED_MSG
     if owner not in roster:
-        return False, "❌ 找不到你的角色，等机器人下一次同步后再试"
+        return False, "❌ " + _ROLE_GONE_MSG
     if to_name == owner:
         return False, "📱 短信不可发给自己。" if kind == "sms" else "🌸 礼不自赠，情当他寄。"
     if to_name not in roster:
@@ -7816,7 +7823,7 @@ def _group_send(db, sid, owner, gid, text, alias):
     rules = snap.get("rules") or {}
     roster = _phone_roster(sync)
     if owner not in roster:
-        return False, "❌ 找不到你的角色，等机器人下一次同步后再试"
+        return False, "❌ " + _ROLE_GONE_MSG
     if "sms" in set((snap.get("feature_off") or {}).get(owner) or []):
         return False, "🕊️ 你被限制使用寄信功能。"
     text, alias = (text or "").strip(), (alias or "").strip()

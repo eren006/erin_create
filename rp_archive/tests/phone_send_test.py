@@ -233,4 +233,12 @@ p = send(lin, "周屿", "傻 逼")
 ok("不允许的字词" in p and "傻 逼</textarea>" in p, "blocked sms keeps draft")
 ok("不允许的字词" in send(lin, "周屿", "", kind="gift", gift_name="毒品"), "blocked gift name")
 ok("不允许的字词" in send(lin, "周屿", "加qq123", kind="gift", gift_name="花"), "blocked gift note")
+# 角色被「清除玩家」：快照新鲜、名单里没有他 → 页面明说，发送被拦；其他人不受影响
+ROSTER_FULL = ROSTER
+ROSTER = [r for r in ROSTER_FULL if r["name"] != "林晚"]; sync(after=10**9)
+page = lin.get("/p/me").get_data(as_text=True); ok("已不在名单里" in page, "removed role told on inbox")
+ok("已不在名单里" in send(lin, "周屿", "还能发吗"), "removed role cannot send")
+zhou = player("ZHOUYU0001"); ok("已不在名单里" not in zhou.get("/p/me").get_data(as_text=True), "others unaffected")
+ROSTER = ROSTER_FULL; sync(after=10**9)
+ok("已不在名单里" not in lin.get("/p/me").get_data(as_text=True), "role back → notice gone")
 print("ALL OK")
