@@ -12195,7 +12195,8 @@ function performLoveMailDelivery(ctx, msg, backgroundGroupId) {
         m.messageType = "group";
         m.groupId = `${platform}-Group:${raw}`;
         const c = seal.createTempCtx(ep, m);
-        ws({ action: "send_group_forward_msg", params: { group_id: parseInt(raw, 10), messages: nodes } }, c, m, "");
+        // 派送时每个收信人一条合并转发，人多时别一瞬间连发
+        paceSend(() => ws({ action: "send_group_forward_msg", params: { group_id: parseInt(raw, 10), messages: nodes } }, c, m, ""));
     };
 
     if (backgroundGroupId && records.length) {
@@ -12384,7 +12385,8 @@ const sendTextToGroup = (platform, gid, text) => {
         const m = seal.newMessage();
         m.messageType = "group";
         m.groupId = target;
-        seal.replyToSender(seal.createTempCtx(ep, m), m, text);
+        // 统一排队：心动信附图、点歌播报、开季提示……凡走这里的群消息，突发时每条间隔 PACE_GAP_MS
+        paceSend(() => seal.replyToSender(seal.createTempCtx(ep, m), m, text));
     } catch (e) {
         console.error(`[LoveMail] sendTextToGroup 异常:`, e);
     }
