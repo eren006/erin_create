@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.10.7
+// @version      1.10.8
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.10.7");
+    ext = seal.ext.new("changri", "长日将尽", "1.10.8");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -5351,6 +5351,9 @@ cmd_edit_player_group.solve = (ctx, msg, cmdArgs) => {
 };
 ext.cmdMap["修改玩家群号"] = cmd_edit_player_group;
 
+// 「请尽快退出」提醒只对累计未退不超过这个数的人发
+const NOQUIT_REMIND_MAX = 10;
+
 /**
  * 检查指定群号中是否有非NPC的已绑定角色（异步，返回 Promise）
  * @param {string} platform - 平台标识
@@ -5400,6 +5403,8 @@ async function checkGroupHasNonNPC(platform, gid, ctx, msg) {
                 }
 
                 const count = noquitRecord[qq].length;
+                // 累计未退超过上限就不再提醒（多半是拿错号/批量测试，继续 @ 只会刷屏），仍照常记录
+                if (count > NOQUIT_REMIND_MAX) continue;
 
                 const remindMsg = seal.newMessage();
                 remindMsg.messageType = "group";
