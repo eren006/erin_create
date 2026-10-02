@@ -56,6 +56,12 @@ ok("以 林晚 的视角" in inbox and "/p/admin/as/%E6%9E%97%E6%99%9A/%E5%91%A8
 t = m.get("/p/admin/as/林晚/周屿").get_data(as_text=True)
 ok("误送，本来给周屿" in t and "实际：林晚 → 沈知意" in t and "原文：原来的话" in t and "管理删除" in t, "admin notes")
 ok('id="compose"' not in t, "admin read-only thread")
+# 以发件人视角看（周屿发给林晚的那条被改过）：气泡里是周屿自己的原文，小字要写出对方实际收到的（被效果改过的）
+t2 = m.get("/p/admin/as/周屿/林晚").get_data(as_text=True)
+ok("原来的话" in t2 and "对方实际收到：被改的话" in t2 and "原文：原来的话" not in t2, "sender view shows what the other side got")
+# 以收件人视角看：气泡是被改过的，小字写原文
+t3 = m.get("/p/admin/as/林晚/周屿").get_data(as_text=True)
+ok("被改的话" in t3 and "原文：原来的话" in t3, "receiver view shows original")
 
 # 管理身份不能发：短信、朋友圈、点歌、头像
 ok(m.post("/p/me/send", data={"to": "周屿", "text": "x", "csrf": m.csrf}).location.endswith("/p/admin"), "no sms")

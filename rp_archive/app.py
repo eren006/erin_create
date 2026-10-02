@@ -8964,8 +8964,9 @@ def _admin_role_list(db, sid):
         names.update(n for n in (r["from_role"], r["to_role"]) if n)
     return sorted(names)
 
-def _admin_note(e):
-    """管理员看的真实情况：一行小字"""
+def _admin_note(e, mine=None):
+    """管理员看的真实情况：一行小字。mine=True 表示管理员正以发件人视角看这条（气泡里是发件人自己的原文），
+    这时要把「对方实际收到的」（被混乱效果改过的）写出来，不然管理员看不出效果有没有生效"""
     info = e.get("extra_info") or {}
     if e["type"] == "song":
         return f"点歌人：{e['from_role']}"
@@ -8979,7 +8980,10 @@ def _admin_note(e):
         parts.append(f"误送，本来给{intended}")
     if e["type"] == "sms":
         if info.get("is_content_chaos"):
-            parts.append(f"原文：{e['content']}")
+            if mine and info.get("delivered") and info["delivered"] != e["content"]:
+                parts.append(f"对方实际收到：{info['delivered']}")
+            elif not mine:
+                parts.append(f"原文：{e['content']}")
         if info.get("is_signature_chaos"):
             parts.append(f"落款被换成{_sig_name(info.get('signature'))}")
         if info.get("is_torn"):
@@ -9325,7 +9329,7 @@ def admin_phone_thread(role, other):
     msgs = _phone_msgs(db, sid, role, other)
     for m in msgs:
         e = events.get(m["id"])
-        m["admin_note"] = _admin_note(e) if e else ""
+        m["admin_note"] = _admin_note(e, mine=m.get("mine")) if e else ""
         m["admin_del"] = _admin_del_key(m["id"])
     return render_template("phone.html", mode="thread", owner=role, sid=sid, other=other, admin_as=role, phone_admin=True,
                            msgs=msgs, status={"can": False, "why": "管理身份：只能查看和删除", "sms": None, "gift": None},
