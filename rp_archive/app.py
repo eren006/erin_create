@@ -6268,6 +6268,9 @@ def _shop_visit(db, sid, role):
     res["owned"] = len(owned & set(ids))
     if not ids:
         return res
+    if res["owned"] >= len(ids):   # 全部收齐：直接说逛完了，不再显示「大约 N 小时后会换一件」（没有新的可换，管理员上新后才会有）
+        res["state"] = "complete"
+        return res
     hours = int(((sync["snap"].get("shop") or {}).get("refresh_hours") or 24) if sync else 24)
     now = int(time.time() * 1000)
     disp = _shop_display(db, sid, sync, role)
@@ -9594,7 +9597,10 @@ def admin_phone_codes():
         sync_ago = max(0, int(time.time() * 1000) - sync["synced_at"]) // 60000
     session.setdefault("theme_csrf", secrets.token_urlsafe(24))
     pst = _plugin_status(db, sid)
-    return render_template("admin_phone_codes.html", rows=rows, show=show,
+    shop_site_n = len(_preset_gifts(db, sid))
+    _shop_snap = ((sync["snap"] if sync else None) or {}).get("shop") or {}
+    shop_bot_n = _shop_snap.get("gift_count")   # 旧插件不报，是 None
+    return render_template("admin_phone_codes.html", rows=rows, show=show, shop_site_n=shop_site_n, shop_bot_n=shop_bot_n,
                            theme_settings=phone_theme(sid), base_url=_phone_base_url(),
                            web_send=_phone_web_send_on(db, sid), bottle_web=_phone_bottle_on(db, sid), can_bottle=pst.get("can_bottle"),
                            wish_web=_phone_wish_on(db, sid), can_wish=pst.get("can_wish"), plugin_version=(pst.get("version") if pst.get("known") else None),

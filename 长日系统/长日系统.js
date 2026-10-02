@@ -12865,7 +12865,9 @@ async function phoneWebSyncCore(base, token) {
     }
     const shop = {
         refresh_hours: parseInt(cachedGet("shop_refresh_hours") || "24") || 24,
-        catalog_on_receive: cachedGet("shop_gift_catalog_on_receive") === "true"
+        catalog_on_receive: cachedGet("shop_gift_catalog_on_receive") === "true",
+        // 机器人里现有的预设礼物数：网页礼品店用的是网页后台「礼品店管理」那份，两边对不上时后台「小手机」页会提醒
+        gift_count: Object.keys(kvGet("preset_gifts", {})).length
     };
 
     // 心动信：今天每人已投几封、信池里还没派送的信（网页「寄出的」里显示，可以撤回）

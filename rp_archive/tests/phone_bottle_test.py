@@ -21,10 +21,10 @@ bot = app.test_client()
 ROSTER = [{"name": "林晚", "npc": False}, {"name": "周屿", "npc": False}, {"name": "沈知意", "npc": False}]
 def ok(cond, msg):
     if not cond: raise AssertionError(msg)
-def sync(version="1.10.8", done=None, roster=None, sms_enabled=True, feature_off=None):
+def sync(version="1.10.8", done=None, roster=None, sms_enabled=True, feature_off=None, shop=None):
     r = bot.post("/api/phone/sync", headers={"X-Archive-Token": TOKEN}, json={"after": 0, "bottle_ops_done": done or [], "snapshot": {
         "game_day": "D2", "roster": roster or ROSTER, "rules": {"sms_enabled": sms_enabled}, "feature_off": feature_off or {}, "blocks": [], "block_write": True,
-        "plugin": {"version": version, "params": []}}})
+        "shop": shop, "plugin": {"version": version, "params": []}}})
     ok(r.status_code == 200, r.status_code); return r.get_json()
 def player(code):
     cl = app.test_client(); ok(cl.get("/p/" + code).status_code == 302, "login"); cl.get("/p/me"); return cl
@@ -139,4 +139,11 @@ g = text(lin, "/p/guide"); ok("网页（发现 → 漂流瓶）" in g and "群�
 sync(sms_enabled=False); g = text(lin, "/p/guide"); ok("暂未开放（和寄信共用开关）" in g, "guide: bottle unavailable when 寄信 off")
 sync()
 ok("现在哪些功能怎么用" in pa.get("/p/guide").get_data(as_text=True), "guide shown to admin phone too")
+# 后台「小手机」页：网页礼品店是空的（或跟机器人里的件数对不上）要提醒，不然玩家只会看到「货架上什么都没有」
+pg = text(adm, "/admin/phone_codes"); ok("礼品店的礼物两边对不上" in pg and "网页 0 件" in pg, "empty web shop warned")
+c.execute("INSERT INTO site_config (show_id, tenant_id, key, value) VALUES (?,?,'preset_gifts',?)", (SID, TID, json.dumps({"#001": {"name": "玫瑰", "content": "一朵"}}))); c.commit()
+pg = text(adm, "/admin/phone_codes"); ok("礼品店的礼物两边对不上" not in pg, "no warning once web has gifts (old plugin does not report count)")
+sync(shop={"refresh_hours": 24, "gift_count": 5}); pg = text(adm, "/admin/phone_codes")
+ok("礼品店的礼物两边对不上" in pg and "机器人 5 件" in pg, "mismatch warned")
+sync(shop={"refresh_hours": 24, "gift_count": 1}); ok("礼品店的礼物两边对不上" not in text(adm, "/admin/phone_codes"), "match → no warning")
 print("ALL OK")

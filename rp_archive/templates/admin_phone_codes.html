@@ -70,6 +70,7 @@
     <div class="pc-pill"><small>网页发送</small><b class="{{ 'on' if web_send else 'off' }}">{{ '已打开' if web_send else '关闭' }}</b></div>
     <div class="pc-pill"><small>网页漂流瓶</small><b class="{{ 'on' if bottle_web else 'off' }}">{{ '已打开' if bottle_web else '关闭' }}</b></div>
     <div class="pc-pill"><small>网页心愿</small><b class="{{ 'on' if wish_web else 'off' }}">{{ '已打开' if wish_web else '关闭' }}</b></div>
+    <div class="pc-pill"><small>礼品店礼物</small><b class="{{ 'bad' if shop_site_n == 0 else ('warn' if (shop_bot_n is not none and shop_bot_n != shop_site_n) else 'on') }}">网页 {{ shop_site_n }} 件{% if shop_bot_n is not none %} · 机器人 {{ shop_bot_n }} 件{% endif %}</b></div>
     <div class="pc-pill"><small>插件</small><b class="{{ 'on' if (can_bottle and can_wish) else 'warn' }}">{{ plugin_version or '未知' }}{% if not (can_bottle and can_wish) %} · 部分功能需升级{% endif %}</b></div>
   </div>
   <h3 class="pc-h">通讯与玩法开关</h3>
@@ -146,6 +147,16 @@
   </table>
   {% else %}
     <div class="pc-empty">存档站还没见过本季的角色：插件不会主动同步角色名单，角色参与场次或收发短信礼物后才会自动出现。<br>开季前可以用上面的输入框手动添加。</div>
+  {% endif %}
+  {% if shop_site_n == 0 or (shop_bot_n is not none and shop_bot_n != shop_site_n) %}
+  <div class="pc-add" style="border-color:var(--gold);">
+    <label style="color:var(--gold);">⚠️ 礼品店的礼物两边对不上</label>
+    <div style="font-size:12px;color:var(--muted);line-height:1.8;">
+      小手机里的礼品店用的是<b>网页后台「礼品店管理」</b>里的礼物（现在 {{ shop_site_n }} 件）{% if shop_bot_n is not none %}，机器人里现有 {{ shop_bot_n }} 件{% endif %}。
+      {% if shop_site_n == 0 %}网页这边是空的，玩家在小手机里看到的就是「货架上什么都没有」，会觉得礼品店不更新。{% endif %}
+      处理办法二选一：① 在网页后台「礼品店管理」里添加礼物；② 机器人里已经有礼物的话，群里发 <code>。推送全部 含物品池子</code> 把机器人这份推到网页（只有网页是空的时候才这样做，否则会覆盖网页上配好的）。
+    </div>
+  </div>
   {% endif %}
   <h3 class="pc-h">玩法设置</h3>
   <div class="pc-add">

@@ -1789,8 +1789,9 @@ a { color: var(--link); text-decoration: none; }
           <p class="shelf-note">已经在你的图鉴里了。大约 {{ shop.next_hours }} 小时后会换一件。</p>
         {% elif shop.state == 'complete' %}
           <p class="shelf-say">这里全部 {{ shop.total }} 件礼物，都已经在你的图鉴里了。</p>
+          <p class="shelf-note">🎉 已经逛完了，货架暂时不会再换新东西。等管理员上新再来看看。</p>
         {% elif shop.state == 'empty' %}
-          <p class="shelf-say">货架上什么都没有，过些时候再来。</p>
+          <p class="shelf-say">这个季度的礼品店还没有上架礼物，管理员布置好之后再来逛。</p>
         {% else %}
           <p class="shelf-say">今天似乎还没上架，过一会儿再来看看。</p>
         {% endif %}

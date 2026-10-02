@@ -1995,6 +1995,11 @@ cmd_view_preset_gifts.solve =(ctx, msg) => {
     const sightings = mainKvGet("gift_sightings", {});
     const owned = new Set(sightings[userKey]?.unlocked_gifts || []);
 
+    // 礼物全部收齐了：直接说「逛完了」，不再给「再等 N 小时会换一件」这种空头承诺（没有新的可换）；管理员上新后自然又有得逛
+    if (allIds.every(id => owned.has(id))) {
+        return seal.replyToSender(ctx, msg, `你走遍了每一格货架，翻过了每一个角落。\n这里所有的 ${allIds.length} 件礼物，都已经在你的图鉴里了。\n\n货架暂时不会再换新东西了，等管理员上新再来看看。发送「图鉴」看看你收藏的一切。`);
+    }
+
     let personalDisplay = {};
     try { personalDisplay = mainKvGet("shop_personal_display", {}); } catch (e) { console.error("[社交] 读取 shop_personal_display 失败:", e.message); }
 

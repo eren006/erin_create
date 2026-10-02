@@ -90,4 +90,11 @@ ok(c.execute("SELECT COUNT(*) FROM phone_shop_log WHERE role_name='周屿'").fet
 # NPC 标识：名单里的 NPC 名字旁边有标记；匿名的点歌不会带出来
 ok('老板<span class="npc-tag">NPC</span>' in lin.get("/p/me/new").get_data(as_text=True), "npc tag in contacts")
 ok('npc-tag">NPC' not in lin.get("/p/me/周屿").get_data(as_text=True).split('<div class="title">')[1][:40], "no tag for player")
+# 全部收齐：直接说逛完了，不再说「大约 N 小时后会换一件」
+_all = list(json.loads(c.execute("SELECT value FROM site_config WHERE show_id=? AND key='preset_gifts'", (SID,)).fetchone()[0]).keys())
+n_logs = c.execute("SELECT COUNT(*) FROM phone_shop_log").fetchone()[0]
+sync(catalogs={"林晚": _all})
+page = lin.get("/p/me/shop").get_data(as_text=True)
+ok("已经逛完了" in page and "大约" not in page.split("shelf")[-1][:600] and f"全部 {len(_all)} 件" in page, "all collected → finished notice")
+ok(c.execute("SELECT COUNT(*) FROM phone_shop_log").fetchone()[0] == n_logs, "no log when everything is collected")
 print("ALL OK")
