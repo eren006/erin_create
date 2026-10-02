@@ -1,4 +1,4 @@
-{# 小游戏：列表页 + 三个游戏（2048 / 贪吃蛇 / 打地鼠）+ 全服永久排行榜 #}
+{# 小游戏：列表页 + 2048 / 贪吃蛇 / 打地鼠 / 合成大西瓜 + 全服永久排行榜 #}
 <style>
 .gm-list { padding: var(--gap, 12px) var(--gutter, 18px); display: grid; gap: 10px; }
 .gm-card { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; color: var(--text); text-decoration: none; background: var(--bg); }
@@ -46,6 +46,20 @@
 .gm-rank li.me { background: var(--theirs); }
 .gm-rank li.top .n { color: var(--tag); font-weight: 700; }
 .gm-empty { padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
+.wm-board { aspect-ratio: 3 / 4; }
+.wm-board .gm-over { background: var(--bg); color: var(--text); border: 1px solid var(--line); z-index: 2; }
+.wm-info,.wm-controls { width: 100%; max-width: 360px; font-size: 12px; color: var(--muted); }
+.wm-info { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.wm-info b { color: var(--text); font-size: 24px; }
+.wm-controls { margin-top: 12px; }
+.wm-board canvas { cursor: grab; touch-action: none; }
+.wm-board canvas.is-dragging { cursor: grabbing; }
+.wm-controls .gm-actions { flex-wrap: wrap; margin-top: 4px; }
+.wm-controls button,.wm-board button { min-height: 44px; }
+.wm-controls button:disabled { opacity: .5; cursor: not-allowed; }
+.wm-controls :focus-visible,.wm-board :focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+.wm-guide { line-height: 1.8; margin: 8px 0; }
+.wm-chain { padding: 10px 0; font-size: 18px; letter-spacing: 3px; overflow-wrap: anywhere; }
 </style>
 
 {% if not game %}
@@ -79,9 +93,17 @@
         <div id="gmMidBox">{% if game == 'whack' %}剩余<b id="gmMid">30</b>{% else %}我的最高<b id="gmMid">{{ my_best if my_best is not none else '—' }}</b>{% endif %}</div>
         <div>我的排名<b id="gmRank">{{ my_rank if my_rank else '—' }}</b></div>
       </div>
-      <div class="gm-board" id="gmBoard">
+      {% if game == 'watermelon' %}<div class="wm-info"><span>下一颗 <b id="wmNext">🍒</b></span><span id="wmStatus" role="status">慢慢来，等水果落稳。</span></div>{% endif %}
+      <div class="gm-board{% if game == 'watermelon' %} wm-board{% endif %}" id="gmBoard">
         <div class="gm-over" id="gmOver"><b id="gmOverTitle">游戏结束</b><span id="gmOverMsg"></span><button class="gm-btn" id="gmAgain" type="button">再来一局</button></div>
       </div>
+      {% if game == 'watermelon' %}
+      <div class="wm-controls">
+        <div class="gm-actions"><button class="gm-btn quiet" id="wmPause" type="button" disabled>暂停</button><button class="gm-btn quiet" id="wmEnd" type="button" disabled>结束本局</button></div>
+        <p class="wm-guide" id="wmGuide">按住顶部水果，左右拖动，松手丢下。相同水果碰到一起会变大，堆过虚线约 2 秒就结束。切到后台会自动暂停。键盘可用左右键移动、空格投放。</p>
+        <div class="wm-chain" aria-label="合成顺序：樱桃、草莓、葡萄、柠檬、橙子、苹果、梨、桃子、菠萝、蜜瓜、西瓜">🍒 🍓 🍇 🍋 🍊 🍎 🍐 🍑 🍍 🍈 🍉</div>
+      </div>
+      {% endif %}
       {% if game == 'snake' %}
       <div class="gm-pad" aria-label="方向键"><button class="u" data-d="u" aria-label="上">▲</button><button class="l" data-d="l" aria-label="左">◀</button><button class="d" data-d="d" aria-label="下">▼</button><button class="r" data-d="r" aria-label="右">▶</button></div>
       {% endif %}
@@ -93,6 +115,7 @@
       </ol>{% else %}<div class="gm-empty">还没有人上榜，来当第一个吧</div>{% endif %}
     </div>
   </div>
+  {% if game == 'watermelon' %}<script src="{{ url_for('static', filename='phone-watermelon.js') }}"></script>{% endif %}
   <script>
   (function () {
     var GAME = {{ game|tojson }}, CSRF = {{ csrf|tojson }}, CAN = {{ (not phone_admin)|tojson }};
@@ -114,7 +137,9 @@
       overTitle.textContent = title; overMsg.textContent = score > 0 && CAN ? '正在提交分数…' : '';
       over.classList.add('on');
       if (!score || !CAN) return;
+      if (GAME === 'watermelon') again.disabled = true;
       post('/score', { score: score }).then(function (d) {
+        if (GAME === 'watermelon') again.disabled = false;
         if (!d.ok) { overMsg.textContent = d.msg || '提交失败'; return; }
         overMsg.textContent = (d.new_best ? '🎉 新纪录 ' : '本局 ') + score + '　全服第 ' + d.rank + ' 名';
         if (GAME !== 'whack') midEl.textContent = d.best;
@@ -227,10 +252,16 @@
       return start;
     }
 
-    var startFn = { '2048': game2048, snake: gameSnake, whack: gameWhack }[GAME]();
+    function gameWatermelon() {
+      var controller = PhoneWatermelon.mount({ board: board, over: over, setScore: setScore, finish: finish });
+      stop = controller.stop; onDir = controller.move;
+      return function () { running = true; controller.start(); };
+    }
+    var startFn = { '2048': game2048, snake: gameSnake, whack: gameWhack, watermelon: gameWatermelon }[GAME]();
     again.addEventListener('click', function () {
+      if (GAME === 'watermelon') again.disabled = true;
       over.classList.remove('on');
-      (CAN ? post('/restart') : Promise.resolve()).then(startFn);
+      (CAN ? post('/restart') : Promise.resolve()).then(function () { startFn(); again.disabled = false; });
     });
     over.classList.add('on'); overTitle.textContent = '准备好了吗'; overMsg.textContent = ''; again.textContent = '开始';
     again.addEventListener('click', function once() { again.textContent = '再来一局'; again.removeEventListener('click', once); });

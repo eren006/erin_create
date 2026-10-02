@@ -21,6 +21,9 @@ echo ">>> 推送主题素材 static/themes（只加不删，不动 static 里的
 ssh jarvis 'mkdir -p /home/ubuntu/rp_archive/static/themes'
 rsync -az "$LOCAL_DIR/static/themes/" jarvis:/home/ubuntu/rp_archive/static/themes/
 
+echo ">>> 推送 static 根目录下的 js/css（小游戏等页面脚本，如 phone-watermelon.js；只加不删）"
+rsync -az --include='*.js' --include='*.css' --exclude='*' "$LOCAL_DIR/static/" jarvis:/home/ubuntu/rp_archive/static/
+
 echo ">>> 安装依赖并重启..."
 ssh jarvis 'cd /home/ubuntu/rp_archive && venv/bin/pip install -q -r requirements.txt && sudo systemctl restart rp_archive && sleep 3 && systemctl is-active rp_archive'
 

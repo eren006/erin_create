@@ -6845,6 +6845,7 @@ _GAMES = {
     "2048":  {"name": "2048",   "icon": "🔢", "desc": "滑动合并方块，越大越好", "unit": "分", "score_per_sec": 600, "min_secs": 8},
     "snake": {"name": "贪吃蛇", "icon": "🐍", "desc": "吃得越多分越高，别撞墙",   "unit": "分", "score_per_sec": 40,  "min_secs": 5},
     "whack": {"name": "打地鼠", "icon": "🔨", "desc": "30 秒内敲中多少只",         "unit": "只", "score_per_sec": 7,   "min_secs": 29},
+    "watermelon": {"name": "合成大西瓜", "icon": "🍉", "desc": "相同水果碰一碰，一路合成大西瓜", "unit": "分", "score_per_sec": 100, "min_secs": 0},
 }
 
 def _game_board(db, game, sid, owner, limit=50):
