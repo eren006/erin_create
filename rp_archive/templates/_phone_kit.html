@@ -214,9 +214,12 @@
 .phone .admin-appearance .choices, .phone .admin-appearance .ch-note { margin-left: calc(var(--gutter, 18px) + 4px); margin-right: calc(var(--gutter, 18px) + 4px); }
 .phone .admin-appearance .ch-note .quiet-button { color: var(--mine); }
 /* 角色列表、漂流瓶总览：白色圆角分组 */
-.phone[data-mode="admin_index"] .admin-roles { margin: 14px var(--gutter, 18px) 0; padding: 0; background: var(--ios-group) !important; border-radius: 12px; overflow: hidden; flex: none; }
-.phone[data-mode="admin_index"] .admin-roles .row { border-bottom: .5px solid var(--line); }
-.phone[data-mode="admin_index"] .admin-roles .row:last-child { border-bottom: 0; }
+/* 角色列表：白色圆角分组。注意别动 .scroll 自己的 flex/overflow（动了就滑不动了）——圆角和白底画在每一行上，首尾两行各切一边的圆角 */
+.phone[data-mode="admin_index"] .admin-roles { padding: 14px var(--gutter, 18px) 112px; }
+.phone[data-mode="admin_index"] .admin-roles .row { background: var(--ios-group); border-bottom: .5px solid var(--line); }
+.phone[data-mode="admin_index"] .admin-roles .row:first-child { border-radius: 12px 12px 0 0; }
+.phone[data-mode="admin_index"] .admin-roles .row:last-child { border-bottom: 0; border-radius: 0 0 12px 12px; }
+.phone[data-mode="admin_index"] .admin-roles .row:only-child { border-radius: 12px; }
 .phone .bottle-admin-card { background: var(--ios-group); border: 0; border-radius: 12px; }
 .phone .bottle-admin-intro { border-bottom: 0; }
 
