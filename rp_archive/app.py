@@ -5623,7 +5623,8 @@ _PHONE_MAX_LEN       = 500
 _REPEAT_RUN   = re.compile(r"(\S)\1{11,}")                 # 同一个字/符号连着 12 次以上
 _REPEAT_CHUNK = re.compile(r"(\S.{1,19}?)\1{2,}", re.S)      # 一小段（2~20 字）连着重复 3 次以上
 
-_REPEAT_PUNCT = re.compile(r"([\s，。！？、；：,.!?;:…~～·\-—\"“”'‘’（）()\[\]【】《》「」『』*_]+)")
+_REPEAT_PUNCT = re.compile(r"([\s\x00，。！？、；：,.!?;:…~～·\-—\"“”'‘’（）()\[\]【】《》「」『』*_]+)")
+_CQ_CODE_RE = re.compile(r"\[CQ:[^\]]*\]")   # QQ 表情/@ 等代码：精简重复时当成不可分割的整体，别从中间切坏
 
 def _clause_grams(parts):
     """按标点/空白切成小句（parts 是 re.split 带分隔符的结果：偶数下标是小句）。返回 {4 字小段: 在所有小句里出现的次数}，
@@ -5643,13 +5644,16 @@ def _clause_grams(parts):
 def _repeats_phrase(text):
     """同一小段（4 个字）在一条消息里出现 3 次以上：哪怕中间隔着别的字、标点也算（最多只能出现 2 次）。
     更长的短语重复 3 次，它开头的 4 个字也一定出现 3 次，所以只查 4 字就够。"""
-    parts = _REPEAT_PUNCT.split(text or "")
+    parts = _REPEAT_PUNCT.split(_CQ_CODE_RE.sub(" ", text or ""))
     return any(n >= 3 for n in _clause_grams(parts).values())
 
 def _squash_repeats(text):
     """重复太多时自动精简，不拦：①同一个字连着超过 6 个压成 6 个；②一小段（2~20 字）连着重复 3 次以上只留 2 次；
     ③同一小段（4 字）在整条消息里出现超过 2 次，后面多出来的删掉（整句都是它就删整句，否则只删这几个字）。没有重复就原样返回。"""
-    t = text or ""
+    kept_cq = []
+    def _hold(m):
+        kept_cq.append(m.group(0)); return "\x00%d\x00" % (len(kept_cq) - 1)
+    t = _CQ_CODE_RE.sub(_hold, text or "")   # [CQ:…] 先收起来，精简完再放回去
     t = re.sub(r"(\S)\1{6,}", lambda m: m.group(1) * 6, t)
     t = re.sub(r"(\S.{1,19}?)\1{2,}", lambda m: m.group(1) * 2 if len(set(m.group(1))) >= 2 else m.group(0), t, flags=re.S)
     changed = False
@@ -5677,13 +5681,13 @@ def _squash_repeats(text):
                 # 这一句里被删掉了重复的部分：剩下的太短（<=1 个字）就整句不要
                 if len(out.replace(" ", "")) <= 1:
                     out = ""
-                    if k + 1 < len(parts):
+                    if k + 1 < len(parts) and "\x00" not in parts[k + 1]:   # 后面的分隔符里有 [CQ:…] 的占位符就别吃掉
                         parts[k + 1] = ""
             parts[k] = out
         t = "".join(parts)
     if changed:
         t = re.sub(r"([，。！？、；,.!?;])\1+", r"\1", t).strip(" ，、；,;")
-    return t
+    return re.sub(r"\x00(\d+)\x00", lambda m: kept_cq[int(m.group(1))] if int(m.group(1)) < len(kept_cq) else "", t)
 
 def _too_repetitive(text):
     """一条消息里刷重复：同一个字连续很多遍、同一小段连续重复很多遍、同一小段（4 字以上）出现超过 2 次（不要求连着）、长文本里不同的字太少。「哈哈哈哈哈」这种正常的语气词不拦。"""
@@ -8148,8 +8152,10 @@ def _wish_reward_options(db, sid, owner, snap):
     out = []
     for key in ("items", "currencies"):
         for it in rpg.get(key) or []:
-            if it.get("name") and int(it.get("count") or 0) > 0 and "|" not in it["name"] and "｜" not in it["name"]:
-                out.append({"name": it["name"], "count": int(it["count"])})
+            try: cnt = int(it.get("count") or 0)
+            except (TypeError, ValueError): continue   # 报告里数量不是数字：这一项当没有，别让整个心愿页 500
+            if it.get("name") and cnt > 0 and "|" not in it["name"] and "｜" not in it["name"]:
+                out.append({"name": it["name"], "count": cnt})
     return out
 
 def _wish_places(db, sid):

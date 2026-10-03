@@ -255,4 +255,8 @@ for t, want in [('还没找到，还没找到，还没找到', '还没找到，�
     got = A._squash_repeats(t)
     ok(got == want, ("squash", t[:12], got))
     ok(not A._repeats_phrase(got), ("still repeats", got))
+# [CQ:…] 代码（QQ 表情、@）是整体：精简重复时不能从中间切坏，也不算重复
+for t, want in [('好开心[CQ:face,id=12][CQ:face,id=13][CQ:face,id=14]', '好开心[CQ:face,id=12][CQ:face,id=13][CQ:face,id=14]'), ('还没找到，[CQ:face,id=12]，还没找到，还没找到[CQ:face,id=13]', '还没找到，[CQ:face,id=12]，还没找到，[CQ:face,id=13]'), ('[CQ:at,qq=1991478245] 还没找到还没找到还没找到', '[CQ:at,qq=1991478245] 还没找到还没找到')]:
+    ok(A._squash_repeats(t) == want, ("cq protected", t[:16], A._squash_repeats(t)))
+    ok(not A._too_repetitive(want), ("cq not repetitive", want))
 print("ALL OK")

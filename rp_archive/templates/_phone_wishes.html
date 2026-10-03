@@ -85,4 +85,4 @@
     });
   }());
   </script>
-  {% if has_pending %}<script>setTimeout(function () { location.reload(); }, 8000);</script>{% endif %}
+  {% if has_pending %}<script>setTimeout(function () { try { var n = +sessionStorage.getItem('pendReload') || 0; if (n >= 30) return; sessionStorage.setItem('pendReload', n + 1); } catch (_) {} location.reload(); }, 8000);</script>{% else %}<script>try { sessionStorage.removeItem('pendReload'); } catch (_) {}</script>{% endif %}

@@ -7237,7 +7237,8 @@ ext.cmdMap["查看功能权限"] = cmd_view_user_feature;
 // 长文本里不同的字太少。跟存档站网页手机的 _too_repetitive 同一套规则。寄信 / 送礼留言 / 心动信共用
 const TOO_REPEAT_MSG = "❌ 内容里重复太多了，精简一下再发";
 // 按标点/空白切成小句（split 带分隔符：偶数下标是小句）。4 字小段不跨标点，至少含 2 种不同的字（「哈哈哈哈」不算）。
-const REPEAT_DELIM = /([\s，。！？、；：,.!?;:…~～·\-—"“”'‘’（）()\[\]【】《》「」『』*_]+)/;
+const REPEAT_DELIM = /([\s\x00，。！？、；：,.!?;:…~～·\-—"“”'‘’（）()\[\]【】《》「」『』*_]+)/;
+const CQ_CODE_RE = /\[CQ:[^\]]*\]/g;   // QQ 表情/@ 等代码：精简重复时当成不可分割的整体，别从中间切坏
 function clauseGrams(parts) {
     const counts = new Map();
     for (let k = 0; k < parts.length; k += 2) {
@@ -7254,14 +7255,15 @@ function clauseGrams(parts) {
 // 同一小段（4 个字）在一条消息里出现 3 次以上：哪怕中间隔着别的字、标点也算（最多只能出现 2 次）。
 // 更长的短语重复 3 次，它开头的 4 个字也一定出现 3 次，所以只查 4 字就够。
 function repeatsPhrase(text) {
-    for (const n of clauseGrams(String(text || "").split(REPEAT_DELIM)).values()) if (n >= 3) return true;
+    for (const n of clauseGrams(String(text || "").replace(CQ_CODE_RE, " ").split(REPEAT_DELIM)).values()) if (n >= 3) return true;
     return false;
 }
 // 重复太多时自动精简，不拦：①同一个字连着超过 6 个压成 6 个；②一小段（2~20 字）连着重复 3 次以上只留 2 次；
 // ③同一小段（4 字）在整条消息里出现超过 2 次，后面多出来的删掉（整句都是它就删整句，否则只删这几个字）。没有重复就原样返回。
 // 跟存档站网页手机的 _squash_repeats 同一套规则（有对照测试）。
 function squashRepeats(text) {
-    let t = String(text || "");
+    const heldCq = [];
+    let t = String(text || "").replace(CQ_CODE_RE, (m) => { heldCq.push(m); return "\x00" + (heldCq.length - 1) + "\x00"; });   // [CQ:…] 先收起来，精简完再放回去
     t = t.replace(/(\S)\1{6,}/g, (m, c) => c.repeat(6));
     t = t.replace(/(\S[\s\S]{1,19}?)\1{2,}/g, (m, c) => new Set(c).size >= 2 ? c + c : m);
     let changed = false;
@@ -7282,13 +7284,13 @@ function squashRepeats(text) {
                 if (kept <= 2) out += g;
                 pos = x + 4;
             }
-            if (kept > 2 && out !== c && out.replace(/ /g, "").length <= 1) { out = ""; if (k + 1 < parts.length) parts[k + 1] = ""; }
+            if (kept > 2 && out !== c && out.replace(/ /g, "").length <= 1) { out = ""; if (k + 1 < parts.length && !parts[k + 1].includes("\x00")) parts[k + 1] = ""; }
             parts[k] = out;
         }
         t = parts.join("");
     }
     if (changed) t = t.replace(/([，。！？、；,.!?;])\1+/g, "$1").replace(/^[ ，、；,;]+|[ ，、；,;]+$/g, "");
-    return t;
+    return t.replace(/\x00(\d+)\x00/g, (m, i) => heldCq[+i] !== undefined ? heldCq[+i] : "");
 }
 function isTooRepetitive(text) {
     const t = String(text || "").replace(/\s+/g, "");

@@ -1258,7 +1258,7 @@ a { color: var(--link); text-decoration: none; }
     </div>
     <p class="bottle-hint bottle-footnote">群里扔的瓶子也会出现在这里，可以接着回信；这里扔的瓶子，群里用「漂流瓶 编号 内容」也能回。</p>
   </div>
-  {% if has_pending %}<script>setTimeout(function () { location.reload(); }, 8000);</script>{% endif %}
+  {% if has_pending %}<script>setTimeout(function () { try { var n = +sessionStorage.getItem('pendReload') || 0; if (n >= 30) return; sessionStorage.setItem('pendReload', n + 1); } catch (_) {} location.reload(); }, 8000);</script>{% else %}<script>try { sessionStorage.removeItem('pendReload'); } catch (_) {}</script>{% endif %}
 
 {% elif mode == 'bottle' %}
   <header class="bar bottle-bar">
@@ -1278,7 +1278,7 @@ a { color: var(--link); text-decoration: none; }
     <textarea aria-label="回信" name="text" maxlength="{{ max_msg }}" placeholder="{{ why or '回信……' }}" rows="1" required{% if why %} disabled{% endif %}></textarea>
     <button type="submit"{% if why %} disabled{% endif %}>发送</button>
   </form>
-  {% if has_pending %}<script>setTimeout(function () { location.reload(); }, 8000);</script>{% endif %}
+  {% if has_pending %}<script>setTimeout(function () { try { var n = +sessionStorage.getItem('pendReload') || 0; if (n >= 30) return; sessionStorage.setItem('pendReload', n + 1); } catch (_) {} location.reload(); }, 8000);</script>{% else %}<script>try { sessionStorage.removeItem('pendReload'); } catch (_) {}</script>{% endif %}
 
 {% elif mode == 'wishes' %}{% include '_phone_wishes.html' %}
 
