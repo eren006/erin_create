@@ -5422,6 +5422,30 @@ def _snippet(text, q, radius=22):
     a, b = max(0, i - radius), min(len(text), i + len(q) + radius)
     return ("…" if a else "") + text[a:i], text[i:i + len(q)], text[i + len(q):b] + ("…" if b < len(text) else "")
 
+def _phone_feature_entries(db, sid, owner):
+    """玩家手机里能直接跳转的功能入口（给搜索用）。没开的（网页漂流瓶 / 网页心愿 / 没有地图）不列。"""
+    items = [
+        ("朋友圈", "发朋友圈 动态 评论 点赞", "看大家发的、发一条", url_for("player_moments")),
+        ("心动信箱", "写信 心动信 匿名信 收到的 寄出的", "写信、看收到的信", url_for("player_lovemail")),
+        ("点歌台", "点歌 音乐 网易云 qq音乐 歌", "匿名点一首歌", url_for("player_song")),
+        ("小游戏", "游戏 2048 贪吃蛇 打地鼠 合成大西瓜 排行榜 排行", "2048、贪吃蛇、打地鼠、合成大西瓜", url_for("player_games")),
+        ("礼品店", "礼物 货架 图鉴 收藏 礼品", "逛货架、看图鉴", url_for("player_shop", view="book")),
+        ("时间线与统计", "时间线 日程 数量 弧长 字数 互动 最喜欢 排行 统计", "日程、数量、待回、弧长、互动", url_for("player_stats", view="timeline")),
+        ("我的待回", "待回 回复 催 超时", "还没回的场次、信和关系线", url_for("player_stats", view="pending")),
+        ("公开播报", "播报 公告 广播", "公告群播过的短信和礼物", url_for("player_phone_public")),
+        ("背包与属性", "背包 属性 道具 装备 角色", "只读的背包和属性", url_for("player_character")),
+        ("头像与外观", "头像 外观 主题 主题色 字号 深色 换肤 微信名 备注", "换头像、主题、字号、微信名", url_for("player_phone_library", view="profile")),
+        ("本机收藏", "收藏 星标 ☆", "对话里收藏的消息", url_for("player_phone_library", view="saved")),
+        ("使用指南", "帮助 怎么用 指南 说明 本季", "各功能现在在哪里用", url_for("phone_guide")),
+    ]
+    if _phone_wish_on(db, sid):
+        items.insert(3, ("心愿", "挂心愿 摘心愿 悬赏 许愿 心愿墙", "看心愿墙、挂、摘、撤", url_for("player_wishes")))
+    if _phone_bottle_on(db, sid):
+        items.insert(3, ("漂流瓶", "扔瓶子 瓶子 匿名 纸条", "扔一个、回信", url_for("player_bottles")))
+    if _phone_maps(db, sid, False):
+        items.append(("地图", "地点 地图 区块", "本季的地点和地图", url_for("player_maps")))
+    return [{"title": t, "kw": k, "sub": sub, "url": u} for t, k, sub, u in items]
+
 @app.route("/p/me/search")
 def player_phone_search():
     who = _phone_current()
@@ -5436,6 +5460,11 @@ def player_phone_search():
     db = get_db()
     sync = _phone_sync_row(db, sid)
     groups = []
+
+    # 功能入口（像 iOS 的聚焦搜索）：入口多了不用一层层找，搜「漂流瓶」「外观」「图鉴」直接跳过去；没开的功能不出现
+    feats = [it for it in _phone_feature_entries(db, sid, owner) if q in (it["title"] + " " + it["kw"]).lower()]
+    if feats:
+        groups.append({"key": "features", "label": "功能", "items": [{"title": it["title"], "sub": it["sub"], "url": it["url"]} for it in feats[:_SEARCH_PER_GROUP]]})
 
     # 联系人 / 群聊：对话列表里名字命中的，加上名单里还没聊过的人（点进去就能开始对话）
     people, seen = [], set()
@@ -6794,7 +6823,29 @@ def player_discover():
         "FROM moments m WHERE show_id=? AND deleted=0 ORDER BY id DESC LIMIT 1", (sid,)).fetchone()
     return render_template("phone.html", mode="discover", owner=owner, sid=sid, csrf=_phone_csrf(),
                            phone_admin=(owner == PHONE_ADMIN), moments_latest=latest, bottle_on=_phone_bottle_on(db, sid), wish_on=_phone_wish_on(db, sid),
-                           has_maps=bool(_phone_maps(db, sid, owner == PHONE_ADMIN)))
+                           has_maps=bool(_phone_maps(db, sid, owner == PHONE_ADMIN)),
+                           disc=_discover_details(db, sid, owner) if owner != PHONE_ADMIN else {})
+
+def _discover_details(db, sid, owner):
+    """发现页每个入口右边的一行灰色小字（不点进去也知道有没有新东西）：心愿几个漂浮、漂流瓶几个、今天还能点几首、图鉴收集进度。出错就不显示，不影响页面。"""
+    out = {}
+    try:
+        if _phone_wish_on(db, sid):
+            n = len(_wish_wall(db, sid, owner))
+            out["wish"] = f"{n} 个漂浮中" if n else "暂时没有"
+        if _phone_bottle_on(db, sid):
+            n = len([t for t in _bottle_threads(db, sid, owner) if not t["state"]])
+            out["bottle"] = f"{n} 个瓶子" if n else ""
+        cap = _song_daily_cap(db, sid)
+        out["song"] = f"今天 {_song_used_today(db, sid, owner)}/{cap}"
+        sync = _phone_sync_row(db, sid)
+        if sync and "catalogs" in (sync["snap"] or {}):
+            ids = set(_preset_gifts(db, sid).keys())
+            if ids:
+                out["shop"] = f"图鉴 {len(_shop_catalog(db, sid, sync, owner) & ids)}/{len(ids)}"
+    except Exception:
+        pass
+    return out
 
 def _phone_maps(db, sid, is_admin):
     """小手机里能看的地图：玩家只看后台勾了「玩家可见」的，管理身份全看；顺序跟地点列表一致。"""

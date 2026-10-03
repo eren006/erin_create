@@ -40,10 +40,8 @@
     <button type="submit" class="quiet-button">保存</button>
   </form>
   <div class="pf-group">
-    <a class="pf-row" href="{{ url_for('player_stats') }}"><span class="tile">📊</span><span class="name">时间线与统计</span><span class="chev" aria-hidden="true">›</span></a>
     <a class="pf-row" href="{{ url_for('player_moments', mine=1) }}"><span class="tile">📷</span><span class="name">我的朋友圈</span><span class="chev" aria-hidden="true">›</span></a>
     <a class="pf-row" href="{{ url_for('player_phone_library', view='saved') }}"><span class="tile">⭐</span><span class="name">本机收藏</span><span class="chev" aria-hidden="true">›</span></a>
-    <a class="pf-row" href="{{ url_for('player_shop', view='book') }}"><span class="tile">📖</span><span class="name">礼品图鉴</span><span class="chev" aria-hidden="true">›</span></a>
   </div>
   <div class="pf-group">
     <button class="pf-row" id="appearanceOpen" type="button" aria-haspopup="dialog"><span class="tile">🎨</span><span class="name">头像与外观</span><span class="chev" aria-hidden="true">›</span></button>

@@ -146,4 +146,14 @@ pg = text(adm, "/admin/phone_codes"); ok("礼品店的礼物两边对不上" not
 sync(shop={"refresh_hours": 24, "gift_count": 5}); pg = text(adm, "/admin/phone_codes")
 ok("礼品店的礼物两边对不上" in pg and "机器人 5 件" in pg, "mismatch warned")
 sync(shop={"refresh_hours": 24, "gift_count": 1}); ok("礼品店的礼物两边对不上" not in text(adm, "/admin/phone_codes"), "match → no warning")
+# 入口不臃肿：搜索能直接跳到功能（没开的功能不出现）；发现页入口右边有实时小字；🎁 浮标只在信息/公开播报/发现页
+def feat(cl, q):
+    g = [g for g in cl.get("/p/me/search?q=" + q).get_json()["groups"] if g["key"] == "features"]
+    return [i["title"] for i in g[0]["items"]] if g else []
+ok("漂流瓶" in feat(lin, "漂流") and "头像与外观" in feat(lin, "主题") and "小游戏" in feat(lin, "大西瓜") and "礼品店" in feat(lin, "图鉴"), "feature search")
+ok(feat(lin, "心愿") == [], "wish entry hidden from search while 网页心愿 is off")
+ok(feat(lin, "不存在的功能") == [], "no match → no group")
+dpg = text(lin, "/p/me/discover")
+ok("今天 0/" in dpg and ">礼品店</span>" in dpg, "discover shows live detail and the shop row")
+ok('class="shop-fab"' in dpg and 'class="shop-fab"' not in text(lin, "/p/me/library?view=profile") and 'class="shop-fab"' not in text(lin, "/p/me/character"), "gift FAB only on inbox/public/discover")
 print("ALL OK")

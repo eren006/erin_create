@@ -37,7 +37,9 @@ def event(t, frm, to, content, info, day="D2"):
 lin, zy = player("LINWAN0001"), player("ZHOUYU0001")
 
 # 「我的」里有入口；还没有报告时提示去群里查
-ok("时间线与统计" in lin.get("/p/me/library?view=profile").get_data(as_text=True), "entry")
+_prof = lin.get("/p/me/library?view=profile").get_data(as_text=True)
+ok('class="name">时间线与统计' not in _prof and 'class="name">礼品图鉴' not in _prof and "我的朋友圈" in _prof and "本机收藏" in _prof, "「我的」页不再重复放时间线与统计 / 礼品图鉴（消息页日历按钮、发现页礼品店、搜索里都能进）")
+ok("时间线与统计" in [i["title"] for g in lin.get("/p/me/search?q=时间线").get_json()["groups"] if g["key"] == "features" for i in g["items"]], "entry via search")
 _inb = lin.get("/p/me").get_data(as_text=True)
 ok('class="timeline-btn"' in _inb and 'href="/p/me/stats?view=timeline"' in _inb, "inbox timeline entry")
 sync()

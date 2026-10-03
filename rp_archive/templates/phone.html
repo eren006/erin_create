@@ -1106,16 +1106,17 @@ a { color: var(--link); text-decoration: none; }
       <a class="row" data-other="__moments__"{% if moments_latest %} data-received-ts="{{ moments_latest['created_at'] }}"{% endif %} href="{{ url_for('player_moments') }}"><div class="avatar tile">📷</div><span class="name">{{ skin.words.moments }}</span><span class="chev" aria-hidden="true">›</span></a>
       {% if not phone_admin %}<a class="row" data-other="__lovemail__"{% if lovemail_last %} data-received-ts="{{ lovemail_last }}"{% endif %} href="{{ url_for('player_lovemail') }}"><div class="avatar tile">💌</div><span class="name">心动信箱</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
       {% if not phone_admin %}
-      <a class="row" href="{{ url_for('player_song') }}"><div class="avatar tile">🎵</div><span class="name">点歌台</span><span class="chev" aria-hidden="true">›</span></a>
+      <a class="row" href="{{ url_for('player_song') }}"><div class="avatar tile">🎵</div><span class="name">点歌台</span>{% if disc.song %}<span class="detail">{{ disc.song }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>
       {% endif %}
-      {% if wish_on and not phone_admin %}<a class="row wish-entry" href="{{ url_for('player_wishes') }}">{{ admin_app_icon('wish') }}<span class="name">心愿</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
-      {% if bottle_on %}<a class="row bottle-entry" href="{{ url_for('player_bottles') if not phone_admin else url_for('admin_phone_bottles') }}">{{ admin_app_icon('bottle') }}<span class="name">漂流瓶</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
+      {% if wish_on and not phone_admin %}<a class="row wish-entry" href="{{ url_for('player_wishes') }}">{{ admin_app_icon('wish') }}<span class="name">心愿</span>{% if disc.wish %}<span class="detail">{{ disc.wish }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>{% endif %}
+      {% if bottle_on %}<a class="row bottle-entry" href="{{ url_for('player_bottles') if not phone_admin else url_for('admin_phone_bottles') }}">{{ admin_app_icon('bottle') }}<span class="name">漂流瓶</span>{% if disc.bottle %}<span class="detail">{{ disc.bottle }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>{% endif %}
     </div>
     {% if not phone_admin or has_maps %}
     <div class="disc-label">玩乐</div>
     <div class="disc-group">
       {% if not phone_admin %}
       <a class="row" href="{{ url_for('player_games') }}"><div class="avatar tile">🎮</div><span class="name">小游戏</span><span class="chev" aria-hidden="true">›</span></a>
+      <a class="row" href="{{ url_for('player_shop', view='book') }}"><div class="avatar tile">🎁</div><span class="name">礼品店</span>{% if disc.shop %}<span class="detail">{{ disc.shop }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>
       {% endif %}
       {% if has_maps %}<a class="row" href="{{ url_for('player_maps') }}"><div class="avatar tile">🗺</div><span class="name">地图</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
     </div>
