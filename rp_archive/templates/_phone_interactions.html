@@ -17,6 +17,16 @@
 .interaction-detail { display: flex; flex-wrap: wrap; gap: 0 12px; margin-top: 1px; font-size: 13px; line-height: 20px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .interaction-detail b { color: var(--text); font-weight: 600; }
 .interaction-detail .is-zero, .interaction-detail .is-zero b { color: color-mix(in srgb, var(--muted) 65%, transparent); font-weight: 400; }
+.top-fav { display: grid; gap: 10px; margin-bottom: 18px; }
+.top-group { background: var(--theirs); border-radius: 14px; padding: 12px 14px; }
+.top-group h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .08em; }
+.top-row + .top-row { margin-top: 10px; padding-top: 10px; border-top: .5px solid var(--line); }
+.top-label { display: block; margin-bottom: 4px; font-size: 13px; color: var(--muted); }
+.top-row ol { list-style: none; margin: 0; padding: 0; }
+.top-row li { display: flex; align-items: baseline; gap: 10px; padding: 2px 0; font-size: 15px; }
+.top-row li b { width: 16px; color: var(--mine); font-variant-numeric: tabular-nums; }
+.top-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.top-n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
 .interaction-privacy { margin: 10px 2px 0; font-size: 12px; color: var(--muted); line-height: 1.7; }
 .interaction-privacy strong { color: var(--text); font-weight: 500; }
 .interaction-empty { padding: 28px 8px; text-align: center; font-size: 14px; color: var(--muted); }
@@ -27,6 +37,20 @@
     <div><strong>{{ (inter|sum(attribute='gift_sent')) + (inter|sum(attribute='gift_recv')) }}</strong><span>往来礼物</span></div>
     <div><strong>{{ lm_recv }}</strong><span>匿名来信</span></div>
   </div>
+  {% if top %}
+  <h2>最喜欢 <small>和群里「本场统计」同一份数据</small></h2>
+  <div class="top-fav">
+    {% for g in top %}
+    <section class="top-group"><h3>{{ g.title }}</h3>
+      {% for r in g.rows %}
+      <div class="top-row"><span class="top-label">{{ r.label }}</span>
+        <ol>{% for i in r.people %}<li><b>{{ loop.index }}</b><span class="top-name">{{ i.name }}</span><span class="top-n">{{ i.count }} 次</span></li>{% endfor %}</ol>
+      </div>
+      {% endfor %}
+    </section>
+    {% endfor %}
+  </div>
+  {% endif %}
   <h2>往来记录 <small>{{ inter|length }} 位联系人</small></h2>
   {% if inter %}
   <ol class="interaction-list">

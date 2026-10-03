@@ -7797,6 +7797,23 @@ def player_phone_public_daily():
     return jsonify(_phone_public_daily(get_db(), who[0]))
 
 
+_TOP_LABELS = [("短信", "sms_received", "最常给你发短信", "sms_sent", "你最常发短信给"),
+               ("礼物", "gift_received", "最常送你礼物", "gift_sent", "你最常送礼给"),
+               ("约会", "appt_received", "最常约你（私约 / 电话）", "appt_sent", "你最常约（私约 / 电话）"),
+               ("心愿", "wish_received", "最常摘你的心愿", "wish_sent", "你最常摘谁的心愿")]
+
+def _phone_top_view(top):
+    """「最喜欢」排行（插件按群里「本场统计」同一份互动次数每项取前 3）：[{title, rows:[{label, people:[{name,count}]}]}]，空的项不出"""
+    top = top or {}
+    out = []
+    for title, rk, rl, sk, sl in _TOP_LABELS:
+        rows = []
+        for key, label in ((rk, rl), (sk, sl)):
+            items = [{"name": str(i.get("name") or "")[:20], "count": int(i.get("count") or 0)} for i in (top.get(key) or []) if isinstance(i, dict)]
+            if items: rows.append({"label": label, "people": items[:3]})
+        if rows: out.append({"title": title, "rows": rows})
+    return out
+
 def _phone_interactions(db, sid, owner):
     rows = {}
     for m in _phone_views(db, sid, owner):
@@ -8302,10 +8319,11 @@ def player_stats():
             days.append({"day": ev.get("day") or "", "events": []})
         days[-1]["events"].append(ev)
     inter, lm_recv = _phone_interactions(db, sid, owner) if view == "interact" else ([], 0)
+    top = _phone_top_view((report or {}).get("top")) if view == "interact" else []
     return render_template("phone.html", mode="stats", owner=owner, sid=sid, view=view, report=report, days=days,
                            updated=(_phone_time(row["updated_at"]) if row else ""),
                            stale=bool(row) and int(time.time() * 1000) - row["updated_at"] > 10 * 60 * 1000,
-                           inter=inter, lm_recv=lm_recv,
+                           inter=inter, lm_recv=lm_recv, top=top,
                            pending_items=_phone_pending_items(report, _phone_dismissed(db, sid, owner), _phone_urged(db, sid, owner)) if view == "pending" else [],
                            csrf=_phone_csrf(), flash=session.pop("phone_flash", None),
                            arc_view=_phone_arc_view((report or {}).get("arc")) if view == "arc" else None,

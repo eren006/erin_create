@@ -12719,6 +12719,16 @@ function buildPhoneRpg(platform, primary) {
     return { currencies: currencies.slice(0, 20), presets: presets.slice(0, 60), items: items.slice(0, 100), attrs, equips: equips.slice(0, 20) };
 }
 
+// 网页手机「互动」页的「最喜欢」：跟群里「本场统计」里短信/礼物/约会/心愿那几块同一份数据（interaction_counts），每项取前 3
+function buildPhoneTop(platform, roleName) {
+    const c = getInteractionCounts()[`${platform}:${roleName}`] || {}, out = {};
+    for (const k of ["sms_received", "sms_sent", "gift_received", "gift_sent", "appt_received", "appt_sent", "wish_received", "wish_sent"]) {
+        const list = Object.entries(c[k] || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name, count]) => ({ name, count }));
+        if (list.length) out[k] = list;
+    }
+    return out;
+}
+
 function buildPhoneReports(platform) {
     const priv = kvGet("a_private_group", {})[platform] || {};
     const gameDay = cachedGet("global_days") || "D0";
@@ -12739,6 +12749,7 @@ function buildPhoneReports(platform) {
                                                       place: ev.place || "", partner: ev.partner || "", progress: (ev.progressText || "").trim(),
                                                       wechat: !!ev.isWechat })),
                 pending: buildPhonePendingLite(platform, primary, name),
+                top: buildPhoneTop(platform, name),
                 rpg: buildPhoneRpg(platform, primary)
             };
         } catch (e) {

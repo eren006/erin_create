@@ -190,4 +190,14 @@ dismiss(lin, "s:5009:"); ok(lin.get('/p/me/poll').json['pending']['count'] == 0,
 # 管理身份、没登录
 adm = app.test_client(); adm.get("/p/ADMINCODE1")
 ok(adm.get("/p/me/stats").status_code == 302 and app.test_client().get("/p/me/stats").status_code == 302, "access")
+# 互动页「最喜欢」排行（插件按群里「本场统计」同一份互动次数每项取前 3 随报告上报）：包含约会和心愿这两类网页以前没有的
+sync(reports={"林晚": {"day": "D2", "top": {"sms_received": [{"name": "周屿", "count": 9}, {"name": "沈知意", "count": 2}],
+                                            "appt_sent": [{"name": "沈知意", "count": 4}], "wish_received": [{"name": "周屿", "count": 1}],
+                                            "wish_sent": [], "bogus": [{"name": "x", "count": 1}]}}})
+tp = page(lin, "interact")
+ok("最喜欢" in tp and "最常给你发短信" in tp and "你最常约（私约 / 电话）" in tp and "最常摘你的心愿" in tp, "top section shows sms/appt/wish groups")
+ok("周屿" in tp.split("最常给你发短信")[1].split("</ol>")[0] and "9 次" in tp, "ranked names and counts")
+ok("你最常摘谁的心愿" not in tp and "bogus" not in tp, "empty or unknown entries are not shown")
+sync(reports={"林晚": {"day": "D2"}})
+ok("最喜欢" not in page(lin, "interact"), "no section when the report has no ranking (old plugin)")
 print("ALL OK")
