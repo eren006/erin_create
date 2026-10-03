@@ -9118,16 +9118,18 @@ def _admin_urge_rows(db, sid, show_all=False):
         except (ValueError, TypeError): continue
         urged = _phone_urged(db, sid, r["role"])
         for it in (rep.get("pending") or {}).get("pending") or []:
-            if not show_all and not it.get("over"): continue
+            if not show_all and not (it.get("over") or it.get("expired")): continue   # 超时 = 弧太久 或 群已到期
             key = f"s:{it.get('gid')}:{it.get('since') or ''}"
             ts = urged.get(key, 0)
             rows.append({"role": r["role"], "gid": it.get("gid"), "type": it.get("type") or "", "minutes": it.get("elapsed_min") or 0,
-                         "over": bool(it.get("over")), "since": it.get("since") or 0, "key": key,
+                         "arc": bool(it.get("over")), "expired": bool(it.get("expired")),
+                         "over": bool(it.get("over") or it.get("expired")), "since": it.get("since") or 0, "key": key,
                          "urged_text": _phone_ago(ts) if ts else "", "urged_ts": ts,
                          "stale": int(time.time() * 1000) - r["updated_at"] > _PHONE_SYNC_FRESH_MS})
-    return sorted(rows, key=lambda x: -x["minutes"])
+    # 已经催过这一次等待的排到后面（别挡着还没催的）；各自再按等得越久越靠前
+    return sorted(rows, key=lambda x: (1 if x["urged_ts"] else 0, -x["minutes"]))
 
-_URGE_COOLDOWN_MS = 10 * 60 * 1000   # 同一次等待 10 分钟内不重复催，免得群里被连刷
+_URGE_COOLDOWN_MS = 30 * 1000   # 只挡手滑连点（30 秒内同一条不重复排队）；只要还超时，隔多久都可以再催
 
 @app.route("/p/admin/urge")
 def admin_phone_urge():
@@ -9160,7 +9162,7 @@ def admin_phone_urge_op():
     # 只认当前报告里真实存在的等待项，不信表单里自带的群号和时间
     valid = {(x["role"], x["key"]): x for x in _admin_urge_rows(db, sid, show_all=True)}
     if f.get("scope") == "overdue":
-        picks = [k for k, x in valid.items() if x["over"]]
+        picks = [k for k, x in valid.items() if x["over"]]   # 「全部超时」= 所有还超时的，催过的也可以再催
     else:
         picks = []
         for v in f.getlist("item")[:100]:
@@ -9185,7 +9187,7 @@ def admin_phone_urge_op():
     if not picks: msg = "❌ 没有可催的项（刷新看看是不是已经回了）"
     else:
         msg = f"✅ 小手机已标记 {n_phone} 条" + (f"，群里 {n_group} 条已提交，机器人半分钟内发出" if n_group else "，群里的提醒要插件升级到 1.10.7 以上才能发")
-        if n_skip: msg += f"；{n_skip} 条 10 分钟内催过，跳过"
+        if n_skip: msg += f"；{n_skip} 条刚刚（30 秒内）催过，跳过"
     session["phone_flash"] = msg
     return redirect(back)
 

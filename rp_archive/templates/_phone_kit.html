@@ -197,6 +197,14 @@
 .phone .ios-switch:active::after { width: 31px; }
 .phone .ios-switch[aria-checked="true"]:active::after { transform: translateX(16px); }
 
+/* 催戏页：按时间勾选的一排小按钮、已催过的分隔和淡化 */
+.phone .urge-quick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px var(--gutter, 18px) 0; }
+.phone .urge-quick span { flex: 1 1 100%; font-size: 12px; color: var(--muted); letter-spacing: .08em; }
+.phone .urge-quick button { background: color-mix(in srgb, var(--mine) 12%, transparent); color: var(--mine); border: 0; border-radius: 16px; min-height: 34px; padding: 0 12px; font-size: 13px; font-weight: 500; }
+.phone .urge-quick button:disabled { opacity: .35; }
+.phone .urge-divider { padding: 12px 0 6px; font-size: 12px; letter-spacing: .08em; color: var(--muted); border-bottom: .5px solid var(--line); }
+.phone .admin-urge .urge-card.is-urged { opacity: .6; }
+.phone .urge-tag { font-weight: 500; font-size: 11px; padding: 1px 7px; border-radius: 9px; background: color-mix(in srgb, var(--tag) 14%, transparent); color: var(--tag); }
 /* 催戏页：勾选卡片改成分组里的行 */
 .phone .admin-urge .ch-list { background: var(--ios-group); border-radius: 12px; padding: 0 16px; overflow: hidden; }
 .phone .admin-urge .urge-card { background: none; border: 0; border-bottom: .5px solid var(--line); border-radius: 0; margin: 0; padding: 14px 0; box-shadow: none; }

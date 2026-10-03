@@ -1724,15 +1724,23 @@ a { color: var(--link); text-decoration: none; }
   <div class="scroll ch-page admin-urge">
     <a class="plugin-chip {{ plugin.level }}" href="{{ url_for('admin_phone_settings') }}">{{ plugin.text }}</a>
     {% if flash %}<div class="ch-flash">{{ flash }}</div>{% endif %}
-    <div class="urge-summary">{{ admin_app_icon('urge') }}<div><strong>{{ urge_rows|selectattr('over')|list|length }} <small>项已超时</small></strong><p>给等待中的故事，一声提醒。</p></div></div>
-    <p class="ch-note">催一次 = 小手机上对方的「待回」会标「管理员催你回复」，同时机器人在那个群里 @ 对方发一条提醒。同一次等待 10 分钟内不重复催。</p>
+    <div class="urge-summary">{{ admin_app_icon('urge') }}<div><strong>{{ urge_rows|selectattr('over')|list|length }} <small>项已超时</small></strong><p>弧太久 {{ urge_rows|selectattr('arc')|list|length }} · 群已到期 {{ urge_rows|selectattr('expired')|list|length }}　给等待中的故事，一声提醒。</p></div></div>
+    <p class="ch-note">催一次 = 小手机上对方的「待回」会标「管理员催你回复」，同时机器人在那个约会群里 @ 对方，并提醒到 ta 的专属群。只要还超时，随时可以再催；催过的会排到后面。</p>
     <p class="urge-filter"><span>{{ '全部待回' if show_all else '已超时' }}</span><a href="{{ url_for('admin_phone_urge', all=(None if show_all else '1')) }}">{{ '只看已超时' if show_all else '连没超时的一起看' }}</a></p>
     {% if urge_rows %}
     <form method="post" action="{{ url_for('admin_phone_urge_op') }}">
       <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="show_all" value="{{ '1' if show_all else '' }}">
+      <div class="urge-quick" role="group" aria-label="按等待时间勾选">
+        <span>按时间勾选</span>
+        <button type="button" data-urge-kind="arc">弧太久</button><button type="button" data-urge-kind="expired">群已到期</button>
+        <button type="button" data-urge-min="60">≥1 小时</button><button type="button" data-urge-min="180">≥3 小时</button><button type="button" data-urge-min="360">≥6 小时</button><button type="button" data-urge-min="720">≥12 小时</button><button type="button" data-urge-min="1440">≥24 小时</button><button type="button" data-urge-min="0">还没催过的</button><button type="button" data-urge-min="-1">清空</button>
+      </div>
+      <p class="ch-note" id="urgeCount">已勾选 0 项</p>
+      {% set seen = namespace(urged=false) %}
       <div class="ch-list">{% for u in urge_rows %}
-        <label class="ch-item ch-row urge-card{% if u.over %} is-overdue{% endif %}"><input type="checkbox" name="item" value="{{ u.role }}|{{ u.key }}"{% if u.over and not u.urged_text %} checked{% endif %}>
-          <span class="nm">{{ u.role }}{{ npc(u.role) }}<small>{{ u.type }} · 群 {{ u.gid }}{% if u.urged_text %} · {{ u.urged_text }}催过{% endif %}</small></span>
+        {% if u.urged_ts and not seen.urged %}{% set seen.urged = true %}<div class="urge-divider">已催过 · 排在后面（还超时的话可以再催）</div>{% endif %}
+        <label class="ch-item ch-row urge-card{% if u.over %} is-overdue{% endif %}{% if u.urged_ts %} is-urged{% endif %}" data-min="{{ u.minutes }}" data-urged="{{ 1 if u.urged_ts else 0 }}" data-arc="{{ 1 if u.arc else 0 }}" data-expired="{{ 1 if u.expired else 0 }}"><input type="checkbox" name="item" value="{{ u.role }}|{{ u.key }}"{% if u.over and not u.urged_ts %} checked{% endif %}>
+          <span class="nm">{{ u.role }}{{ npc(u.role) }}<small>{{ u.type }} · 群 {{ u.gid }}{% if u.arc %} · <b class="urge-tag">弧太久</b>{% endif %}{% if u.expired %} · <b class="urge-tag">群已到期</b>{% endif %}{% if u.urged_text %} · {{ u.urged_text }}催过{% endif %}</small></span>
           <span class="ct">{{ '已超时 ' if u.over else '等了 ' }}{{ (u.minutes // 60) ~ 'h' if u.minutes >= 60 else '' }}{{ u.minutes % 60 }}m</span></label>{% endfor %}</div>
       <div class="urge-actions"><button type="submit" class="ch-btn" data-confirm="确定催戏勾选的这些？">催戏勾选的</button>
       <button type="submit" name="scope" value="overdue" class="ch-btn" data-confirm="确定催戏所有已超时的？">催戏全部超时</button></div>
@@ -1748,6 +1756,30 @@ a { color: var(--link); text-decoration: none; }
   </div>
   <script>
   document.querySelectorAll('[data-confirm]').forEach(function (b) { b.addEventListener('click', function (e) { if (!confirm(b.getAttribute('data-confirm'))) e.preventDefault(); }); });
+  // 按等待时间勾选一大类：只勾还没催过的、等了不少于 N 分钟的；0 = 所有还没催过的；-1 = 清空
+  (function () {
+    var rows = Array.prototype.slice.call(document.querySelectorAll('.urge-card')), count = document.getElementById('urgeCount');
+    function update() { if (count) count.textContent = '已勾选 ' + rows.filter(function (r) { return r.querySelector('input').checked; }).length + ' 项'; }
+    document.querySelectorAll('[data-urge-kind]').forEach(function (b) {
+      var k = b.dataset.urgeKind, key = k === 'arc' ? 'arc' : 'expired';
+      var c = rows.filter(function (r) { return r.dataset.urged === '0' && r.dataset[key] === '1'; }).length;
+      b.textContent += ' · ' + c; if (!c) b.disabled = true;
+      b.addEventListener('click', function () {   // 按类别勾选：弧太久（这一轮等得超过规定弧长）/ 群已到期（群超过到期时间），只勾还没催过的
+        rows.forEach(function (r) { r.querySelector('input').checked = r.dataset.urged === '0' && r.dataset[key] === '1'; });
+        update();
+      });
+    });
+    document.querySelectorAll('[data-urge-min]').forEach(function (b) {
+      var n = parseInt(b.dataset.urgeMin, 10);
+      if (n >= 0) { var c = rows.filter(function (r) { return r.dataset.urged === '0' && parseInt(r.dataset.min, 10) >= n; }).length; b.textContent = (n === 0 ? '还没催过的' : b.textContent) + ' · ' + c; if (!c) b.disabled = true; }
+      b.addEventListener('click', function () {
+        rows.forEach(function (r) { r.querySelector('input').checked = n >= 0 && r.dataset.urged === '0' && parseInt(r.dataset.min, 10) >= n; });
+        update();
+      });
+    });
+    rows.forEach(function (r) { r.querySelector('input').addEventListener('change', update); });
+    update();
+  })();
   </script>
 
 {% elif mode == 'shop' %}

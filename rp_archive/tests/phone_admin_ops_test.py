@@ -175,4 +175,35 @@ ok("官约" in m.get("/p/admin").get_data(as_text=True) and "外观" in m.get("/
 ok('id="skinChoices"' in m.get("/p/admin/appearance").get_data(as_text=True), "appearance page")
 ok("最近发起" in m.get("/p/admin/official").get_data(as_text=True), "official page lists ops")
 ok(app.test_client().get("/p/admin/appearance").status_code == 302 and app.test_client().get("/p/admin/official").status_code == 302, "login required")
+
+# ── 催戏：催过的排到后面、只要还超时随时可以再催、按时间勾选的按钮 ──
+import re as _re
+c.execute("DELETE FROM phone_urges"); c.commit()
+m.post("/p/admin/urge/op", data={"csrf": m.csrf, "item": "林晚|s:5001:111"})            # 先催林晚那条（等得最久的之一）
+pg = m.get("/p/admin/urge").get_data(as_text=True)
+flags = _re.findall(r'data-urged="([01])"', pg)
+ok(flags == sorted(flags) and flags.count("1") == 1 and flags[-1] == "1", ("urged rows sorted to the bottom", flags))
+ok("已催过 · 排在后面" in pg and "data-urge-min=\"360\"" in pg and "按时间勾选" in pg, "divider and time-bucket buttons")
+ok(_re.search(r'data-urged="1"[^>]*><input type="checkbox" name="item" value="[^"]*"( checked)?', pg).group(1) is None, "urged row not pre-checked")
+# 过了防连点的 30 秒，「全部超时」把催过的也包括进来
+c.execute("UPDATE phone_urges SET created_at = created_at - 60000"); c.commit()
+before = {r["key"]: r["created_at"] for r in c.execute("SELECT key, created_at FROM phone_urges WHERE role='林晚'")}
+m.post("/p/admin/urge/op", data={"csrf": m.csrf, "scope": "overdue"})
+after = {r["key"]: r["created_at"] for r in c.execute("SELECT key, created_at FROM phone_urges WHERE role='林晚'")}
+ok(after.get("s:5001:111", 0) > before.get("s:5001:111", 0), "overdue item can be urged again once the double-tap guard has passed")
+
+# ── 催戏：区分「弧太久」（这一轮等得超过规定弧长）和「群已到期」（群超过到期时间） ──
+c.execute("INSERT OR REPLACE INTO phone_reports (show_id, role, data, updated_at) VALUES (?,?,?,?)", (SID, "沈知意", json.dumps({"pending": {"pending": [
+    {"gid": "5006", "type": "私约", "elapsed_min": 20, "since": 666, "over": False, "expired": True},     # 没等多久，但群已经过了到期时间
+    {"gid": "5007", "type": "电话", "elapsed_min": 700, "since": 777, "over": True, "expired": True},     # 两种都占
+    {"gid": "5008", "type": "官约", "elapsed_min": 5, "since": 888, "over": False, "expired": False}], "rel": [], "rel_n": {}, "letters": []}}), now_ms)); c.commit()
+pg = m.get("/p/admin/urge").get_data(as_text=True)
+rows = _re.findall(r'data-arc="([01])" data-expired="([01])"', pg)
+ok(("0", "1") in rows and ("1", "1") in rows, ("expired-only and both rows listed by default", rows))
+ok("5008" not in pg, "neither late nor expired → hidden by default")
+ok("群已到期" in pg and "弧太久" in pg and 'data-urge-kind="arc"' in pg and 'data-urge-kind="expired"' in pg, "kind labels and buttons")
+ok("5008" in m.get("/p/admin/urge?all=1").get_data(as_text=True), "all view shows the rest")
+n_u = c.execute("SELECT COUNT(*) FROM phone_urges WHERE role='沈知意'").fetchone()[0]
+m.post("/p/admin/urge/op", data={"csrf": m.csrf, "scope": "overdue"})
+ok(c.execute("SELECT COUNT(*) FROM phone_urges WHERE role='沈知意'").fetchone()[0] == n_u + 2, "全部超时 includes expired groups")
 print("ALL OK")

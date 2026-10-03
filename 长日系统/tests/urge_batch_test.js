@@ -1,0 +1,11 @@
+// 网页「催戏」批量发送测试：从 长日系统.js 截出 phoneApplyUrgeBatch，桩掉存储和 processOverdueBatch。
+// 用法：node 长日系统/tests/urge_batch_test.js ，通过时打印 URGE BATCH OK
+// 覆盖：同一次同步下发的催戏攒成一次 processOverdueBatch（这样同一个人多个超时群，专属群里是一条汇总 + 一份合并转发）/
+//       已回复、已进入新一轮、群计时已结束的不发 / 发出去的把已提醒次数存回计时器
+const fs = require("fs"), path = require("path");
+const src = fs.readFileSync(path.join(__dirname, "..", "长日系统.js"), "utf8");
+const a = src.indexOf("function phoneApplyUrgeBatch"), b = src.indexOf("function phoneApplyAdminOps", a);
+if (a < 0 || b < 0) throw new Error("截取失败");
+const STUB = "const mk=(st,t)=>({platform:\"QQ\",lastRemindTime:0,timerStatus:{\"林晚\":{status:st,startTime:t,remindedTimes:0}}});\nconst store={group_timers:{\"5001\":mk(\"timing\",111),\"5002\":mk(\"timing\",222),\"5003\":{platform:\"QQ\",lastRemindTime:0,timerStatus:{\"周屿\":{status:\"timing\",startTime:333,remindedTimes:0}}},\"5004\":mk(\"replied\",444)}};\nconst kvGet=(k,d)=>store[k]!==undefined?JSON.parse(JSON.stringify(store[k])):d, kvSet=(k,v)=>{store[k]=JSON.parse(JSON.stringify(v))};\nconst getSafeEndPoint=()=>({userId:\"bot\"});\nlet calls=[]; const processOverdueBatch=(ctx,entries)=>{calls.push(entries.map(e=>e.gid+\":\"+e.name)); entries.forEach(e=>{e.s.remindedTimes=(e.s.remindedTimes||0)+1})};\nconst op=(id,role,gid,since)=>({id,value:JSON.stringify({role,gid,since})});";
+const TEST = "const r=phoneApplyUrgeBatch(\"QQ\",[op(1,\"林晚\",\"5001\",111),op(2,\"林晚\",\"5002\",222),op(3,\"周屿\",\"5003\",333),op(4,\"林晚\",\"5004\",444),op(5,\"林晚\",\"5001\",999),op(6,\"林晚\",\"9999\",1)]);\nconsole.log(JSON.stringify(calls), JSON.stringify(Object.values(r).map(x=>x.ok)));\nif(calls.length!==1) throw new Error(\"must be ONE batch call so the player's private group gets a merged notice\");\nif(JSON.stringify(calls[0])!==JSON.stringify([\"5001:林晚\",\"5002:林晚\",\"5003:周屿\"])) throw new Error(\"entries \"+JSON.stringify(calls[0]));\nif(!(r[1].ok&&r[2].ok&&r[3].ok&&!r[4].ok&&!r[5].ok&&!r[6].ok)) throw new Error(\"results\");\nif(store.group_timers[\"5001\"].timerStatus[\"林晚\"].remindedTimes!==1||!store.group_timers[\"5003\"].lastRemindTime) throw new Error(\"persist\");\nif(store.group_timers[\"5004\"].timerStatus[\"林晚\"].remindedTimes!==0) throw new Error(\"replied untouched\");\nconsole.log(\"URGE BATCH OK\");\n";
+new Function(STUB + src.slice(a, b) + TEST)();

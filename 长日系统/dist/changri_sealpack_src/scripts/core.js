@@ -12626,8 +12626,10 @@ function buildPhonePendingLite(platform, uid, roleName) {
         if (!st || st.status !== "timing") continue;
         const elapsed = now - st.startTime;
         // since：这一轮开始等的时间，网页「暂不提醒」按它认同一次提醒（对方又回了一轮就是新的提醒）
+        // over：这一轮等得超过规定弧长（弧太久）；expired：这个群已经过了到期时间（群龄到期），两种可以同时成立
+        const expireAt = (kvGet("group_expire_info", {})[gid] || {}).expireTime || 0;
         pending.push({ gid, type: getCustomTypeLabel(timer.subtype), elapsed_min: Math.floor(elapsed / 60000), since: st.startTime || 0,
-                       over: elapsed > sanitizeTimeoutMs(timer.timeoutDuration, baseTimeout) });
+                       over: elapsed > sanitizeTimeoutMs(timer.timeoutDuration, baseTimeout), expired: !!(expireAt && now > expireAt) });
     }
     pending.sort((a, b) => (b.over - a.over) || (b.elapsed_min - a.elapsed_min));
     const rel = [], rel_n = {};   // rel_n：关系线细节条数，对方再写一条就算新的提醒
@@ -13145,22 +13147,38 @@ async function phoneRunOfficialOp(platform, op) {
     } catch (e) { finish(false, "执行出错：" + (e.message || e)); }
 }
 
-// 网页「催回」：小手机上的「被催」标记网页自己已经打好，这里只负责在那个群里 @ 对方发一条（跟「。提醒超时」群里那条同一句话）。
-// 只在对方还停在网页看到的那一次等待上才发（startTime 对得上）；对方已经回了就不再打扰。
-function phoneApplyUrge(platform, op) {
-    try {
-        const v = JSON.parse(op.value), gid = String(v.gid || ""), name = v.role;
-        const timer = kvGet("group_timers", {})[gid];
-        const st = timer && timer.timerStatus && timer.timerStatus[name];
-        if (!timer || timer.platform !== platform) return { ok: false, msg: "这个群的计时已经结束" };
-        if (!st || st.status !== "timing") return { ok: false, msg: `${name} 已经回复了，没有再发` };
-        if (v.since && st.startTime !== v.since) return { ok: false, msg: `${name} 已经回过一轮，没有再发` };
-        const ep = getSafeEndPoint(platform);
-        if (!ep) return { ok: false, msg: "找不到可用的机器人账号" };
-        const elapsed = Date.now() - st.startTime, h = Math.floor(elapsed / 3600000), mi = Math.floor((elapsed % 3600000) / 60000);
-        sendOverdueGroupNotice({ endPoint: ep }, timer, gid, name, h > 0 ? `${h}h${mi}m` : `${mi}m`);
-        return { ok: true, msg: `已在群 ${gid} @ ${name}` };
-    } catch (e) { return { ok: false, msg: "执行出错：" + (e.message || e) }; }
+// 网页「催戏」：小手机上的「被催」标记网页自己已经打好，这里负责群里的两条（跟「。提醒超时」一样）：约会群里 @ 对方一条 + 提醒到对方的专属群一条。
+// 同一次同步下发的催戏攒成一批一起发（processOverdueBatch 按人归拢）：同一个人有多个超时群时，专属群里只发一条汇总 +
+// 一份合并转发的明细，不会一个群一条刷屏；只有一个群时就是单独一条。
+// 只在对方还停在网页看到的那一次等待上才发（startTime 对得上）；对方已经回了就不再打扰。返回 { opId: {ok, msg} }。
+function phoneApplyUrgeBatch(platform, ops) {
+    const results = {};
+    if (!ops.length) return results;
+    const timers = kvGet("group_timers", {});
+    const entries = [], entryOps = [];
+    const ep = getSafeEndPoint(platform);
+    for (const op of ops) {
+        try {
+            const v = JSON.parse(op.value), gid = String(v.gid || ""), name = v.role;
+            const timer = timers[gid];
+            const st = timer && timer.timerStatus && timer.timerStatus[name];
+            if (!timer || timer.platform !== platform) { results[op.id] = { ok: false, msg: "这个群的计时已经结束" }; continue; }
+            if (!st || st.status !== "timing") { results[op.id] = { ok: false, msg: `${name} 已经回复了，没有再发` }; continue; }
+            if (v.since && st.startTime !== v.since) { results[op.id] = { ok: false, msg: `${name} 已经回过一轮，没有再发` }; continue; }
+            if (!ep) { results[op.id] = { ok: false, msg: "找不到可用的机器人账号" }; continue; }
+            entries.push({ gid, timer, name, s: st, elapsed: Date.now() - st.startTime });
+            entryOps.push(op);
+        } catch (e) { results[op.id] = { ok: false, msg: "执行出错：" + (e.message || e) }; }
+    }
+    if (entries.length) {
+        try {
+            processOverdueBatch({ endPoint: ep }, entries);   // 群里 @ 逐条发；专属群按人归拢
+            const now = Date.now();
+            entries.forEach((e, i) => { e.timer.lastRemindTime = now; results[entryOps[i].id] = { ok: true, msg: `已在群 ${e.gid} @ ${e.name}，并提醒到 ta 的专属群` }; });
+            kvSet("group_timers", timers);   // processOverdueBatch 会给 s.remindedTimes +1，落盘
+        } catch (e) { entryOps.forEach(op => { results[op.id] = { ok: false, msg: "执行出错：" + (e.message || e) }; }); }
+    }
+    return results;
 }
 
 function phoneApplyAdminOps(platform, ops) {
@@ -13169,10 +13187,11 @@ function phoneApplyAdminOps(platform, ops) {
     if (!ops.length) return;
     const done = kvGet("phone_admin_ops_done", []), seen = new Set(done.map(d => d.id));
     const FEATURE_KEY = { sms: "enable_chaos_letter", gift: "enable_general_gift", lovemail: "enable_lovemail" };
+    const urgeOps = [];   // 催戏攒成一批，循环结束后一起发（同一个人多个超时群合并成一条汇总 + 合并转发）
     for (const op of ops) {
         if (seen.has(op.id)) continue;
         if (op.kind === "official_appt" || op.kind === "official_call") { phoneRunOfficialOp(platform, op); continue; }
-        if (op.kind === "urge") { const r = phoneApplyUrge(platform, op); done.push({ id: op.id, ok: r.ok, msg: r.msg }); continue; }
+        if (op.kind === "urge") { urgeOps.push(op); continue; }
         let ok = false, msg = "";
         try {
             const rawUid = op.kind === "param" || op.kind === "bulk_item" || op.kind === "bulk_attr" ? null : getUidByRoleName(platform, op.role);
@@ -13273,6 +13292,7 @@ function phoneApplyAdminOps(platform, ops) {
         } catch (e) { msg = `执行出错：${e.message || e}`; }
         done.push({ id: op.id, ok, msg });
     }
+    if (urgeOps.length) { const ur = phoneApplyUrgeBatch(platform, urgeOps); for (const op of urgeOps) done.push({ id: op.id, ok: !!(ur[op.id] && ur[op.id].ok), msg: (ur[op.id] && ur[op.id].msg) || "没有结果" }); }
     // 回报以最新的为准：本函数开头读到的 done 只是副本，期间若别处（异步建群）已追加了回报，不能被旧副本盖掉
     { const have = new Set(done.map(d => d.id)); for (const d of kvGet("phone_admin_ops_done", [])) if (!have.has(d.id)) done.push(d); }
     kvSet("phone_admin_ops_done", done.slice(-200));
