@@ -1666,24 +1666,57 @@ a { color: var(--link); text-decoration: none; }
     {% if not plugin.can %}
     <div class="gm-empty ch-empty">插件升级到 1.10.4 或更高、并同步一次后，这里才能发放。</div>
     {% else %}
-    <form method="post" action="{{ url_for('admin_phone_grant_op') }}" class="ch-give" id="grantForm" style="flex-direction:column;align-items:stretch;gap:10px">
+    <style>
+    .phone .grant-form { margin: 14px var(--gutter, 18px) 0; display: flex; flex-direction: column; gap: 14px; }
+    .phone .grant-card { background: var(--ios-group, var(--theirs)); border-radius: 16px; padding: 14px; }
+    .phone .grant-head { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--text); }
+    .phone .grant-head i { font-style: normal; width: 22px; height: 22px; border-radius: 50%; background: var(--mine); color: var(--mine-text); font-size: 12px; display: inline-flex; align-items: center; justify-content: center; }
+    .phone .grant-head small { font-weight: 400; font-size: 12px; color: var(--muted); }
+    .phone .grant-head .grant-tools { margin-left: auto; display: flex; gap: 4px; }
+    .phone .grant-head .grant-tools button { border: 0; background: none; color: var(--mine); font: inherit; font-size: 13px; font-weight: 500; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
+    .phone .grant-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .phone .gchip { position: relative; cursor: pointer; }
+    .phone .gchip input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+    .phone .gchip span { display: inline-flex; align-items: center; gap: 4px; padding: 8px 14px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); color: var(--text); font-size: 15px; line-height: 1.2; transition: background .15s, color .15s, border-color .15s; }
+    .phone .gchip input:checked + span { background: var(--mine); border-color: var(--mine); color: var(--mine-text); font-weight: 600; }
+    .phone .gchip input:focus-visible + span { outline: 2px solid var(--mine); outline-offset: 2px; }
+    .phone .gchip .npc-tag { font-size: 10px; }
+    .phone .grant-form select, .phone .grant-form input[type=number], .phone .grant-form input[name=name_other] { width: 100%; box-sizing: border-box; min-height: 46px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--text); font: inherit; font-size: 16px; padding: 0 14px; }
+    .phone .grant-form select:focus, .phone .grant-form input:focus { outline: 2px solid var(--mine); outline-offset: 0; }
+    .phone .grant-form input[name=name_other] { margin-top: 8px; }
+    .phone .grant-row { display: flex; gap: 10px; margin-top: 10px; align-items: stretch; }
+    .phone .grant-row input[type=number] { flex: 1; min-width: 0; text-align: center; }
+    .phone .grant-seg { flex: 1.3; display: flex; padding: 3px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); }
+    .phone .grant-seg label { flex: 1; position: relative; display: flex; }
+    .phone .grant-seg input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+    .phone .grant-seg span { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 9px; font-size: 15px; color: var(--muted); }
+    .phone .grant-seg input:checked + span { background: var(--mine); color: var(--mine-text); font-weight: 600; }
+    .phone .grant-form .grant-submit { border: 0; border-radius: 14px; min-height: 50px; background: var(--mine); color: var(--mine-text); font: inherit; font-size: 17px; font-weight: 600; cursor: pointer; }
+    </style>
+    <form method="post" action="{{ url_for('admin_phone_grant_op') }}" class="grant-form" id="grantForm">
       <input type="hidden" name="csrf" value="{{ csrf }}">
-      <h3 class="ch-h" style="margin:0">① 选人 <span id="grantCount" style="font-weight:normal;opacity:.7">已选 0 人</span></h3>
-      <div style="display:flex;gap:8px"><button type="button" class="ch-btn" id="grantAll">全选</button><button type="button" class="ch-btn" id="grantNone">清空</button></div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px 14px">{% for n in grant_roles %}
-        <label style="white-space:nowrap"><input type="checkbox" name="people" value="{{ n }}"> {{ n }}{{ npc(n) }}</label>{% else %}<span>本季还没有角色</span>{% endfor %}</div>
-      <h3 class="ch-h" style="margin:0">② 发什么</h3>
-      <select name="name" id="grantItem" aria-label="物品" required>
-        <option value="" disabled selected>选一个背包里已有的…</option>
-        {% for g, names in grant_items %}<optgroup label="{{ g }}">{% for n in names %}<option value="{{ n }}">{{ n }}</option>{% endfor %}</optgroup>{% endfor %}
-        <option value="__other__">＋ 其他（没人持有的，手填名称）</option>
-      </select>
-      <input name="name_other" id="grantOther" maxlength="40" placeholder="名称或代码" hidden>
-      <span style="display:flex;gap:6px;align-items:center">
-        <input name="qty" type="number" min="1" max="9999" value="1" aria-label="数量" required>
-        <select name="sign" aria-label="加或扣"><option value="+">发放</option><option value="-">扣除</option></select>
-      </span>
-      <button type="submit" class="ch-btn" id="grantSubmit">提交</button>
+      <section class="grant-card">
+        <h3 class="grant-head"><i>1</i>选人 <small id="grantCount">已选 0 人</small>
+          <span class="grant-tools"><button type="button" id="grantAll">全选</button><button type="button" id="grantNone">清空</button></span></h3>
+        <div class="grant-chips">{% for n in grant_roles if n != '*' %}
+          <label class="gchip"><input type="checkbox" name="people" value="{{ n }}"><span>{{ n }}{{ npc(n) }}</span></label>{% else %}<span class="ch-note" style="margin:0">本季还没有角色</span>{% endfor %}</div>
+      </section>
+      <section class="grant-card">
+        <h3 class="grant-head"><i>2</i>发什么</h3>
+        <select name="name" id="grantItem" aria-label="物品" required>
+          <option value="" disabled selected>选一个背包里已有的…</option>
+          {% for g, names in grant_items %}<optgroup label="{{ g }}">{% for n in names %}<option value="{{ n }}">{{ n }}</option>{% endfor %}</optgroup>{% endfor %}
+        </select>
+        {% if plugin.catalog is none %}<p class="ch-note" style="margin:8px 0 0">目前只列出背包里已有的物品；插件更新到带物品清单的版本后，这里会列出全部已注册的。</p>{% endif %}
+        <div class="grant-row">
+          <input name="qty" type="number" inputmode="numeric" min="1" max="9999" value="1" aria-label="数量" required>
+          <div class="grant-seg" role="radiogroup" aria-label="发放或扣除">
+            <label><input type="radio" name="sign" value="+" checked><span>发放</span></label>
+            <label><input type="radio" name="sign" value="-"><span>扣除</span></label>
+          </div>
+        </div>
+      </section>
+      <button type="submit" class="grant-submit" id="grantSubmit">提交</button>
     </form>
     <p class="ch-note">每个人各排一条，机器人下一次同步（约半分钟内）执行；名字不存在、背包不够等失败原因写在下面的结果里。</p>
     {% if admin_ops %}
@@ -1703,13 +1736,12 @@ a { color: var(--link); text-decoration: none; }
     boxes.forEach(function (b) { b.addEventListener('change', sync); });
     document.getElementById('grantAll').addEventListener('click', function () { boxes.forEach(function (b) { b.checked = true; }); sync(); });
     document.getElementById('grantNone').addEventListener('click', function () { boxes.forEach(function (b) { b.checked = false; }); sync(); });
-    var sel = document.getElementById('grantItem'), oth = document.getElementById('grantOther');
-    sel.addEventListener('change', function () { oth.hidden = sel.value !== '__other__'; oth.required = !oth.hidden; });
+    var sel = document.getElementById('grantItem');
     form.addEventListener('submit', function (e) {
       var n = 0; boxes.forEach(function (b) { if (b.checked) n++; });
       if (!n) { e.preventDefault(); alert('先选人'); return; }
       var minus = form.elements.sign.value === '-';
-      if (!confirm((minus ? '扣除' : '发放') + ' ' + n + ' 人：' + (sel.value === '__other__' ? oth.value : sel.value) + ' ×' + form.elements.qty.value + '？')) e.preventDefault();
+      if (!confirm((minus ? '扣除' : '发放') + ' ' + n + ' 人：' + sel.value + ' ×' + form.elements.qty.value + '？')) e.preventDefault();
     });
   })();
   </script>

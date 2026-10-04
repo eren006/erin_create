@@ -12680,6 +12680,18 @@ function buildPhoneSessions(platform, roleName) {
 }
 
 // 网页手机「背包 / 属性」：只读快照，数据来自 RPG 卫星存的 KV（global_inventories / item_registry / sys_character_attrs 等）
+// 网页手机「发放」页的下拉：全部已注册的 货币/道具/物品/装备（不管有没有人持有），发放时插件也只认注册过的
+function buildPhoneCatalog() {
+    const kind = (t) => t === "currency" ? "货币" : t === "preset" ? "道具" : t === "equip" || t === "equipment" ? "装备" : "物品";
+    const out = [];
+    for (const [code, info] of Object.entries(getRegistry_rpg())) {
+        if (!info || !info.name) continue;
+        out.push({ name: String(info.name).slice(0, 20), type: kind(info.type) });
+        if (out.length >= 400) break;
+    }
+    return out;
+}
+
 function buildPhoneRpg(platform, primary) {
     const cut = (t, n) => { t = String(t == null ? "" : t); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
     const reg = Object.assign({}, kvGet("item_registry", {}), kvGet("equipment_registry", {}));
@@ -12917,7 +12929,7 @@ async function phoneWebSyncCore(base, token) {
             // block_write：告诉存档站这个版本会处理网页上的实名拉黑，网页才显示拉黑按钮
             snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, block_write: true,
                         counts, last, catalogs, displays, shop, lovemail, wishes,
-                        plugin: { version: ext.version || "", wish_web: !!globalThis.__changriWishWeb, params: buildPhoneAdminParams() } } })
+                        plugin: { version: ext.version || "", wish_web: !!globalThis.__changriWishWeb, catalog: buildPhoneCatalog(), params: buildPhoneAdminParams() } } })
     });
     if (!resp.ok) return;
     const data = await resp.json();

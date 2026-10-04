@@ -9162,7 +9162,8 @@ def _plugin_status(db, sid):
     elif not fresh:
         level, note = "bad", "（超过一段时间没同步，机器人可能掉线了）"
     return {"known": True, "version": ver or "旧版（<1.10.4）", "ago": ago, "fresh": fresh, "can": can, "can_official": can_official, "can_bottle": can_bottle, "can_wish": can_wish, "level": level,
-            "text": f"插件 {ver or '旧版'} · 最后同步 {ago_txt}{note}", "params": plug.get("params") or []}
+            "text": f"插件 {ver or '旧版'} · 最后同步 {ago_txt}{note}", "params": plug.get("params") or [],
+            "catalog": plug.get("catalog") if isinstance(plug.get("catalog"), list) else None}
 
 @app.route("/p/admin/settings")
 def admin_phone_settings():
@@ -9267,17 +9268,23 @@ def admin_phone_urge_op():
     return redirect(back)
 
 def _admin_grant_item_names(db, sid):
-    """全体角色背包里出现过的名字，按 货币/道具/物品 分组（发放页下拉用）：[(组名, [名字…])…]"""
-    groups = {"货币": [], "道具": [], "物品": []}
+    """发放页下拉：[(组名, [名字…])…]，只给注册过的。
+    插件新版随快照上报全部已注册物品（plugin.catalog）；旧插件没有，退回用各角色背包里出现过的（也都是注册过的）"""
+    cat = (_plugin_status(db, sid).get("catalog"))
+    groups = {"货币": [], "道具": [], "物品": [], "装备": []}
     seen = set()
-    for r in db.execute("SELECT data FROM phone_reports WHERE show_id=?", (sid,)):
-        try: rpg = json.loads(r["data"]).get("rpg") or {}
-        except (ValueError, TypeError): continue
-        for g, rows in (("货币", rpg.get("currencies")), ("道具", rpg.get("presets")), ("物品", rpg.get("items"))):
-            for it in rows or []:
-                n = it.get("name")
-                if n and n not in seen:
-                    seen.add(n); groups[g].append(n)
+    def add(g, n):
+        if n and n not in seen and g in groups:
+            seen.add(n); groups[g].append(n)
+    if cat is not None:
+        for it in cat:
+            if isinstance(it, dict): add(it.get("type") or "物品", it.get("name"))
+    else:
+        for r in db.execute("SELECT data FROM phone_reports WHERE show_id=?", (sid,)):
+            try: rpg = json.loads(r["data"]).get("rpg") or {}
+            except (ValueError, TypeError): continue
+            for g, rows in (("货币", rpg.get("currencies")), ("道具", rpg.get("presets")), ("物品", rpg.get("items"))):
+                for it in rows or []: add(g, it.get("name"))
     return [(g, sorted(v)) for g, v in groups.items() if v]
 
 @app.route("/p/admin/grant")
@@ -9306,7 +9313,6 @@ def admin_phone_grant_op():
         return redirect(back)
     db = get_db()
     name, qty = (f.get("name") or "").strip()[:40], (f.get("qty") or "").strip()
-    if name == "__other__": name = (f.get("name_other") or "").strip()[:40]
     valid = set(_admin_role_list(db, sid))
     people = []
     for r in f.getlist("people")[:200]:
@@ -9314,7 +9320,7 @@ def admin_phone_grant_op():
     msg = None
     if not _plugin_status(db, sid).get("can"): msg = "❌ 插件版本太旧或还没同步，升级到 1.10.4 以上才能发放"
     elif not people: msg = "❌ 先选人"
-    elif not name: msg = "❌ 名称不能为空"
+    elif name not in {n for _, ns in _admin_grant_item_names(db, sid) for n in ns}: msg = "❌ 只能发放已注册的物品，请从下拉里选"
     else:
         try:
             n = int(qty)
