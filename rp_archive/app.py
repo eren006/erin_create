@@ -1,4 +1,5 @@
 import io, os, re, json, math, functools, secrets, time, hmac, hashlib, logging, traceback, zipfile
+import explore
 import shutil, socket, ipaddress, urllib.request, threading
 from urllib.parse import urlparse
 from collections import defaultdict
@@ -1908,6 +1909,7 @@ def _migrate(conn):
     # ── 论坛字数上限旧键：机器人从没读过，且每次保存配置都被重置为 500，直接清掉 ──
     conn.execute("DELETE FROM site_config WHERE key='forumMaxLength'")
 
+    explore.init_tables(conn)   # 探索踩点的表（explore.py）
     conn.commit()
 
 def init_db():
@@ -1918,6 +1920,9 @@ def init_db():
         with open(schema, encoding="utf-8") as f:
             conn.executescript(f.read())
         _migrate(conn)
+        from exploration import init_schema as init_exploration_schema
+        init_exploration_schema(conn)
+        conn.commit()
     finally:
         conn.close()
 
@@ -12179,6 +12184,11 @@ def api_command_guides():
 
 
 
+
+explore.register(globals())   # 探索踩点：玩家 /x、后台 /admin/explore
+
+from exploration import register_exploration
+register_exploration(app, globals())
 
 if __name__ == "__main__":
     init_db()
