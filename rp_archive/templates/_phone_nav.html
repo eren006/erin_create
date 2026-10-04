@@ -1,7 +1,7 @@
 {% if mode in ('inbox', 'moments', 'public', 'library', 'profile', 'lovemail', 'char', 'discover') %}
 <div class="bottom-dock">
-  {# 🎁 浮标只在「信息 / 公开播报 / 发现」页出现；其它页（我的、角色、朋友圈、心动信箱…）不放，免得盖住内容；发现页里也有「礼品店」入口 #}
-  {% if mode in ('inbox', 'public', 'discover') %}  <a class="shop-fab" href="{{ url_for('player_shop', view='book') }}" aria-label="礼品店" title="礼品店">🎁</a>{% endif %}
+  {# 发现页已有礼品店入口，浮标只保留在信息与公开播报页。 #}
+  {% if mode in ('inbox', 'public') %}  <a class="shop-fab" href="{{ url_for('player_shop', view='book') }}" aria-label="礼品店" title="礼品店">🎁</a>{% endif %}
   <nav class="phone-nav" aria-label="手机导航">
     <a href="{{ url_for('player_phone_inbox') }}"{% if mode in ('inbox', 'public') or (mode == 'library' and library_view == 'search') %} aria-current="page"{% endif %}><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 3v-3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/><path d="M7 9h10M7 13h7"/></svg></span>{{ skin.words.messages }}</a>
     <a href="{{ url_for('player_discover') }}" data-other="__moments__" data-also="__lovemail__"{% if lovemail_last %} data-also-ts="{{ lovemail_last }}"{% endif %}{% if moments_latest is defined and moments_latest %} data-received-ts="{{ moments_latest['created_at'] }}"{% endif %}{% if mode in ('discover', 'moments', 'lovemail') %} aria-current="page"{% endif %}><span aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/></svg></span>发现</a>

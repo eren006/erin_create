@@ -64,12 +64,12 @@ def reply(cl, bid, t, token=None): return cl.post(f"/p/me/bottles/{bid}/reply", 
 reply(zhou, 7, "token错", token="bad"); ok(c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0] == 0, "csrf")
 reply(zhou, 7, "   "); ok(c.execute("SELECT COUNT(*) FROM phone_bottle_ops").fetchone()[0] == 0, "empty")
 reply(zhou, 7, "我捡到了，谢谢")
-pg = text(zhou, "/p/me/bottles/7"); ok("我捡到了，谢谢" in pg and "发送中" in pg, "pending shown")
+pg = text(zhou, "/p/me/bottles/7"); ok("我捡到了，谢谢" in pg and "处理中" in pg, "pending shown")
 d = sync(); ops = d["bottle_ops"]
 ok(len(ops) == 1 and ops[0]["kind"] == "reply" and ops[0]["bottle_id"] == 7 and ops[0]["role"] == "周屿", ops)
 ok(len(sync()["bottle_ops"]) == 1, "re-delivered until reported")
 d = sync(done=[{"id": ops[0]["id"], "ok": True, "msg": "ok", "bottle_id": 7, "catcher": "", "silent": False}]); ok(d["bottle_ops"] == [], "done → not re-sent")
-pg = text(lin, "/p/me/bottles/7"); ok("我捡到了，谢谢" in pg, "thrower sees web reply"); ok("发送中" not in text(zhou, "/p/me/bottles/7"), "no longer pending")
+pg = text(lin, "/p/me/bottles/7"); ok("我捡到了，谢谢" in pg, "thrower sees web reply"); ok("处理中" not in text(zhou, "/p/me/bottles/7"), "no longer pending")
 sync(done=[{"id": ops[0]["id"], "ok": True, "msg": "ok", "bottle_id": 7}]); ok(c.execute("SELECT COUNT(*) FROM phone_drift_msgs").fetchone()[0] == 2, "report applied once")
 
 # 静默拉黑：回报 silent → 只有发件人自己看得到
@@ -87,11 +87,11 @@ def throw(cl, t, token=None): return cl.post("/p/me/bottles/throw", data={"text"
 throw(lin, "x", token="bad"); throw(lin, "x" * 301); throw(lin, "   ")
 ok(c.execute("SELECT COUNT(*) FROM phone_bottle_ops WHERE kind='throw'").fetchone()[0] == 0, "invalid throws rejected")
 throw(lin, "网页扔的瓶子")
-ok("发送中" in text(lin, "/p/me/bottles"), "pending throw listed")
+ok("处理中" in text(lin, "/p/me/bottles"), "pending throw listed")
 op = sync()["bottle_ops"][0]; ok(op["kind"] == "throw" and op["content"] == "网页扔的瓶子", op)
 sync(done=[{"id": op["id"], "ok": True, "msg": "ok", "bottle_id": 12, "catcher": "沈知意"}])
 ok("网页扔的瓶子" in text(shen, "/p/me/bottles/12") and "#12" in text(lin, "/p/me/bottles") and "我扔的" in text(lin, "/p/me/bottles"), "web bottle visible both sides")
-ok("发送中" not in text(lin, "/p/me/bottles"), "pending cleared")
+ok("处理中" not in text(lin, "/p/me/bottles"), "pending cleared")
 # 扔瓶失败（没人可抛）→ 列表里提示
 throw(lin, "没人接"); op = sync()["bottle_ops"][0]; sync(done=[{"id": op["id"], "ok": False, "msg": "🌊 大海太安静了"}])
 ok("没扔出去" in text(lin, "/p/me/bottles") and "大海太安静" in text(lin, "/p/me/bottles"), "failed throw shown")
@@ -155,5 +155,5 @@ ok(feat(lin, "心愿") == [], "wish entry hidden from search while 网页心愿 
 ok(feat(lin, "不存在的功能") == [], "no match → no group")
 dpg = text(lin, "/p/me/discover")
 ok("今天 0/" in dpg and ">礼品店</span>" in dpg, "discover shows live detail and the shop row")
-ok('class="shop-fab"' in dpg and 'class="shop-fab"' not in text(lin, "/p/me/library?view=profile") and 'class="shop-fab"' not in text(lin, "/p/me/character"), "gift FAB only on inbox/public/discover")
+ok('class="shop-fab"' not in dpg and 'class="shop-fab"' in text(lin, "/p/me") and 'class="shop-fab"' in text(lin, "/p/me/public") and 'class="shop-fab"' not in text(lin, "/p/me/library?view=profile") and 'class="shop-fab"' not in text(lin, "/p/me/character"), "gift FAB only on inbox/public; discover keeps its shop row")
 print("ALL OK")

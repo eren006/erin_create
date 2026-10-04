@@ -9266,6 +9266,71 @@ def admin_phone_urge_op():
     session["phone_flash"] = msg
     return redirect(back)
 
+def _admin_grant_item_names(db, sid):
+    """全体角色背包里出现过的名字，按 货币/道具/物品 分组（发放页下拉用）：[(组名, [名字…])…]"""
+    groups = {"货币": [], "道具": [], "物品": []}
+    seen = set()
+    for r in db.execute("SELECT data FROM phone_reports WHERE show_id=?", (sid,)):
+        try: rpg = json.loads(r["data"]).get("rpg") or {}
+        except (ValueError, TypeError): continue
+        for g, rows in (("货币", rpg.get("currencies")), ("道具", rpg.get("presets")), ("物品", rpg.get("items"))):
+            for it in rows or []:
+                n = it.get("name")
+                if n and n not in seen:
+                    seen.add(n); groups[g].append(n)
+    return [(g, sorted(v)) for g, v in groups.items() if v]
+
+@app.route("/p/admin/grant")
+def admin_phone_grant():
+    """发放：先选人（可多选），再填物品和数量，每个人各排一条「item」快速设置，机器人下一次同步执行"""
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    db = get_db()
+    ops = [dict(r) for r in db.execute("SELECT * FROM phone_admin_ops WHERE show_id=? AND kind='item' ORDER BY id DESC LIMIT 30", (sid,))]
+    return render_template("phone.html", mode="admin_grant", owner="管理员", sid=sid, csrf=_phone_csrf(), phone_admin=True,
+                           plugin=_plugin_status(db, sid), grant_roles=_admin_role_list(db, sid),
+                           grant_items=_admin_grant_item_names(db, sid), admin_ops=ops, flash=session.pop("phone_flash", None))
+
+@app.route("/p/admin/grant/op", methods=["POST"])
+def admin_phone_grant_op():
+    who = _phone_admin_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid = who[0]
+    f = request.form
+    back = url_for("admin_phone_grant")
+    if not hmac.compare_digest(f.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["phone_flash"] = "❌ 页面过期了，刷新后再试"
+        return redirect(back)
+    db = get_db()
+    name, qty = (f.get("name") or "").strip()[:40], (f.get("qty") or "").strip()
+    if name == "__other__": name = (f.get("name_other") or "").strip()[:40]
+    valid = set(_admin_role_list(db, sid))
+    people = []
+    for r in f.getlist("people")[:200]:
+        if r in valid and r not in people: people.append(r)
+    msg = None
+    if not _plugin_status(db, sid).get("can"): msg = "❌ 插件版本太旧或还没同步，升级到 1.10.4 以上才能发放"
+    elif not people: msg = "❌ 先选人"
+    elif not name: msg = "❌ 名称不能为空"
+    else:
+        try:
+            n = int(qty)
+            if n < 1 or n > 9999: raise ValueError
+        except ValueError: msg = "❌ 数量要填 1~9999 的整数"
+    if msg is None:
+        value = ("-" if f.get("sign") == "-" else "") + str(n)
+        now = int(time.time() * 1000)
+        for r in people:
+            db.execute("INSERT INTO phone_admin_ops (show_id, role, kind, name, value, created_at) VALUES (?,?,?,?,?,?)",
+                       (sid, r, "item", name, value, now))
+        db.commit()
+        msg = f"✅ 已提交 {len(people)} 人，机器人下一次同步（约半分钟内）执行，结果显示在下面「最近发放」"
+    session["phone_flash"] = msg
+    return redirect(back)
+
 @app.route("/p/admin/appearance")
 def admin_phone_appearance():
     who = _phone_admin_current()

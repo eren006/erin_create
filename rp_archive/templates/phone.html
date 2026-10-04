@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<title>{% if mode == 'admin_index' %}{{ '角色' if request.args.get('view') == 'roles' else '管理桌面' }} · {% elif mode == 'admin_urge' %}催戏 · {% elif mode == 'admin_official' %}官约 · {% elif mode == 'admin_appearance' %}外观 · {% elif mode == 'admin_settings' %}设置 · {% elif mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'bottles' or mode == 'bottle' %}漂流瓶 · {% elif mode == 'wishes' %}心愿 · {% elif mode == 'admin_bottles' %}漂流瓶 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'maps' %}地图 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
+<title>{% if mode == 'admin_index' %}{{ '角色' if request.args.get('view') == 'roles' else '管理桌面' }} · {% elif mode == 'admin_urge' %}催戏 · {% elif mode == 'admin_grant' %}发放 · {% elif mode == 'admin_official' %}官约 · {% elif mode == 'admin_appearance' %}外观 · {% elif mode == 'admin_settings' %}设置 · {% elif mode == 'thread' %}{{ group.name if group else other.partition('＠')[0] }} · {% elif mode == 'group_new' %}发起群聊 · {% elif mode == 'stats' %}时间线与统计 · {% elif mode == 'public' %}公开播报 · {% elif mode == 'moments' %}朋友圈 · {% elif mode == 'song' %}点歌 · {% elif mode == 'bottles' or mode == 'bottle' %}漂流瓶 · {% elif mode == 'wishes' %}心愿 · {% elif mode == 'admin_bottles' %}漂流瓶 · {% elif mode == 'games' %}小游戏 · {% elif mode == 'maps' %}地图 · {% elif mode == 'shop' %}礼品店 · {% elif mode == 'lovemail' %}心动信箱 · {% elif mode == 'char' %}角色 · {% elif mode == 'discover' %}发现 · {% elif mode == 'library' %}{{ '收藏' if library_view == 'saved' else '检索' }} · {% elif mode == 'profile' %}我的手机 · {% endif %}短信</title>
 <style>
 :root {
   --page: #d9d9e0;
@@ -113,7 +113,7 @@ a { color: var(--link); text-decoration: none; }
   color: var(--link); font-size: 13px; line-height: 1.5; height: 39px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
-.row.unread .avatar::after { content: ""; position: absolute; right: -1px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: #69758b; box-shadow: 0 0 0 3px var(--bg); }
+.row.unread .avatar::after,.disc-group .row.unread .app-icon::after { content: ""; position: absolute; right: -1px; top: 0; width: 8px; height: 8px; border-radius: 50%; background: #69758b; box-shadow: 0 0 0 3px var(--bg); }
 .row .meta { color: var(--muted); font-size: 14px; }
 
 .empty { color: var(--muted); text-align: center; padding: 60px 24px; font-size: 14px; }
@@ -230,8 +230,8 @@ a { color: var(--link); text-decoration: none; }
 .compose .send:disabled { background: var(--theirs); color: var(--muted); opacity: 1; cursor: default; }
 .compose .send svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .compose .input-wrap { position: relative; flex: 1; min-width: 0; display: flex; }
-.compose .input-wrap textarea { width: 100%; padding-right: 44px; }
-.compose .emoji-in { position: absolute; right: 4px; bottom: 4px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.compose .input-wrap textarea { width: 100%; min-height: 44px; padding-right: 50px; }
+.compose .emoji-in { position: absolute; right: 1px; bottom: 0; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .compose .emoji-in svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
 .compose .emoji-in[aria-expanded="true"] { background: var(--theirs); color: var(--text); }
 .stickers {
@@ -362,6 +362,7 @@ a { color: var(--link); text-decoration: none; }
 .song-result img, .song-result .sc-nocover { width: 44px; height: 44px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
 .song-result[aria-pressed="true"] { background: var(--theirs); }
 .song-form { padding: 12px 16px 28px; display: flex; flex-direction: column; gap: 10px; }
+.song-form[hidden] { display: none; }
 .song-form label { font-size: 12px; color: var(--muted); }
 .song-form select, .song-form input, .song-form textarea { font: inherit; font-size: 16px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
 .song-form textarea { min-height: 70px; resize: vertical; }
@@ -450,6 +451,14 @@ a { color: var(--link); text-decoration: none; }
 .cform[hidden] { display: none; }
 .cform input { flex: 1; min-width: 0; font: inherit; font-size: 15px; padding: 7px 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
 .cform button { border: none; border-radius: 16px; padding: 0 14px; background: var(--mine); color: var(--mine-text); font: inherit; font-size: 13px; cursor: pointer; }
+/* 扩大触控区域，保留图标与文字原来的尺寸。 */
+.phone .compose .icon,.phone .stickers button,.phone .mmeta .m-like,.phone .mmeta .m-cmt,.phone .cform button,.phone .bottle-compose button {
+  min-width: 44px; min-height: 44px; flex-shrink: 0; touch-action: manipulation;
+}
+.mmeta { flex-wrap: wrap; gap: 4px 10px; }
+.phone .compose button:focus-visible,.phone .stickers button:focus-visible,.phone .mmeta button:focus-visible,.phone .cform button:focus-visible {
+  outline: 2px solid var(--text); outline-offset: 2px;
+}
 .more-link { display: block; text-align: center; padding: 16px; font-size: 13px; color: var(--muted); }
 .mc-dialog { margin: auto; width: min(380px, calc(100vw - 20px)); border: 1px solid var(--line); border-radius: 20px; padding: 16px; background: var(--bg); color: var(--text); }
 .mc-dialog::backdrop { background: #0007; }
@@ -648,7 +657,7 @@ a { color: var(--link); text-decoration: none; }
 .bottle-preview { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 7px 0; font-size: 13px; line-height: 1.7; }
 .bottle-row time { display: block; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .bottle-row.is-pending { border-style: dashed; background: var(--theirs); }
-.bottle-row.is-pending .app-icon,.bottle-thread .is-pending .meta { animation: bottle-drift 3s ease-in-out infinite; }
+
 .bottle-row.is-failed,.bottle-alert { background: var(--gift-bg); border: 1px solid var(--gift-line); border-inline-start-width: 3px; }
 .bottle-reason { margin: 6px 0; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 .bottle-empty { padding: 32px 16px; text-align: center; border: 1px dashed var(--line); border-radius: 14px; color: var(--muted); font-size: 13px; line-height: 2; }
@@ -674,8 +683,6 @@ a { color: var(--link); text-decoration: none; }
 .phone .bar.bottle-bar .title { display: block; }
 .bottle-bar .title small { display: block; margin-top: 5px; white-space: normal; letter-spacing: 0; line-height: 1.7; }
 .bottle-page :focus-visible,.phone .bottle-compose textarea:focus-visible,.bottle-compose :focus-visible,.bottle-bar a:focus-visible,.bottle-entry:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
-@keyframes bottle-drift { 0%,100% { transform: translateY(0); opacity: 1; } 50% { transform: translateY(-2px); opacity: .65; } }
-@media (prefers-reduced-motion: reduce) { .bottle-row.is-pending .app-icon,.bottle-thread .is-pending .meta { animation: none; } }
 /* 心愿：匿名许愿签，样式仅作用于心愿页与入口。 */
 .wish-page { padding: 22px 18px 32px; }
 .phone .bar.wish-bar .title { display: block; }
@@ -715,11 +722,11 @@ a { color: var(--link); text-decoration: none; }
 .wish-operation { padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
 .wish-op-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .wish-operation p { margin-top: 8px; }
-.wish-state { font-size: 12px; color: var(--muted); }
+
 .wish-operation.is-waiting { border-style: dashed; background: var(--theirs); }
-.wish-operation.is-waiting .wish-state { animation: wish-wait 3s ease-in-out infinite; }
+
 .wish-operation.is-done { border-inline-start: 3px solid var(--line); }
-.wish-operation.is-done .wish-state::before { content: '✓ '; }
+
 .wish-operation.is-failed,.wish-notice { background: var(--gift-bg); border: 1px solid var(--gift-line); border-inline-start-width: 3px; }
 .wish-result { white-space: pre-wrap; }
 .wish-group { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--theirs); }
@@ -745,8 +752,16 @@ a { color: var(--link); text-decoration: none; }
 .wish-footnote { margin: 24px 4px 0; }
 .wish-notice { padding: 12px 14px; margin-bottom: 18px; border-radius: 10px; font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
 .phone .wish-page :focus-visible,.wish-entry:focus-visible,.wish-bar a:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
-@keyframes wish-wait { 0%,100% { opacity: 1; transform: translateY(0); } 50% { opacity: .6; transform: translateY(-2px); } }
-@media (prefers-reduced-motion: reduce) { .wish-operation.is-waiting .wish-state { animation: none; } }
+/* 共用操作状态：文字、形状与轻动效一起区分，适配所有主题。 */
+.phone-operation-state { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--theirs); color: var(--text); font-size: 11px; font-weight: 400; line-height: 1.8; white-space: nowrap; }
+.phone-operation-state::before { display: inline-block; width: 1em; text-align: center; }
+.phone-operation-state.is-waiting { border-style: dashed; }
+.phone-operation-state.is-waiting::before { content: '◌'; animation: phone-wait 3s ease-in-out infinite; }
+.phone-operation-state.is-done::before { content: '✓'; }
+.phone-operation-state.is-failed { background: var(--gift-bg); border-color: var(--gift-line); }
+.phone-operation-state.is-failed::before { content: '!'; font-weight: 600; }
+@keyframes phone-wait { 50% { opacity: .45; transform: translateY(-1px); } }
+@media (prefers-reduced-motion: reduce) { .phone-operation-state.is-waiting::before { animation: none; } }
 </style>
 {% include '_phone_skin.html' %}
 {% if mode != 'entry' %}{% include '_phone_tools_css.html' %}{% endif %}
@@ -757,6 +772,7 @@ a { color: var(--link); text-decoration: none; }
 <span class="app-icon app-icon-{{ skin.visual }}" aria-hidden="true"><svg viewBox="0 0 40 40" focusable="false">
 {% if name == 'roles' %}<rect class="icon-wash" x="6" y="5" width="28" height="30" rx="5"/><circle cx="20" cy="15" r="5"/><path d="M11 29c0-5 4-8 9-8s9 3 9 8M10 9H7v5M30 31h3v-5"/>
 {% elif name == 'urge' %}<path class="icon-wash" d="M11 26V17a9 9 0 0 1 18 0v9l3 4H8z"/><path d="M11 26V17a9 9 0 0 1 18 0v9l3 4H8zM17 34h6M20 4v4M5 13l3-3M32 10l3 3"/><path d="M20 15v6l4 2"/>
+{% elif name == 'grant' %}<rect class="icon-wash" x="6" y="17" width="28" height="18" rx="3"/><path d="M6 17h28v18H6zM5 11h30v6H5zM20 11v24M20 11S10 12 11 6c1-5 7-2 9 5ZM20 11s10 1 9-5c-1-5-7-2-9 5Z"/>
 {% elif name == 'official' %}<rect class="icon-wash" x="6" y="11" width="28" height="22" rx="4"/><path d="M6 14l14 10 14-10M6 29l9-8M34 29l-9-8M14 7h12"/><path d="M20 3v8"/>
 {% elif name == 'appearance' %}<path class="icon-wash" d="M20 5a15 15 0 1 0 0 30h3a4 4 0 0 0 0-8h-1a3 3 0 0 1 0-6h5a8 8 0 0 0 8-8c0-5-7-8-15-8Z"/><circle cx="13" cy="14" r="1.5"/><circle cx="22" cy="11" r="1.5"/><circle cx="10" cy="23" r="1.5"/><path d="M28 29l7-7M27 30l-1 4 4-1"/>
 {% elif name == 'settings' %}<rect class="icon-wash" x="6" y="6" width="28" height="28" rx="7"/><path d="M13 12v16M20 12v16M27 12v16"/><path class="icon-knob" d="M10 15h6v5h-6zM17 23h6v5h-6zM24 11h6v5h-6z"/>
@@ -764,6 +780,11 @@ a { color: var(--link); text-decoration: none; }
 {% elif name == 'moments' %}<rect class="icon-wash" x="6" y="6" width="28" height="28" rx="5"/><circle cx="15" cy="15" r="3"/><path d="M7 28l9-8 6 5 5-7 7 10M27 3v6M24 6h6"/>
 {% elif name == 'bottle' %}<path class="icon-wash" d="M16 4h8v5l4 5v17a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4V14l4-5z"/><path d="M16 4h8v5l4 5v17a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4V14l4-5zM16 4h8M16 9h8M17 22h6M17 27h4"/>
 {% elif name == 'wish' %}<path class="icon-wash" d="M10 12h20v23H10z"/><path d="M10 12h20v23H10zM20 4v12M16 4h8M15 23h10M15 28h6"/><circle cx="20" cy="17" r="1"/>
+{% elif name == 'lovemail' %}<rect class="icon-wash" x="5" y="10" width="30" height="24" rx="4"/><path d="M5 14l15 10 15-10M6 32l9-9M34 32l-9-9M20 13s-7-4-7-8a4 4 0 0 1 7-2 4 4 0 0 1 7 2c0 4-7 8-7 8Z"/>
+{% elif name == 'song' %}<path class="icon-wash" d="M14 10l17-4v8l-17 4z"/><path d="M14 28V10l17-4v18M14 18l17-4"/><ellipse cx="9" cy="29" rx="5" ry="4"/><ellipse cx="26" cy="25" rx="5" ry="4"/>
+{% elif name == 'games' %}<path class="icon-wash" d="M12 12h16c4 0 6 4 7 10l1 7c1 5-4 7-7 3l-4-5H15l-4 5c-3 4-8 2-7-3l1-7c1-6 3-10 7-10Z"/><path d="M12 12h16c4 0 6 4 7 10l1 7c1 5-4 7-7 3l-4-5H15l-4 5c-3 4-8 2-7-3l1-7c1-6 3-10 7-10ZM9 20h8M13 16v8"/><circle cx="27" cy="18" r="1"/><circle cx="30" cy="22" r="1"/>
+{% elif name == 'shop' %}<path class="icon-wash" d="M7 18h26v17H7z"/><path d="M7 18h26v17H7zM5 12h30v6H5zM20 12v23M20 12S9 13 10 7c1-5 8-2 10 5ZM20 12s11 1 10-5c-1-5-8-2-10 5Z"/>
+{% elif name == 'maps' %}<path class="icon-wash" d="M5 10l10-4 10 4 10-4v25l-10 4-10-4-10 4z"/><path d="M5 10l10-4 10 4 10-4v25l-10 4-10-4-10 4ZM15 6v25M25 10v25"/>
 {% elif name == 'guide' %}<path class="icon-wash" d="M20 10Q12 5 5 8v24q7-3 15 2 8-5 15-2V8q-7-3-15 2Z"/><path d="M20 10Q12 5 5 8v24q7-3 15 2 8-5 15-2V8q-7-3-15 2ZM20 10v24M10 15l5 1M10 21l5 1M25 16l5-1M25 22l5-1"/>
 {% endif %}</svg></span>
 {%- endmacro %}
@@ -1103,10 +1124,10 @@ a { color: var(--link); text-decoration: none; }
     <div class="daily-card" id="dailyQuote" role="button" tabindex="0" aria-label="每日一句，点一下换一句" hidden><div class="q"></div><div class="src"></div></div>
     <div class="disc-label">互动</div>
     <div class="disc-group">
-      <a class="row" data-other="__moments__"{% if moments_latest %} data-received-ts="{{ moments_latest['created_at'] }}"{% endif %} href="{{ url_for('player_moments') }}"><div class="avatar tile">📷</div><span class="name">{{ skin.words.moments }}</span><span class="chev" aria-hidden="true">›</span></a>
-      {% if not phone_admin %}<a class="row" data-other="__lovemail__"{% if lovemail_last %} data-received-ts="{{ lovemail_last }}"{% endif %} href="{{ url_for('player_lovemail') }}"><div class="avatar tile">💌</div><span class="name">心动信箱</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
+      <a class="row" data-other="__moments__"{% if moments_latest %} data-received-ts="{{ moments_latest['created_at'] }}"{% endif %} href="{{ url_for('player_moments') }}">{{ admin_app_icon('moments') }}<span class="name">{{ skin.words.moments }}</span><span class="chev" aria-hidden="true">›</span></a>
+      {% if not phone_admin %}<a class="row" data-other="__lovemail__"{% if lovemail_last %} data-received-ts="{{ lovemail_last }}"{% endif %} href="{{ url_for('player_lovemail') }}">{{ admin_app_icon('lovemail') }}<span class="name">心动信箱</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
       {% if not phone_admin %}
-      <a class="row" href="{{ url_for('player_song') }}"><div class="avatar tile">🎵</div><span class="name">点歌台</span>{% if disc.song %}<span class="detail">{{ disc.song }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>
+      <a class="row" href="{{ url_for('player_song') }}">{{ admin_app_icon('song') }}<span class="name">点歌台</span>{% if disc.song %}<span class="detail">{{ disc.song }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>
       {% endif %}
       {% if wish_on and not phone_admin %}<a class="row wish-entry" href="{{ url_for('player_wishes') }}">{{ admin_app_icon('wish') }}<span class="name">心愿</span>{% if disc.wish %}<span class="detail">{{ disc.wish }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>{% endif %}
       {% if bottle_on %}<a class="row bottle-entry" href="{{ url_for('player_bottles') if not phone_admin else url_for('admin_phone_bottles') }}">{{ admin_app_icon('bottle') }}<span class="name">漂流瓶</span>{% if disc.bottle %}<span class="detail">{{ disc.bottle }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>{% endif %}
@@ -1115,15 +1136,15 @@ a { color: var(--link); text-decoration: none; }
     <div class="disc-label">玩乐</div>
     <div class="disc-group">
       {% if not phone_admin %}
-      <a class="row" href="{{ url_for('player_games') }}"><div class="avatar tile">🎮</div><span class="name">小游戏</span><span class="chev" aria-hidden="true">›</span></a>
-      <a class="row" href="{{ url_for('player_shop', view='book') }}"><div class="avatar tile">🎁</div><span class="name">礼品店</span>{% if disc.shop %}<span class="detail">{{ disc.shop }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>
+      <a class="row" href="{{ url_for('player_games') }}">{{ admin_app_icon('games') }}<span class="name">小游戏</span><span class="chev" aria-hidden="true">›</span></a>
+      <a class="row" href="{{ url_for('player_shop', view='book') }}">{{ admin_app_icon('shop') }}<span class="name">礼品店</span>{% if disc.shop %}<span class="detail">{{ disc.shop }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>
       {% endif %}
-      {% if has_maps %}<a class="row" href="{{ url_for('player_maps') }}"><div class="avatar tile">🗺</div><span class="name">地图</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
+      {% if has_maps %}<a class="row" href="{{ url_for('player_maps') }}">{{ admin_app_icon('maps') }}<span class="name">地图</span><span class="chev" aria-hidden="true">›</span></a>{% endif %}
     </div>
     {% endif %}
     <div class="disc-label">其他</div>
     <div class="disc-group">
-      <a class="row" href="{{ url_for('phone_guide') }}"><div class="avatar tile">📱</div><span class="name">使用指南</span><span class="chev" aria-hidden="true">›</span></a>
+      <a class="row" href="{{ url_for('phone_guide') }}">{{ admin_app_icon('guide') }}<span class="name">使用指南</span><span class="chev" aria-hidden="true">›</span></a>
     </div>
     <div class="disc-mark">{{ skin.words.brand }}</div>
   </div>
@@ -1136,7 +1157,8 @@ a { color: var(--link); text-decoration: none; }
   .disc-mark { flex: none; margin: 28px 0 20px; text-align: center; font-size: 11px; letter-spacing: 2px; color: var(--muted); opacity: .7; }
   .list .disc-group a.row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 14px; border: 0; border-bottom: .5px solid var(--line); margin: 0; color: var(--text); text-decoration: none; }
   .list .disc-group a.row:last-child { border-bottom: 0; }
-  .list .disc-group a.row .avatar.tile { position: relative; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; min-width: 32px; border-radius: 9px; font-size: 18px; margin: 0; }
+  .list .disc-group a.row .app-icon { position: relative; width: 36px; height: 36px; min-width: 36px; border-radius: 10px; margin: 0; }
+  .list .disc-group a.row .app-icon svg { width: 25px; height: 25px; }
   .list .disc-group a.row .name { flex: 1; font-size: 16px; font-weight: 500; }
   .list .disc-group a.row .chev { color: var(--muted); font-size: 22px; line-height: 1; }
   .daily-card .src { margin-top: 6px; font-size: 12px; color: var(--muted); text-align: right; }
@@ -1250,8 +1272,8 @@ a { color: var(--link); text-decoration: none; }
       <a class="bottle-row" href="{{ url_for('player_bottle', bid=t.id) }}">
       {% endif %}
         {{ admin_app_icon('bottle') }}
-        <div><div class="bottle-row-head"><strong>{% if t.state == 'pending' %}发送中…{% elif t.state == 'failed' %}没扔出去{% else %}漂流瓶 #{{ t.id }}{% endif %}</strong>{% if t.tag %}<span class="bottle-tag">{{ t.tag }}</span>{% endif %}</div>
-          {% if t.state == 'failed' %}<p class="bottle-reason">{{ t.note or '机器人没有接收成功' }}</p>{% endif %}
+        <div><div class="bottle-row-head"><strong>{% if t.state == 'pending' or t.state == 'failed' %}扔漂流瓶{% else %}漂流瓶 #{{ t.id }}{% endif %}</strong>{% if t.tag %}<span class="bottle-tag">{{ t.tag }}</span>{% endif %}<span class="phone-operation-state is-{{ 'waiting' if t.state == 'pending' else ('failed' if t.state == 'failed' else 'done') }}">{{ '处理中' if t.state == 'pending' else ('没成功' if t.state == 'failed' else '已完成') }}</span></div>
+          {% if t.state == 'failed' %}<p class="bottle-reason">没扔出去：{{ t.note or '机器人没有接收成功' }}</p>{% endif %}
           <p class="bottle-preview">{{ t.preview }}</p><time>{{ t.time }}</time>
         </div>
       {% if t.state == 'pending' or t.state == 'failed' %}</div>{% else %}</a>{% endif %}
@@ -1259,7 +1281,7 @@ a { color: var(--link); text-decoration: none; }
     </div>
     <p class="bottle-hint bottle-footnote">群里扔的瓶子也会出现在这里，可以接着回信；这里扔的瓶子，群里用「漂流瓶 编号 内容」也能回。</p>
   </div>
-  {% if has_pending %}<script>setTimeout(function () { try { var n = +sessionStorage.getItem('pendReload') || 0; if (n >= 30) return; sessionStorage.setItem('pendReload', n + 1); } catch (_) {} location.reload(); }, 8000);</script>{% else %}<script>try { sessionStorage.removeItem('pendReload'); } catch (_) {}</script>{% endif %}
+  {% include '_phone_pending_refresh.html' %}
 
 {% elif mode == 'bottle' %}
   <header class="bar bottle-bar">
@@ -1269,9 +1291,9 @@ a { color: var(--link); text-decoration: none; }
   </header>
   <div class="scroll bottle-thread" id="scroll">
     {% if flash %}<div class="bottle-alert" role="status">{{ flash }}</div>{% endif %}
-    {% if failed %}<div class="bottle-alert" role="status">上一条没有发出去：{{ failed }}</div>{% endif %}
+    {% if failed %}<div class="bottle-alert" role="status"><span class="phone-operation-state is-failed">没成功</span> 上一条没有发出去：{{ failed }}</div>{% endif %}
     {% for m in msgs %}
-    <div class="msg {{ 'mine' if m.mine else 'theirs' }}{% if m.pending %} is-pending{% endif %}"><div class="bubble">{{ m.text }}</div><div class="meta">{{ m.time }}</div></div>
+    <div class="msg {{ 'mine' if m.mine else 'theirs' }}{% if m.pending %} is-pending{% endif %}"><div class="bubble">{{ m.text }}</div><div class="meta">{% if m.mine or m.pending %}<span class="phone-operation-state is-{{ 'waiting' if m.pending else 'done' }}">{{ '处理中' if m.pending else '已完成' }}</span>{% endif %}{% if not m.pending %} {{ m.time }}{% endif %}</div></div>
     {% endfor %}
   </div>
   <form class="compose bottle-compose" method="post" action="{{ url_for('player_bottle_reply', bid=bottle_id) }}">
@@ -1279,7 +1301,7 @@ a { color: var(--link); text-decoration: none; }
     <textarea aria-label="回信" name="text" maxlength="{{ max_msg }}" placeholder="{{ why or '回信……' }}" rows="1" required{% if why %} disabled{% endif %}></textarea>
     <button type="submit"{% if why %} disabled{% endif %}>发送</button>
   </form>
-  {% if has_pending %}<script>setTimeout(function () { try { var n = +sessionStorage.getItem('pendReload') || 0; if (n >= 30) return; sessionStorage.setItem('pendReload', n + 1); } catch (_) {} location.reload(); }, 8000);</script>{% else %}<script>try { sessionStorage.removeItem('pendReload'); } catch (_) {}</script>{% endif %}
+  {% include '_phone_pending_refresh.html' %}
 
 {% elif mode == 'wishes' %}{% include '_phone_wishes.html' %}
 
@@ -1608,6 +1630,7 @@ a { color: var(--link); text-decoration: none; }
     <nav class="admin-apps" aria-label="管理应用">
       <a class="admin-app" href="{{ url_for('admin_phone_index', view='roles') }}">{{ admin_app_icon('roles') }}<span>角色</span></a>
       <a class="admin-app" href="{{ url_for('admin_phone_urge') }}">{{ admin_app_icon('urge') }}<span>催戏</span></a>
+      <a class="admin-app" href="{{ url_for('admin_phone_grant') }}">{{ admin_app_icon('grant') }}<span>发放</span></a>
       <a class="admin-app" href="{{ url_for('admin_phone_official') }}">{{ admin_app_icon('official') }}<span>官约</span></a>
       <a class="admin-app" href="{{ url_for('admin_phone_bottles') }}">{{ admin_app_icon('bottle') }}<span>漂流瓶</span></a>
       <a class="admin-app" href="{{ url_for('admin_phone_appearance') }}">{{ admin_app_icon('appearance') }}<span>外观</span></a>
@@ -1631,6 +1654,65 @@ a { color: var(--link); text-decoration: none; }
     {% endfor %}
   </div>
 
+{% elif mode == 'admin_grant' %}
+  <header class="bar">
+    <a class="back" href="{{ url_for('admin_phone_index') }}">桌面</a>
+    <div class="title">发放<small>先选人，再填物品</small></div>
+    <div class="right"></div>
+  </header>
+  <div class="scroll ch-page">
+    <a class="plugin-chip {{ plugin.level }}" href="{{ url_for('admin_phone_settings') }}">{{ plugin.text }}</a>
+    {% if flash %}<div class="ch-flash">{{ flash }}</div>{% endif %}
+    {% if not plugin.can %}
+    <div class="gm-empty ch-empty">插件升级到 1.10.4 或更高、并同步一次后，这里才能发放。</div>
+    {% else %}
+    <form method="post" action="{{ url_for('admin_phone_grant_op') }}" class="ch-give" id="grantForm" style="flex-direction:column;align-items:stretch;gap:10px">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <h3 class="ch-h" style="margin:0">① 选人 <span id="grantCount" style="font-weight:normal;opacity:.7">已选 0 人</span></h3>
+      <div style="display:flex;gap:8px"><button type="button" class="ch-btn" id="grantAll">全选</button><button type="button" class="ch-btn" id="grantNone">清空</button></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 14px">{% for n in grant_roles %}
+        <label style="white-space:nowrap"><input type="checkbox" name="people" value="{{ n }}"> {{ n }}{{ npc(n) }}</label>{% else %}<span>本季还没有角色</span>{% endfor %}</div>
+      <h3 class="ch-h" style="margin:0">② 发什么</h3>
+      <select name="name" id="grantItem" aria-label="物品" required>
+        <option value="" disabled selected>选一个背包里已有的…</option>
+        {% for g, names in grant_items %}<optgroup label="{{ g }}">{% for n in names %}<option value="{{ n }}">{{ n }}</option>{% endfor %}</optgroup>{% endfor %}
+        <option value="__other__">＋ 其他（没人持有的，手填名称）</option>
+      </select>
+      <input name="name_other" id="grantOther" maxlength="40" placeholder="名称或代码" hidden>
+      <span style="display:flex;gap:6px;align-items:center">
+        <input name="qty" type="number" min="1" max="9999" value="1" aria-label="数量" required>
+        <select name="sign" aria-label="加或扣"><option value="+">发放</option><option value="-">扣除</option></select>
+      </span>
+      <button type="submit" class="ch-btn" id="grantSubmit">提交</button>
+    </form>
+    <p class="ch-note">每个人各排一条，机器人下一次同步（约半分钟内）执行；名字不存在、背包不够等失败原因写在下面的结果里。</p>
+    {% if admin_ops %}
+    <h3 class="ch-h">最近发放</h3>
+    <div class="ch-list">{% for o in admin_ops %}
+      <div class="ch-item"><div class="top"><span class="nm">{{ o.role }} · {{ o.name }} {{ o.value if o.value.startswith('-') else '+' ~ o.value }}</span>
+        <span class="ct">{{ '待执行' if not o.done else ('✅' if o.ok else '❌') }}</span></div>
+        {% if o.done and o.result %}<div class="ef">{{ o.result }}</div>{% endif %}</div>{% endfor %}</div>
+    {% endif %}
+    {% endif %}
+  </div>
+  <script>
+  (function () {
+    var form = document.getElementById('grantForm'); if (!form) return;
+    var boxes = form.querySelectorAll('input[name=people]'), cnt = document.getElementById('grantCount');
+    function sync() { var n = 0; boxes.forEach(function (b) { if (b.checked) n++; }); cnt.textContent = '已选 ' + n + ' 人'; }
+    boxes.forEach(function (b) { b.addEventListener('change', sync); });
+    document.getElementById('grantAll').addEventListener('click', function () { boxes.forEach(function (b) { b.checked = true; }); sync(); });
+    document.getElementById('grantNone').addEventListener('click', function () { boxes.forEach(function (b) { b.checked = false; }); sync(); });
+    var sel = document.getElementById('grantItem'), oth = document.getElementById('grantOther');
+    sel.addEventListener('change', function () { oth.hidden = sel.value !== '__other__'; oth.required = !oth.hidden; });
+    form.addEventListener('submit', function (e) {
+      var n = 0; boxes.forEach(function (b) { if (b.checked) n++; });
+      if (!n) { e.preventDefault(); alert('先选人'); return; }
+      var minus = form.elements.sign.value === '-';
+      if (!confirm((minus ? '扣除' : '发放') + ' ' + n + ' 人：' + (sel.value === '__other__' ? oth.value : sel.value) + ' ×' + form.elements.qty.value + '？')) e.preventDefault();
+    });
+  })();
+  </script>
 {% elif mode == 'admin_appearance' %}
   <header class="bar">
     <a class="back" href="{{ url_for('admin_phone_index') }}">桌面</a>

@@ -73,7 +73,7 @@ sync(REP)
 ar = page(lin, "arc")
 ok("字数统计" in ar and "12,345" in ar and "平均每条 144 字" in ar and "最快 3" in ar and "最慢 240" in ar, "stats block")
 ok("本场字数" in ar and "1,240" in ar and "平均 <b>413</b> 字/段" in ar, "session words")
-ok("999" not in ar, "partner words never shown")
+ok(not __import__("re").search(r"(?<![\d#])999(?!\d|px)", ar), "partner words never shown")   # 样式里的 999px 不算
 REP["林晚"].pop("stats"); REP["林晚"].pop("sessions"); sync(REP)
 ok("字数统计" not in page(lin, "arc") and "本场字数" not in page(lin, "arc"), "old plugin: no word blocks")
 p = page(lin, "pending")

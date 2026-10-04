@@ -37,6 +37,7 @@
 .phone-nav { --dock-bg: color-mix(in srgb, var(--mine) 90%, #000); pointer-events: auto; display: grid; grid-template-columns: 1fr 1fr 78px 1fr 1fr; align-items: center; height: 62px; padding: 0 8px; border-radius: 31px; background: var(--dock-bg); border: 1px solid rgba(255,255,255,.16); box-shadow: 0 10px 26px color-mix(in srgb, var(--mine) 38%, transparent); }
 .phone-nav a { min-height: 46px; display: flex; flex-direction: column; justify-content: center; align-items: center; color: rgba(255,255,255,.66); font-size: 0; border-radius: 16px; margin: 0 4px; }
 .phone-nav a span { position: relative; font-size: 20px; line-height: 24px; }
+.phone-nav:not(.admin-nav) a:not(.dock-plus) { min-width: 44px; min-height: 48px; margin: 0 2px; gap: 2px; font-size: 11px; line-height: 14px; }
 .phone-nav svg { width: 22px; height: 22px; display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .phone-nav.admin-nav { grid-template-columns: repeat(4, 1fr); }
 .phone-nav a.unread span::after { content: ""; position: absolute; width: 7px; height: 7px; border-radius: 50%; background: #ffd166; top: -2px; right: -5px; box-shadow: 0 0 0 2px var(--dock-bg); }

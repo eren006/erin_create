@@ -54,6 +54,35 @@ post(kind="attr", name="体力", value="abc"); post(kind="feature", name="foo", 
 post(kind="attr", name="体力", value="1", csrf="bad")
 ok(m.post("/p/admin/as/不存在/op", data=dict(kind="attr", name="a", value="1", csrf=m.csrf)).status_code == 302, "unknown role")
 ok(c.execute("SELECT COUNT(*) FROM phone_admin_ops").fetchone()[0] == 3, "only 3 valid ops stored")
+# ---- 发放页：先选人再发
+c.execute("INSERT OR REPLACE INTO phone_sync (show_id, tenant_id, snapshot, cursor, synced_at) VALUES (?,?,?,?,?)",
+          (SID, TID, json.dumps({"plugin": {"version": "1.9.2", "params": []}}), 0, int(time.time() * 1000))); c.commit()
+ok("升级到 1.10.4" in m.get("/p/admin/grant").get_data(as_text=True), "old plugin hides grant form")
+m.post("/p/admin/grant/op", data=dict(people="林晚", name="金币", qty="1", csrf=m.csrf))
+ok(c.execute("SELECT COUNT(*) FROM phone_admin_ops").fetchone()[0] == 3, "old plugin rejects grant")
+c.execute("UPDATE phone_sync SET snapshot=?", (json.dumps({"plugin": {"version": "1.10.4", "params": []}}),)); c.commit()
+gp = m.get("/p/admin/grant").get_data(as_text=True)
+ok("① 选人" in gp and "林晚" in gp and "周屿" in gp and "金币" in gp and "钥匙" in gp, "grant page shows roles + item candidates")
+ok("<optgroup" in gp and "grantItemNames" not in gp and "__other__" in gp, "item is a dropdown with groups")
+ok("发放" in m.get("/p/admin").get_data(as_text=True), "desktop has grant app")
+n0 = c.execute("SELECT COUNT(*) FROM phone_admin_ops").fetchone()[0]
+def gpost(**kw):
+    kw.setdefault("csrf", m.csrf); return m.post("/p/admin/grant/op", data=kw)
+gpost(people=["林晚", "周屿", "路人"], name="金币", qty="5", sign="+")
+ok(c.execute("SELECT COUNT(*) FROM phone_admin_ops").fetchone()[0] == n0 + 2, "two valid people queued, unknown skipped")
+r = c.execute("SELECT role, kind, name, value FROM phone_admin_ops WHERE role='周屿' ORDER BY id DESC").fetchone()
+ok(tuple(r) == ("周屿", "item", "金币", "5"), "grant row")
+gpost(people=["林晚"], name="__other__", name_other="稀有宝箱", qty="1", sign="+")
+ok(c.execute("SELECT name FROM phone_admin_ops WHERE role='林晚' ORDER BY id DESC").fetchone()[0] == "稀有宝箱", "other name typed")
+c.execute("DELETE FROM phone_admin_ops WHERE name='稀有宝箱'"); c.commit()
+gpost(people=["林晚"], name="金币", qty="2", sign="-")
+ok(c.execute("SELECT value FROM phone_admin_ops WHERE role='林晚' ORDER BY id DESC").fetchone()[0] == "-2", "deduct sign")
+gpost(name="金币", qty="1", sign="+"); gpost(people=["林晚"], name="", qty="1"); gpost(people=["林晚"], name="金币", qty="0")
+gpost(people=["林晚"], name="金币", qty="1", csrf="bad")
+ok(c.execute("SELECT COUNT(*) FROM phone_admin_ops").fetchone()[0] == n0 + 3, "invalid grants rejected")
+lin0 = app.test_client()
+ok(lin0.get("/p/admin/grant").status_code == 302 and lin0.post("/p/admin/grant/op", data=dict(people="林晚", name="金币", qty="1")).status_code == 302, "anon blocked")
+c.execute("DELETE FROM phone_admin_ops WHERE id > (SELECT id FROM phone_admin_ops ORDER BY id LIMIT 1 OFFSET ?)", (n0 - 1,)); c.commit()   # 清掉发放页写的行，不影响后面的计数断言
 lin = app.test_client(); lin.get("/p/LINWAN0001"); lin.get("/p/me")
 with lin.session_transaction() as s: lc = s["phone_csrf"]
 ok(lin.post("/p/admin/as/林晚/op", data=dict(kind="attr", name="体力", value="9", csrf=lc)).status_code == 302

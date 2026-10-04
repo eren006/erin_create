@@ -33,7 +33,7 @@
     <section class="wish-section" aria-labelledby="wishOpsTitle"><h2 id="wishOpsTitle">我的操作</h2>
       <div class="wish-operations">{% for o in pending %}
         <article class="wish-operation {{ 'is-waiting' if not o.done else ('is-done' if o.ok else 'is-failed') }}">
-          <div class="wish-op-heading"><strong>{{ {'post': '挂心愿', 'withdraw': '撤心愿', 'pick': '摘心愿'}.get(o.kind, o.kind) }}</strong><span class="wish-state">{{ '发送中 · 处理中…' if not o.done else ('已完成' if o.ok else '没成功') }}</span></div>
+          <div class="wish-op-heading"><strong>{{ {'post': '挂心愿', 'withdraw': '撤心愿', 'pick': '摘心愿'}.get(o.kind, o.kind) }}</strong><span class="phone-operation-state is-{{ 'waiting' if not o.done else ('done' if o.ok else 'failed') }}">{{ '处理中' if not o.done else ('已完成' if o.ok else '没成功') }}</span></div>
           <p>{% if o.kind == 'post' %}{{ o.p.time }} · {{ o.p.place }}<br>{{ o.p.content }}{% if o.p.reward %}<span class="wish-reward">{{ o.p.reward.name }}×{{ o.p.reward.count }}</span>{% endif %}{% else %}编号 {{ o.p.wish_id }}{% endif %}</p>
           {% if o.done and o.result %}<p class="wish-result"{% if o.ok and o.kind == 'pick' %} data-wish-group{% endif %}>{{ o.result }}</p>{% endif %}
         </article>
@@ -50,7 +50,7 @@
           <div class="wish-card-foot">
             <button type="button" class="wish-copy" data-wish-copy="{{ w.id }}" aria-label="复制心愿编号 {{ w.id }}">#{{ w.id }} <span>复制</span></button>
             {% if w.mine %}<form method="post" action="{{ url_for('player_wish_withdraw', wid=w.id) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="wish-button wish-quiet"{% if why %} disabled aria-describedby="wishWhy"{% endif %}>撤回</button></form>
-            {% elif w.claiming %}<span class="wish-hint">正在被别人摘取…</span>
+            {% elif w.claiming %}<span class="wish-hint"><span class="phone-operation-state is-waiting">处理中</span> 正在被别人摘取…</span>
             {% else %}<form method="post" action="{{ url_for('player_wish_pick', wid=w.id) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="wish-button"{% if why %} disabled aria-describedby="wishWhy"{% endif %} data-confirm="摘取后会马上建一个专属小群，确定吗？">摘取</button></form>{% endif %}
           </div>
         </article>
@@ -85,4 +85,4 @@
     });
   }());
   </script>
-  {% if has_pending %}<script>setTimeout(function () { try { var n = +sessionStorage.getItem('pendReload') || 0; if (n >= 30) return; sessionStorage.setItem('pendReload', n + 1); } catch (_) {} location.reload(); }, 8000);</script>{% else %}<script>try { sessionStorage.removeItem('pendReload'); } catch (_) {}</script>{% endif %}
+  {% include '_phone_pending_refresh.html' %}

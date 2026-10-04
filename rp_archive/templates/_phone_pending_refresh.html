@@ -1,0 +1,68 @@
+<script>
+(function () {
+  // Only this tab, login session and page may consume the one-use refresh snapshot.
+  var key = 'phone-pending:' + {{ sid|tojson }} + ':' + {{ csrf|tojson }} + ':' + location.pathname;
+  var snapshotKey = key + ':snapshot', countKey = key + ':count';
+  var form = document.querySelector('.wish-form,.bottle-letter,.bottle-compose');
+  var scroller = document.querySelector('.wish-page,.bottle-page,.bottle-thread');
+  var fields = Array.from(form.querySelectorAll('input:not([type="hidden"]),textarea,select'));
+  var pending = {{ has_pending|default(false)|tojson }}, submitting = false, composing = false;
+  var lastActivity = Date.now(), count = 0, storageOK = true;
+  function activity() { lastActivity = Date.now(); }
+  function restore() {
+    try {
+      var saved = JSON.parse(sessionStorage.getItem(snapshotKey) || 'null');
+      sessionStorage.removeItem(snapshotKey);
+      var navigation = performance.getEntriesByType('navigation')[0];
+      if (!saved || !navigation || navigation.type !== 'reload' || Date.now() - saved.time > 60000) return;
+      fields.forEach(function (field) {
+        if (Object.prototype.hasOwnProperty.call(saved.values, field.name)) {
+          field.value = saved.values[field.name];
+          field.dispatchEvent(new Event('input', {bubbles: true}));
+          field.dispatchEvent(new Event('change', {bubbles: true}));
+        }
+      });
+      scroller.scrollTop = saved.scroll;
+      window.scrollTo(saved.x, saved.y);
+    } catch (_) { /* A missing or expired snapshot must not prevent using the page. */ }
+  }
+  try {
+    sessionStorage.setItem(key + ':probe', '1');
+    sessionStorage.removeItem(key + ':probe');
+    count = +sessionStorage.getItem(countKey) || 0;
+    if (!pending) sessionStorage.removeItem(countKey);
+  } catch (_) { storageOK = false; }
+  // Restore after the page's layout and other initialisation scripts settle.
+  window.addEventListener('load', function () { requestAnimationFrame(restore); }, {once: true});
+  ['input', 'change', 'keydown', 'pointerdown', 'pointerup', 'wheel', 'touchmove', 'scroll', 'focusin', 'focusout'].forEach(function (name) {
+    document.addEventListener(name, activity, {capture: true, passive: true});
+  });
+  document.addEventListener('compositionstart', function () { composing = true; activity(); });
+  document.addEventListener('compositionend', function () { composing = false; activity(); });
+  document.addEventListener('visibilitychange', activity);
+  document.addEventListener('submit', function (event) {
+    // Wait until confirmation/validation handlers have had a chance to cancel.
+    queueMicrotask(function () { if (!event.defaultPrevented) submitting = true; });
+  });
+  window.addEventListener('pageshow', function () { submitting = false; activity(); });
+  function refresh() {
+    if (!pending || !storageOK || count >= 30) return;
+    var focused = document.activeElement;
+    if (submitting || composing || document.hidden || Date.now() - lastActivity < 8000 ||
+        (focused && focused.matches('input,textarea,select,[contenteditable="true"]')) ||
+        document.querySelector('dialog[open],[aria-modal="true"]')) {
+      setTimeout(refresh, 1000);
+      return;
+    }
+    var values = {};
+    fields.forEach(function (field) { values[field.name] = field.value; });
+    try {
+      sessionStorage.setItem(snapshotKey, JSON.stringify({time: Date.now(), values: values,
+        scroll: scroller.scrollTop, x: window.scrollX, y: window.scrollY}));
+      sessionStorage.setItem(countKey, count + 1);
+    } catch (_) { return; } // Without a safe snapshot, keep the current page and draft.
+    location.reload();
+  }
+  setTimeout(refresh, 8000);
+}());
+</script>
