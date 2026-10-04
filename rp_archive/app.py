@@ -1920,8 +1920,6 @@ def init_db():
         with open(schema, encoding="utf-8") as f:
             conn.executescript(f.read())
         _migrate(conn)
-        from exploration import init_schema as init_exploration_schema
-        init_exploration_schema(conn)
         conn.commit()
     finally:
         conn.close()
@@ -12186,9 +12184,6 @@ def api_command_guides():
 
 
 explore.register(globals())   # 探索踩点：玩家 /x、后台 /admin/explore
-
-from exploration import register_exploration
-register_exploration(app, globals())
 
 if __name__ == "__main__":
     init_db()

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex,nofollow"><title>探索踩点 · 长日</title><link rel="stylesheet" href="{{ url_for('static',filename='exploration.css') }}"></head>
+<body class="exploration-page"><main class="explore-shell">
+{% if view == 'entry' %}
+<section class="ex-login">
+<p class="ex-kicker">长日 · FIELD NOTES</p><h1>探索踩点</h1><p class="ex-muted">去熟悉的地方，找一点未曾留意的故事。</p>
+<form method="post" class="ex-card"><input type="hidden" name="csrf" value="{{ csrf }}"><h2>从这里出发</h2><label>角色激活码<input name="code" required maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="输入管理给你的激活码"></label><p class="ex-muted">沿用你的角色激活码，无需先进入小手机。</p>{% if error %}<p class="ex-notice" role="alert">{{ error }}</p>{% endif %}<button style="width:100%;margin-top:18px">进入探索</button></form>
+</section>
+{% else %}
+<header class="ex-header"><div class="ex-heading"><svg viewBox="0 0 40 40" fill="none" stroke="currentColor" aria-hidden="true"><circle cx="20" cy="20" r="17"/><path d="m27 13-4 10-10 4 4-10zM20 0v6m0 28v6M0 20h6m28 0h6"/></svg><div><p class="ex-kicker">长日 · FIELD NOTES</p><h1>探索踩点</h1><p class="ex-muted">{{ owner }}的行走手记</p></div></div><form action="{{ url_for('explore.logout') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="ex-quiet">退出</button></form></header>
+<nav class="ex-nav" aria-label="探索导航"><a href="#map">去踩点</a><a href="#clues">线索板 · {{ clues|length }}</a><a href="#history">足迹</a></nav>
+{% if flash %}<p class="ex-notice" role="status">{{ flash }}</p>{% endif %}
+<div class="ex-balance"><span>今日可用 <strong>{{ quota.total }}</strong> 次</span><span class="ex-muted">日常 {{ quota.daily }} / {{ quota.limit }} · 临时 {{ quota.extra }}<br>{{ day_label or '游戏日待开启' }} · {{ '北京时间零点更新日常次数' if cfg.reset_mode == 'calendar' else '随游戏日更新日常次数' }}</span></div>
+{% if not cfg.enabled %}<p class="ex-empty">地图还在铺开，等管理开放后再来走走。</p>{% endif %}
+<section id="map" class="ex-section"><div class="ex-row"><h2>选一个地方</h2><span class="ex-muted">每次踩点消耗 1 次</span></div>
+{% if places %}<label>所在地图<select id="exploreMapSelect"><option value="">地点示意图</option>{% for name in maps %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</select></label>
+<div class="ex-map" id="exploreMap"><div class="ex-map-art" aria-hidden="true"></div>{% for p in places %}<a class="ex-pin ex-button" href="#place-{{ p.id }}" data-map="{{ p.map_name if p.map_name in maps else '' }}" style="left:{{ p.x }}%;top:{{ p.y }}%" aria-label="查看地点：{{ p.name }}">{{ loop.index }}</a>{% endfor %}</div><p class="ex-map-note">点地图上的编号查看地点，也可以直接从下方选择。</p>
+<div class="ex-grid">{% for p in places %}<article class="ex-card ex-place" id="place-{{ p.id }}"><h3><span class="ex-num">{{ '%02d'|format(loop.index) }}</span>{{ p.name }}</h3><p class="ex-muted">{{ p.description or '四处看看，也许会有意外的发现。' }}</p><form method="post" action="{{ url_for('explore.visit',pid=p.id) }}" data-explore-visit><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="request_key" value="{{ request_key }}"><button{% if not quota.total or not day_label %} disabled{% endif %}>去踩点 <span aria-hidden="true">↗</span></button></form></article>{% endfor %}</div>
+{% else %}<p class="ex-empty">这里还留着空白，等一个值得探索的地方。</p>{% endif %}</section>
+<section id="clues" class="ex-section"><div class="ex-row"><h2>我的线索板</h2><span class="ex-muted">只有你找到的故事</span></div><div class="ex-grid" style="margin-top:16px">{% for c in clues %}<article class="ex-card ex-clue"><span class="ex-kicker">线索 · {{ '%02d'|format(loop.revindex) }}</span><h3>{{ c.title }}</h3><p>{{ c.content }}</p><span class="ex-muted">{{ c.place_name }} · {{ c.day_key.partition(':')[2] }}</span></article>{% else %}<p class="ex-empty">还没有线索。<br>故事也许就藏在下一个转角。</p>{% endfor %}</div></section>
+<section id="history" class="ex-section"><h2>最近的足迹</h2><div class="ex-log">{% for v in history %}<article class="ex-card"><div class="ex-row"><h3>{{ v.place_name }}</h3><span class="ex-muted">{{ v.day_key.partition(':')[2] }}</span></div><p>{{ v.title }}{% if v.kind == 'item' %} ×{{ v.quantity }}{% endif %}</p>{% if v.kind == 'item' %}<span class="ex-state {{ 'pending' if not v.done else ('failed' if not v.ok else '') }}">{{ '处理中 · 正在放入背包' if not v.done else ('已完成 · 已放入背包' if v.ok else '没成功 · 物品未到账') }}</span>{% if v.done and not v.ok %}<p class="ex-muted">{{ v.result }} · 可以联系管理处理。</p>{% endif %}{% elif v.kind == 'clue' %}<span class="ex-state">已收进线索板</span>{% else %}<p class="ex-muted">{{ v.content }}</p>{% endif %}</article>{% else %}<p class="ex-empty">还没有足迹，选个地方出发吧。</p>{% endfor %}</div><p class="ex-map-note">物品由机器人自动放入背包，通常约半分钟；重新打开页面可看到账结果。日常次数先用，临时次数随后扣除。已收集的线索不会重复掉落。</p></section>
+<script id="exploreMaps" type="application/json">{{ maps|tojson }}</script>
+{% include '_place_map_render.html' %}
+<script src="{{ url_for('static',filename='exploration.js') }}" defer></script>
+{% endif %}
+</main></body></html>

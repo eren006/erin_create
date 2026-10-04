@@ -1,9 +1,6 @@
 """Standalone exploration: authoritative quotas/draws in SQLite; inventory via existing bot queue."""
-import hashlib
 import hmac
-import json
 import secrets
-import sqlite3
 import time
 from datetime import datetime
 from flask import Blueprint, abort, redirect, render_template, request, session, url_for
@@ -293,6 +290,14 @@ def register_exploration(app, api):
                     title = text('item',100,True) if kind=='item' else text('title',80,True)
                     if kind=='item' and title not in items(db,sid): raise ValueError('物品必须从已注册物品中选择')
                     db.execute('INSERT INTO exploration_drops(show_id,place_id,kind,title,content,quantity,weight) VALUES(?,?,?,?,?,?,?)', (sid,pid,kind,title,text('content',2000),integer('quantity',1,9999,1) if kind=='item' else 1,integer('weight',1,10000,1)))
+                elif action == 'retry':
+                    vid = integer('visit_id',1,2147483647)
+                    v = db.execute('SELECT v.*,o.done,o.ok FROM exploration_visits v JOIN phone_admin_ops o ON o.id=v.op_id AND o.show_id=v.show_id WHERE v.id=? AND v.show_id=?',(vid,sid)).fetchone()
+                    if not v or not v['done'] or v['ok']: raise ValueError('只有明确失败的入包才能重试')
+                    plugin = api['_plugin_status'](db,sid)
+                    if not plugin.get('can') or not plugin.get('fresh') or v['title'] not in items(db,sid): raise ValueError('等机器人同步注册物品后再试')
+                    op_id = db.execute("INSERT INTO phone_admin_ops(show_id,role,kind,name,value,created_at) VALUES(?,?,'item',?,?,?)",(sid,v['role'],v['title'],str(v['quantity']),int(time.time()*1000))).lastrowid
+                    db.execute('UPDATE exploration_visits SET op_id=? WHERE id=? AND show_id=?',(op_id,vid,sid))
                 elif action == 'drop_toggle':
                     db.execute('UPDATE exploration_drops SET enabled=1-enabled WHERE id=? AND show_id=?',(integer('drop_id',1,2147483647),sid))
                 else:
