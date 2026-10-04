@@ -153,3 +153,8 @@
 @keyframes xp-unfold { from { opacity:0; transform:translateY(7px) rotateX(-5deg); } to { opacity:1; transform:none; } }
 @media(prefers-reduced-motion:reduce) { .xp .xp-result { animation:none; } }
 @media(max-width:650px) { .xp-admin { margin:16px 0; padding:22px 16px; padding-bottom:calc(100px + env(safe-area-inset-bottom)); border-left:0; border-right:0; }.xp-admin .xp-admin-map-list { grid-template-columns:1fr; }.xp-admin .xp-header { flex-wrap:wrap; }.xp-admin .xp-paper { padding:16px; }.xp-admin .xp-drop { padding:12px; }.xp-admin .xp-role { gap:8px; }.xp-admin .xp-two { gap:10px; } }
+
+.xp .xp-clue-group { display:grid; gap:14px; margin-bottom:30px; }
+.xp .xp-clue-group-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:6px 0 4px; padding-bottom:8px; border-bottom:2px solid var(--xp-accent); font-family:Georgia,"Songti SC",serif; font-size:19px; overflow-wrap:anywhere; }
+.xp .xp-clue-group-head small { font-family:inherit; font-size:12px; color:var(--xp-muted); white-space:nowrap; }
+.xp .xp-clue-group .xp-clue-wall { padding-top:10px; }

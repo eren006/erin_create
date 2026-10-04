@@ -89,6 +89,50 @@ def _demo_report(db, sid):
                (sid, json.dumps(rep, ensure_ascii=False), int(time.time() * 1000) + 10 * 365 * 86400 * 1000))
     db.commit()
 
+def _demo_explore(db, sid):
+    """演示季的「探索踩点」：开着，一张学院地图 + 4 个地点（线索/空手，没有机器人所以不放物品掉落）；已经有设置就不动"""
+    if db.execute("SELECT 1 FROM explore_settings WHERE show_id=?", (sid,)).fetchone():
+        return
+    import io
+    import explore as E
+    from PIL import Image, ImageDraw
+    im = Image.new("RGB", (900, 560), (228, 217, 192)); d = ImageDraw.Draw(im)
+    for i in range(0, 900, 45): d.line([(i, 0), (i, 560)], fill=(214, 202, 174))
+    for j in range(0, 560, 45): d.line([(0, j), (900, j)], fill=(214, 202, 174))
+    d.rectangle([60, 70, 250, 190], fill=(178, 156, 124)); d.rectangle([600, 90, 840, 210], fill=(168, 146, 118))
+    d.ellipse([520, 340, 780, 520], fill=(150, 184, 138)); d.rectangle([110, 330, 300, 470], fill=(190, 170, 140))
+    d.line([(150, 190), (150, 330), (420, 440), (520, 430)], fill=(205, 186, 150), width=14)
+    buf = io.BytesIO(); im.save(buf, "JPEG", quality=85)
+    os.makedirs(E.EXPLORE_IMAGE_DIR, exist_ok=True)
+    name = f"demo_{secrets.token_hex(4)}.jpg"
+    with open(os.path.join(E.EXPLORE_IMAGE_DIR, name), "wb") as fh:
+        fh.write(buf.getvalue())
+    db.execute("INSERT INTO explore_settings (show_id, enabled, default_daily, reset_hour, intro) VALUES (?, 1, 3, 0, ?)",
+               (sid, "雨后的学院，总有人落下些什么。（演示：线索进「线索板」，物品掉落需要机器人，演示里没放。）"))
+    mid = db.execute("INSERT INTO explore_maps (show_id, name, image, sort) VALUES (?, '学院', ?, 1)", (sid, name)).lastrowid
+    spots = [
+        ("图书馆", "📚", "安静得能听见翻页声。", 20, 28, [
+            {"id": "lib1", "kind": "clue", "weight": 5, "title": "撕碎的信", "text": "信纸被撕成两半，只剩半句：「别让他知道……」"},
+            {"id": "lib2", "kind": "clue", "weight": 3, "title": "借阅卡", "text": "最后一张借阅卡，签名被人刻意涂掉了。"},
+            {"id": "lib3", "kind": "nothing", "weight": 2, "text": "只有灰尘和翻旧了的书页。"}]),
+        ("钟楼", "🔔", "整点的钟声，听久了会数错。", 74, 30, [
+            {"id": "bell1", "kind": "clue", "weight": 4, "title": "停摆的怀表", "text": "怀表停在 21:07，表盖内侧刻着一个缩写：L.W."},
+            {"id": "bell2", "kind": "nothing", "weight": 3, "text": "钟声响了一下，什么也没发生。"}]),
+        ("后花园", "🌿", "雨后的泥土味。", 62, 74, [
+            {"id": "gar1", "kind": "clue", "weight": 4, "title": "半埋的脚印", "text": "两串脚印通向温室，其中一串明显更深——像是背着什么。"},
+            {"id": "gar2", "kind": "nothing", "weight": 2, "text": "蝴蝶停在你肩上，又飞走了。"}]),
+        ("旧礼堂", "🎭", "幕布后面好像有人。", 24, 72, [
+            {"id": "hall1", "kind": "clue", "weight": 3, "title": "节目单背面", "text": "节目单背面用铅笔写着：「第三幕之前，把钥匙放回原处。」"},
+            {"id": "hall2", "kind": "nothing", "weight": 3, "text": "舞台上的灯忽然亮了一下，又灭了。"}]),
+    ]
+    for i, (n, icon, desc, x, y, drops) in enumerate(spots, 1):
+        db.execute("INSERT INTO explore_spots (show_id, map_id, name, desc, icon, x, y, enabled, sort, drops) VALUES (?,?,?,?,?,?,?,1,?,?)",
+                   (sid, mid, n, desc, icon, x, y, i, json.dumps(drops, ensure_ascii=False)))
+    db.execute("INSERT OR IGNORE INTO explore_quota (show_id, role, daily) VALUES (?, '周屿', 6)", (sid,))   # 演示「个人次数」
+    db.execute("INSERT INTO explore_bonus (show_id, role, amount, remaining, note, created_at) VALUES (?, '体验者', 2, 2, '演示：临时次数', ?)",
+               (sid, int(time.time() * 1000)))
+    db.commit()
+
 def _demo_lovemail(db, tid, sid):
     """演示季的心动信：快照补上规则/次数/一封等派送的信（标成 demo，没有机器人也能投），再放几封已派送的往期；已经有就不动"""
     row = db.execute("SELECT snapshot FROM phone_sync WHERE show_id=?", (sid,)).fetchone()
@@ -131,6 +175,7 @@ if row:
     _demo_lovemail(db, tid, sid)
     _demo_block(db, sid)
     _demo_report(db, sid)
+    _demo_explore(db, sid)
     print("演示团账号已存在。各角色激活码（一直有效）：")
     _print_codes(_demo_codes(db, tid, sid))
     print(f"演示管理员手机码：{acode}\n入口：https://archive.changri.work/p/{acode}")
@@ -192,6 +237,7 @@ _demo_shop(db, tid, sid)
 _demo_lovemail(db, tid, sid)
 _demo_block(db, sid)
 _demo_report(db, sid)
+_demo_explore(db, sid)
 print("演示团账号已建好（跟真实数据完全隔开）。各角色激活码（一直有效）：")
 _print_codes(_demo_codes(db, tid, sid))
 print(f"体验激活码（一直有效）：{code}")

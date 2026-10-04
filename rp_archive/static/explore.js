@@ -69,7 +69,7 @@
     form.addEventListener('submit',e=>{e.preventDefault();submitEntry(form);});return;
   }
   if (!admin) {
-    let state=null, mapId=null, active='map', clues=[], clueRequest=0, logRequest=0, logTimer=null, visiting=false, currentSpot=null, exhausted=false;
+    let state=null, mapId=null, active='map', clues=[], clueRequest=0, logRequest=0, logTimer=null, visiting=false, currentSpot=null, exhausted=false, clueView='spot';
     const sheet=$('xp-spot-sheet');
     function quota(q) {
       if(q) {state.quota=q;$('xp-quota').innerHTML=`<span>今日的脚步</span><strong>${esc(q.total)}<small>次</small></strong><span>日常 ${esc(q.daily_left)} / ${esc(q.daily_limit)} · 临时 ${esc(q.bonus)}</span>`;}
@@ -109,10 +109,22 @@
       catch(err){fail($('xp-global-message'),err);$('xp-map-content').innerHTML='<p class="xp-empty">地图暂时没有展开，点右上角重试。</p>';}
       finally{b.disabled=false;}
     }
+    function clueCard(c,i,byTime) {
+      return `<article class="xp-clue">${c.new?'<span class="xp-new">新</span>':''}<span class="xp-eyebrow">线索 · ${String(i+1).padStart(2,'0')}</span><h3>${esc(c.title)}</h3><p>${esc(c.text)}</p><footer>${byTime?esc(c.map?c.map+' · ':'')+esc(c.spot)+'<br>':''}${esc(date(c.ts))} · 北京时间</footer></article>`;
+    }
     function renderClues() {
       const query=$('xp-clue-search').value.trim().toLocaleLowerCase(), rows=clues.filter(c=>[c.title,c.text,c.spot,c.map].join(' ').toLocaleLowerCase().includes(query));
       $('xp-clue-count').textContent=`${clues.length} 条线索`;
-      $('xp-clue-list').innerHTML=rows.length?rows.map((c,i)=>`<article class="xp-clue">${c.new?'<span class="xp-new">新</span>':''}<span class="xp-eyebrow">线索 · ${String(i+1).padStart(2,'0')}</span><h3>${esc(c.title)}</h3><p>${esc(c.text)}</p><footer>${esc(c.map?c.map+' · ':'')}${esc(c.spot)}<br>${esc(date(c.ts))} · 北京时间</footer></article>`).join(''):`<p class="xp-empty">${clues.length?'没有找到这条线索，换个词试试。':'手账里还没有线索。<br>去探索看看吧。'}</p>`;
+      document.querySelectorAll('#xp-clue-view button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===clueView)));
+      const empty=`<p class="xp-empty">${clues.length?'没有找到这条线索，换个词试试。':'手账里还没有线索。<br>去探索看看吧。'}</p>`;
+      if(!rows.length){$('xp-clue-list').innerHTML=empty;return;}
+      if(clueView==='time'){$('xp-clue-list').innerHTML=rows.map((c,i)=>clueCard(c,i,true)).join('');return;}
+      const groups=new Map();
+      rows.forEach(c=>{const k=(c.map||'')+'\u0000'+c.spot;if(!groups.has(k))groups.set(k,{map:c.map,spot:c.spot,items:[]});groups.get(k).items.push(c);});
+      const list=[...groups.values()];
+      list.forEach(g=>{g.items.sort((x,y)=>x.ts-y.ts);g.last=g.items[g.items.length-1].ts;});
+      list.sort((x,y)=>y.last-x.last);
+      $('xp-clue-list').innerHTML=list.map(g=>`<section class="xp-clue-group"><h3 class="xp-clue-group-head"><span>${esc(g.map?g.map+' · ':'')}${esc(g.spot)}</span><small>${g.items.length} 条${g.items.some(c=>c.new)?' · 有新线索':''}</small></h3><div class="xp-clue-wall">${g.items.map((c,i)=>clueCard(c,i,false)).join('')}</div></section>`).join('');
     }
     async function loadClues() {
       const revision=++clueRequest;$('xp-clue-list').innerHTML='<p class="xp-empty">正在整理线索…</p>';
@@ -133,7 +145,7 @@
     }
     const tabs=[...document.querySelectorAll('[data-tab]')];tabs.forEach((b,i)=>{b.onclick=()=>tab(b.dataset.tab);b.onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const n=e.key==='Home'?0:e.key==='End'?2:(i+(e.key==='ArrowRight'?1:2))%3;tabs[n].focus();tab(tabs[n].dataset.tab);}};});
     document.addEventListener('visibilitychange',()=>{if(!document.hidden&&active==='log')loadLog();});
-    $('xp-clue-search').oninput=renderClues;$('xp-reload-state').onclick=loadState;$('xp-reload-log').onclick=loadLog;
+    $('xp-clue-search').oninput=renderClues;document.querySelectorAll('#xp-clue-view button').forEach(b=>b.onclick=()=>{clueView=b.dataset.view;renderClues();});$('xp-reload-state').onclick=loadState;$('xp-reload-log').onclick=loadLog;
     $('xp-sheet-close').onclick=()=>sheet.close();sheet.addEventListener('click',e=>{if(e.target===sheet){const r=sheet.getBoundingClientRect();if(e.clientY<r.top||e.clientX<r.left||e.clientX>r.right)sheet.close();}});
     $('xp-visit').onclick=async()=>{
       if(visiting||!currentSpot||exhausted)return;
