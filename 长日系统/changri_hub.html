@@ -255,6 +255,46 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
 .func{width:calc(100% - 28px);margin:0 auto 14px;border-radius:26px;background:#111;color:#f5f2ec;padding:76px 0}.tabs{justify-content:center}.tab-btn{background:transparent;border-color:#444;color:#999}.tab-btn.active{background:#f5f2ec;color:#111;border-color:#f5f2ec}.manual-wrap{background:#191a1a;border-color:#333}.manual-bar{border-color:#333}.folder-content{background:#191a1a;color:#e9e4d8}.ver-list li{color:#d0cec8}.ver-group-title{filter:saturate(.85)}.manual-frame{background:#fff}.foot{background:#111;color:#777;padding:34px}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.hero-inner{grid-template-columns:1fr}.hero-side{width:min(360px,100%);justify-self:end;margin-bottom:40px}.about-grid{grid-template-columns:1fr}.about-art{min-height:260px}}
 @media(max-width:620px){.site-shell{width:100%;margin:0}.nav-inner{padding:18px}.nav-meta{font-size:9px}.hero{width:calc(100% - 16px);min-height:760px}.hero-inner{min-height:760px;padding:46px 24px 24px;display:flex;flex-direction:column;align-items:flex-start}.hero:before{background:linear-gradient(0deg,#050606 0%,rgba(5,6,6,.15) 70%,#050606 100%)}.hero:after{background-position:center top}.hero h1{font-size:54px;margin-top:12px}.hero-copy{margin-top:auto}.hero-side{margin:0;width:100%}.hero-foot{display:none}.grid{grid-template-columns:1fr}.card{min-height:210px}.about{padding:70px 0}.wrap{padding-left:20px;padding-right:20px}.about-grid{gap:38px}.func{width:calc(100% - 16px)}}
+
+/* ---------- 网页端展示：小手机 / 探索踩点 ---------- */
+.webx{padding:30px 0 100px}
+.webx-head h2{font-size:clamp(34px,5vw,58px);letter-spacing:-.06em;line-height:1;font-weight:800;margin:8px 0 14px}
+.webx-head p{color:var(--muted);max-width:620px;font-size:15px;line-height:1.8;margin:0 0 34px}
+.webx-grid{display:grid;grid-template-columns:1.15fr 1fr;gap:14px}
+.webcard{border-radius:26px;padding:30px;background:var(--paper-2);border:1px solid var(--line);display:flex;flex-direction:column;gap:22px;position:relative;overflow:hidden}
+.webcard.dark{background:#101111;color:#f5f2ec;border-color:#101111}
+.webcard .kicker{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700}
+.webcard h3{font-size:clamp(26px,3vw,36px);letter-spacing:-.045em;line-height:1.1;margin:8px 0 10px;font-weight:800}
+.webcard .lead2{font-size:14px;line-height:1.8;color:var(--muted);margin:0;max-width:440px}
+.webcard.dark .lead2{color:#bdb7a9}
+.webcard .art{display:flex;justify-content:center;align-items:flex-end;min-height:250px}
+.webcard .chips{display:flex;flex-wrap:wrap;gap:7px}
+.webcard .chips span{font-size:12px;padding:6px 12px;border-radius:30px;background:var(--paper);border:1px solid var(--line);color:var(--ink)}
+.webcard.dark .chips span{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.12);color:#ece7da}
+.webcard ul.pts{list-style:none;margin:0;padding:0;display:grid;gap:9px;font-size:13.5px;line-height:1.65;color:var(--muted)}
+.webcard.dark ul.pts{color:#c9c2b3}
+.webcard ul.pts li{padding-left:18px;position:relative}
+.webcard ul.pts li:before{content:"";position:absolute;left:0;top:.72em;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.webcard .entry{font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:16px;line-height:1.7}
+.webcard.dark .entry{border-color:rgba(255,255,255,.18);color:#a9a395}
+.webcard .entry code{font-family:ui-monospace,Menlo,monospace;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:var(--ink)}
+.webcard.dark .entry code{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14);color:#f5f2ec}
+/* 手机示意 */
+.mock-phone{width:210px;height:250px;border:7px solid #1a1a1a;border-bottom:0;border-radius:30px 30px 0 0;background:var(--paper);padding:16px 12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 22px 40px rgba(0,0,0,.18)}
+.mock-phone .bar{font-size:11px;font-weight:700;text-align:center;color:var(--ink);padding-bottom:6px;border-bottom:1px solid var(--line)}
+.mock-phone .b{max-width:78%;font-size:10.5px;line-height:1.45;padding:7px 10px;border-radius:14px;background:var(--paper-2);color:var(--ink)}
+.mock-phone .b.me{align-self:flex-end;background:var(--accent);color:#fff}
+.mock-phone .gift{align-self:flex-start;font-size:10.5px;padding:7px 10px;border-radius:14px;border:1px dashed var(--accent);color:var(--accent)}
+.mock-phone .dock{margin-top:auto;display:flex;justify-content:space-around;font-size:13px;padding-top:6px;border-top:1px solid var(--line);opacity:.7}
+/* 地图示意 */
+.mock-map{width:min(300px,100%);height:230px;border-radius:20px;background:#e4d9c0;position:relative;overflow:hidden;box-shadow:0 22px 40px rgba(0,0,0,.3);
+  background-image:linear-gradient(#d6caae 1px,transparent 1px),linear-gradient(90deg,#d6caae 1px,transparent 1px);background-size:30px 30px}
+.mock-map i{position:absolute;display:block}
+.mock-map .pin{width:38px;height:38px;border-radius:50%;background:#fffdf6;border:2px solid #3f5a4b;display:grid;place-items:center;font-style:normal;font-size:18px;box-shadow:0 3px 8px rgba(0,0,0,.25)}
+.mock-map .clue{left:14px;right:14px;bottom:12px;background:#fffdf6;color:#2b2a26;border-radius:12px;padding:9px 12px;font-size:11px;line-height:1.5;font-style:normal;border-top:3px solid #8a5a3c}
+.mock-map .clue b{display:block;font-size:12px}
+@media(max-width:900px){.webx-grid{grid-template-columns:1fr}}
+@media(max-width:620px){.webcard{padding:24px 20px}.webx{padding-bottom:70px}}
 </style>
 </head>
 <body><div class="site-shell">
@@ -265,6 +305,7 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
     <div class="nav-links">
       <a onclick="showTab('changelog')">更新日志</a>
       <a onclick="showTab('manual')">指令手册</a>
+      <a href="#web">网页端</a>
       <a href="player_guide.html" target="_blank">玩家指南</a>
       <a href="changri_wishes.html">许愿墙</a>
     </div>
@@ -319,6 +360,67 @@ body{background:#d8d8d6;letter-spacing:-.01em;}
       </div>
     </div>
     <div class="grid" id="subsysGrid"></div>
+  </div>
+</section>
+
+<section class="webx" id="web">
+  <div class="wrap">
+    <div class="webx-head">
+      <div class="eyebrow-2">Web · 网页端玩法</div>
+      <h2>手机和地图，<br>在网页里随时打开。</h2>
+      <p>不用守在群里：用角色激活码登录，在网页上收发短信与礼物、写心动信、点歌，也能出门探索、翻找线索。两个入口互相独立，管理员各自配置，机器人负责把结果写回背包。</p>
+    </div>
+    <div class="webx-grid">
+      <article class="webcard">
+        <div>
+          <div class="kicker">长日小手机</div>
+          <h3>一部网页上的手机</h3>
+          <p class="lead2">角色登录后看到的是属于自己的手机：消息、公开播报、朋友圈、发现页都在里面，换上喜欢的主题，像真的在用。</p>
+        </div>
+        <div class="art" aria-hidden="true">
+          <div class="mock-phone">
+            <div class="bar">林晚</div>
+            <div class="b">晚上天台见？</div>
+            <div class="b me">好，我带伞。</div>
+            <div class="gift">🎁 一束洋桔梗</div>
+            <div class="dock"><span>💬</span><span>🧭</span><span>＋</span><span>👤</span></div>
+          </div>
+        </div>
+        <ul class="pts">
+          <li>短信、礼物、匿名对话、群聊，可撤回、可引用，按角色视角收件</li>
+          <li>公开播报与朋友圈：点赞评论，看全场动态</li>
+          <li>发现页：心动信箱、点歌台、小游戏与排行榜、地点地图、漂流瓶、心愿、礼品店</li>
+          <li>角色页：背包、属性、装备；时间线与统计一目了然</li>
+          <li>六套外观主题，微信名与备注，违禁词与暂停通讯由管理员把关</li>
+          <li>管理员有专属桌面：看任意角色视角、催戏、发起官约、批量发放物品、调整设置</li>
+        </ul>
+        <div class="chips"><span>短信礼物</span><span>朋友圈</span><span>点歌</span><span>小游戏</span><span>漂流瓶</span><span>心愿</span><span>礼品店</span><span>六套主题</span></div>
+        <div class="entry">入口：<code>archive.changri.work/p</code>　用管理员发放的角色激活码登录。</div>
+      </article>
+      <article class="webcard dark">
+        <div>
+          <div class="kicker" style="color:#e08a5f">探索踩点</div>
+          <h3>去地图上，翻开故事</h3>
+          <p class="lead2">独立于小手机的玩法：在地图上选一个地点踩点，随机翻出线索或物品，慢慢拼出事件的全貌。</p>
+        </div>
+        <div class="art" aria-hidden="true">
+          <div class="mock-map">
+            <i class="pin" style="left:34px;top:30px">📚</i>
+            <i class="pin" style="left:196px;top:48px">🔔</i>
+            <i class="pin" style="left:150px;top:112px">🌿</i>
+            <i class="clue"><b>撕碎的信</b>信纸被撕成两半，只剩半句……</i>
+          </div>
+        </div>
+        <ul class="pts">
+          <li>每人每天固定次数，默认一样，管理员可单独调整，也可随时发临时次数</li>
+          <li>每个地点有自己的掉落表：线索进「线索板」，每条只会拿到一次</li>
+          <li>掉落的物品必须是已注册物品，自动加入背包，并在记录里显示入包结果</li>
+          <li>管理员在团后台摆地图、点地点、配掉落，手机上也能操作</li>
+        </ul>
+        <div class="chips"><span>地图踩点</span><span>线索板</span><span>物品自动入包</span><span>每日次数</span><span>临时次数</span></div>
+        <div class="entry">入口：<code>archive.changri.work/x</code>　与小手机使用同一个角色激活码。</div>
+      </article>
+    </div>
   </div>
 </section>
 
