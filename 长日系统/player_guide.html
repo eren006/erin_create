@@ -213,6 +213,7 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
 <a href="#sec-前置电话">📞 前置电话</a>
 <a href="#sec-弧长与统计">📊 弧长与统计</a>
 <a href="#sec-地点系统">🗺️ 地点系统</a>
+<a href="#sec-探索踩点">🧭 探索踩点</a>
 <a href="#sec-社交互动">💌 社交互动</a>
 <a href="#sec-关系线">🔗 关系线</a>
 <a href="#sec-论坛">📰 论坛</a>
@@ -346,7 +347,7 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
         </div>
         <div class="cmd-card" data-search="踩点 [时间] [地点] [对方] 【dlc: dlc_stakeout】发起踩点私约；对方可省略即可独行（默认开启，管理员可在网页端关闭「允许单人踩点」），目击时显示「一个人去」">
           <div class="cmd-name">踩点 [时间] [地点] [对方]</div>
-          <div class="cmd-desc">【DLC: dlc_stakeout】发起踩点私约；对方可省略即可独行（默认开启，管理员可在网页端关闭「允许单人踩点」），目击时显示「一个人去」</div>
+          <div class="cmd-desc">【DLC: dlc_stakeout】发起<b>群内踩点</b>（与网页「探索踩点」是两套玩法）；对方可省略即可独行（默认开启，管理员可在网页端关闭「允许单人踩点」），目击时显示「一个人去」</div>
           <pre class="ex">踩点 20:00-21:00 大图书馆 李四
 踩点 20:00-21:00 大图书馆   ← 单人踩点（默认可用）</pre>
         </div>
@@ -504,6 +505,49 @@ body:after{content:"";position:fixed;z-index:100;inset:0;pointer-events:none;opa
           <div class="cmd-desc">同上，无句号的快捷方式</div>
           
         </div>
+    </div>
+  </details>
+
+  <details class="feat-section" id="sec-探索踩点">
+    <summary>
+      <h2><span class="feat-icon">🧭</span><span>探索踩点</span></h2>
+      <div class="section-preview"><span>地图踩点</span><span>线索板</span><span>物品入包</span></div>
+      <span class="section-count">07</span>
+      <span class="section-arrow" aria-hidden="true">⌄</span>
+    </summary>
+    <div class="cmd-grid">
+      <div class="cmd-card" data-search="探索踩点 群内踩点 网页探索 区别 不同 次数 掉落 指令">
+        <div class="cmd-name">和群里的「踩点」指令有什么区别</div>
+        <div class="cmd-desc"><b>群内踩点</b>：在群里发「踩点 时间 地点」开一场，结戏时按地点发放抽取次数。<br><b>网页探索</b>：独立于群内抽取之外的额外掉落池，只能在网页地图上点地点，用网页上的每日次数，掉落线索或物品（物品会自动入包），机器人那边的卡池抽不到它。<br>两套玩法的次数、掉落、地点配置互不通用，别混着算。</div>
+      </div>
+      <div class="cmd-card" data-search="探索踩点 怎么用 激活码 登录 入口 网页 archive.changri.work/x 30天 开放">
+        <div class="cmd-name">怎么进入探索</div>
+        <div class="cmd-desc">打开 <a href="https://archive.changri.work/x" target="_blank" rel="noopener">archive.changri.work/x</a>，输入和小手机相同的角色激活码；也可以让管理员发你 archive.changri.work/x/你的激活码 的直达链接。<br>登录后，这台设备 30 天内不用重输。管理员未开放时，会看到「探索还没有开放」。</div>
+      </div>
+      <div class="cmd-card" data-search="探索踩点 每天次数 日常次数 临时次数 北京时间 刷新 管理员 不过期">
+        <div class="cmd-name">每天次数与临时次数</div>
+        <div class="cmd-desc">每人每天有固定次数，默认大家一样，管理员也可以单独给某个人调多或调少。每天按北京时间刷新，默认自然日 0 点，管理员可调整刷新时间。<br>管理员还能发放「临时次数」：先用完当天的日常次数，再用临时次数；临时次数不会过期。</div>
+      </div>
+      <div class="cmd-card" data-search="探索踩点 怎么用 地图 标记 地点 列表 线索 物品 空手 扣次数">
+        <div class="cmd-name">怎么踩点</div>
+        <div class="cmd-desc">在地图上选一个地点，再点「踩点」，消耗 1 次，随机找到线索、物品，或什么也没找到。<br>有背景图时可以点图上的标记，也可以从下面的地点列表进入。</div>
+      </div>
+      <div class="cmd-card" data-search="探索踩点 线索板 按地点归纳 按时间 搜索 新线索 同一地点 不重复 没有新发现 不扣次数">
+        <div class="cmd-name">整理线索板</div>
+        <div class="cmd-desc">找到的线索会收入「线索板」。默认按地点归纳，每个地点一组，组内按找到的先后排列，未看过的新线索会标出来；也可以切换成「按时间」，或搜索标题、内容和地点。<br>同一个地点的同一条线索只会拿到一次。这里的线索全拿过后，再踩会提示「这里没有新发现了」，<b>这次不扣次数</b>，换个地点继续看看。</div>
+      </div>
+      <div class="cmd-card" data-search="探索踩点 物品 自动入包 注册 背包 机器人 半分钟 入包中 已入包 入包失败 记录">
+        <div class="cmd-name">物品自动入包</div>
+        <div class="cmd-desc">踩点能找到的物品都须是系统已注册的物品，会自动加进你的背包，机器人通常在半分钟内处理。<br>刚找到时会提示「入包中」，之后到「记录」页查看「已入包」或「入包失败」。</div>
+      </div>
+      <div class="cmd-card" data-search="探索踩点 入包失败 次数不退 管理员 联系 补发物品 临时次数 记录">
+        <div class="cmd-name">入包失败怎么办</div>
+        <div class="cmd-desc">「记录」里显示「入包失败」时，这次踩点已经扣了次数，<b>次数不会自动退回</b>。请联系管理员核对，管理员可以重新发放物品，或补给你临时次数。</div>
+      </div>
+      <div class="cmd-card" data-search="探索踩点 记录页 最近踩点 临时次数 标记 入包 结果">
+        <div class="cmd-name">查看踩点记录</div>
+        <div class="cmd-desc">「记录」页列出最近的踩点和结果，使用临时次数的记录会有标记；物品是否入包也在这里查看。</div>
+      </div>
     </div>
   </details>
 

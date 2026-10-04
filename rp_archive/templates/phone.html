@@ -1669,15 +1669,15 @@ a { color: var(--link); text-decoration: none; }
     <style>
     .phone .grant-form { margin: 14px var(--gutter, 18px) 0; display: flex; flex-direction: column; gap: 14px; }
     .phone .grant-card { background: var(--ios-group, var(--theirs)); border-radius: 16px; padding: 14px; }
-    .phone .grant-head { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--text); }
+    .phone .grant-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--text); }
     .phone .grant-head i { font-style: normal; width: 22px; height: 22px; border-radius: 50%; background: var(--mine); color: var(--mine-text); font-size: 12px; display: inline-flex; align-items: center; justify-content: center; }
     .phone .grant-head small { font-weight: 400; font-size: 12px; color: var(--muted); }
     .phone .grant-head .grant-tools { margin-left: auto; display: flex; gap: 4px; }
-    .phone .grant-head .grant-tools button { border: 0; background: none; color: var(--mine); font: inherit; font-size: 13px; font-weight: 500; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
+    .phone .grant-head .grant-tools button { border: 0; background: none; color: var(--text); min-height: 44px; min-width: 44px; font: inherit; font-size: 13px; font-weight: 500; padding: 4px 8px; border-radius: 8px; cursor: pointer; }
     .phone .grant-chips { display: flex; flex-wrap: wrap; gap: 8px; }
     .phone .gchip { position: relative; cursor: pointer; }
     .phone .gchip input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
-    .phone .gchip span { display: inline-flex; align-items: center; gap: 4px; padding: 8px 14px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); color: var(--text); font-size: 15px; line-height: 1.2; transition: background .15s, color .15s, border-color .15s; }
+    .phone .gchip span { display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 8px 14px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); color: var(--text); font-size: 15px; line-height: 1.2; transition: background .15s, color .15s, border-color .15s; }
     .phone .gchip input:checked + span { background: var(--mine); border-color: var(--mine); color: var(--mine-text); font-weight: 600; }
     .phone .gchip input:focus-visible + span { outline: 2px solid var(--mine); outline-offset: 2px; }
     .phone .gchip .npc-tag { font-size: 10px; }
@@ -1690,6 +1690,7 @@ a { color: var(--link); text-decoration: none; }
     .phone .grant-seg label { flex: 1; position: relative; display: flex; }
     .phone .grant-seg input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
     .phone .grant-seg span { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 9px; font-size: 15px; color: var(--muted); }
+    .phone .grant-seg input:focus-visible + span { outline: 2px solid var(--mine); outline-offset: 2px; }
     .phone .grant-seg input:checked + span { background: var(--mine); color: var(--mine-text); font-weight: 600; }
     .phone .grant-form .grant-submit { border: 0; border-radius: 14px; min-height: 50px; background: var(--mine); color: var(--mine-text); font: inherit; font-size: 17px; font-weight: 600; cursor: pointer; }
     </style>

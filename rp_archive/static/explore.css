@@ -12,8 +12,8 @@
  --xp-map:#304333; --xp-grain:#cadbb907; }
 }
 .xp-body { margin:0; background:var(--xp-ground); }
-.xp { color:var(--xp-ink); font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; font-size:14px; line-height:1.7; }
-.xp * { box-sizing:border-box; }
+.xp { box-sizing:border-box; color:var(--xp-ink); font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; font-size:14px; line-height:1.7; }
+.xp,.xp * { box-sizing:border-box; }
 .xp [hidden] { display:none !important; }
 .xp h1,.xp h2,.xp h3,.xp p { margin:0; }
 .xp h1,.xp h2 { font-family:Georgia,"Songti SC","STSong",serif; }
@@ -158,3 +158,15 @@
 .xp .xp-clue-group-head { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:6px 0 4px; padding-bottom:8px; border-bottom:2px solid var(--xp-accent); font-family:Georgia,"Songti SC",serif; font-size:19px; overflow-wrap:anywhere; }
 .xp .xp-clue-group-head small { font-family:inherit; font-size:12px; color:var(--xp-muted); white-space:nowrap; }
 .xp .xp-clue-group .xp-clue-wall { padding-top:10px; }
+
+/* Keep the explore controls above the administration shell's mobile rules. */
+.xp.xp-admin button { min-height:44px; }
+@media(min-width:850px) {
+ .xp-admin #xp-drop-rows { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+ .xp-admin .xp-drop { margin:0; }
+ .xp-admin .xp-people-workspace { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; align-items:start; }
+ .xp-admin .xp-people-workspace > * { min-width:0; }
+}
+
+/* A full row keeps the Beijing time and native select arrow readable on phones. */
+@media(max-width:650px) { .xp-admin #xp-settings-form > .xp-two { grid-template-columns:1fr; } }

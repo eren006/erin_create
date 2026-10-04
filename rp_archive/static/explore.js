@@ -312,7 +312,7 @@
   $('xp-role-list').addEventListener('change',e=>{const input=e.target.closest('[data-role]');if(!input)return;if(input.checked)selectedRoles.add(input.dataset.role);else selectedRoles.delete(input.dataset.role);updateSelected();});
   const qform=$('xp-quota-form');qform.elements.action.onchange=()=>{
     const action=qform.elements.action.value,amount=qform.elements.amount;$('xp-quota-amount-label').hidden=action==='default';amount.disabled=action==='default';$('xp-quota-note-label').hidden=action!=='bonus';
-    $('xp-quota-amount-label').firstElementChild.textContent=action==='bonus'?'临时次数（负数为扣除）':'每天次数';amount.min=action==='bonus'?'-999':'0';amount.max=action==='bonus'?'999':'99';amount.value=action==='bonus'?'1':'3';
+    $('xp-quota-amount-label').firstElementChild.textContent=action==='bonus'?'临时次数（负数为扣除）':'每天次数';amount.min=action==='bonus'?'-99':'0';amount.max='99';amount.value=action==='bonus'?'1':'3';
     $('xp-quota-hint').textContent=action==='default'?'选中的角色将重新跟随默认次数。':action==='bonus'?'正数增加，负数扣除；临时次数不过期。':'会应用到所有选中的角色。';
   };
   qform.onsubmit=e=>{e.preventDefault();if(!selectedRoles.size){message(feedback(qform),'先选至少一个角色。',true);return;}const action=qform.elements.action.value,n=Number(qform.elements.amount.value);if(action==='bonus'&&n===0){message(feedback(qform),'临时次数不能是 0。',true);return;}const roles=[...selectedRoles],body=action==='bonus'?{roles,amount:n,note:qform.elements.note.value}:{roles,daily:action==='default'?null:n};save(qform,action==='bonus'?'bonus':'quota',body,()=>message(feedback(qform),`已更新 ${roles.length} 位角色的次数。`));};
