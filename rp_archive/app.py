@@ -1694,6 +1694,12 @@ def _migrate(conn):
         )
     """)
 
+    # Existing rows only retain the latest reminder, so their totals are lower bounds.
+    if "urge_count" not in _col_names(conn, "phone_urges"):
+        conn.execute("ALTER TABLE phone_urges ADD COLUMN urge_count INTEGER NOT NULL DEFAULT 1")
+    if "count_exact" not in _col_names(conn, "phone_urges"):
+        conn.execute("ALTER TABLE phone_urges ADD COLUMN count_exact INTEGER NOT NULL DEFAULT 0")
+
     # ── 30. 漂流瓶：瓶子池只有一个，在机器人里（瓶号、抽人、拉黑规则都在插件）；这里只存「看得到的那一份」给网页显示。
     #    群里扔/回的由插件发 /api/event(type=drift_bottle) 过来；网页扔/回的先排队（phone_bottle_ops）交给插件执行，回报后入库。
     #    不写进 extra_events：那张表的好几个页面（公开存档、统计）不按类型过滤，匿名瓶子会漏出去。
@@ -9196,6 +9202,8 @@ def _admin_urge_rows(db, sid, show_all=False):
         try: rep = json.loads(r["data"])
         except (ValueError, TypeError): continue
         urged = _phone_urged(db, sid, r["role"])
+        counts = {u["key"]: (u["urge_count"], u["count_exact"]) for u in db.execute(
+            "SELECT key, urge_count, count_exact FROM phone_urges WHERE show_id=? AND role=?", (sid, r["role"]))}
         for it in (rep.get("pending") or {}).get("pending") or []:
             if not show_all and not (it.get("over") or it.get("expired")): continue   # 超时 = 弧太久 或 群已到期
             key = f"s:{it.get('gid')}:{it.get('since') or ''}"
@@ -9204,9 +9212,17 @@ def _admin_urge_rows(db, sid, show_all=False):
                          "arc": bool(it.get("over")), "expired": bool(it.get("expired")),
                          "over": bool(it.get("over") or it.get("expired")), "since": it.get("since") or 0, "key": key,
                          "urged_text": _phone_ago(ts) if ts else "", "urged_ts": ts,
+                         "urge_count": counts.get(key, (0, 1))[0], "count_exact": counts.get(key, (0, 1))[1],
                          "stale": int(time.time() * 1000) - r["updated_at"] > _PHONE_SYNC_FRESH_MS})
     # 已经催过这一次等待的排到后面（别挡着还没催的）；各自再按等得越久越靠前
     return sorted(rows, key=lambda x: (1 if x["urged_ts"] else 0, -x["minutes"]))
+
+def _admin_urge_stats(db, sid):
+    totals = {r["role"]: (r["total"], r["exact"]) for r in db.execute(
+        "SELECT role, SUM(urge_count) AS total, MIN(count_exact) AS exact FROM phone_urges WHERE show_id=? GROUP BY role", (sid,))}
+    names = set(_admin_role_list(db, sid)) | set(totals)
+    return sorted([{"role": role, "count": totals.get(role, (0, 1))[0], "exact": totals.get(role, (0, 1))[1]}
+                   for role in names], key=lambda r: (-r["count"], r["role"]))
 
 _URGE_COOLDOWN_MS = 30 * 1000   # 只挡手滑连点（30 秒内同一条不重复排队）；只要还超时，隔多久都可以再催
 
@@ -9221,6 +9237,7 @@ def admin_phone_urge():
     ops = [dict(r) for r in db.execute("SELECT * FROM phone_admin_ops WHERE show_id=? AND kind='urge' ORDER BY id DESC LIMIT 10", (sid,))]
     return render_template("phone.html", mode="admin_urge", owner="管理员", sid=sid, csrf=_phone_csrf(), phone_admin=True,
                            plugin=_plugin_status(db, sid), urge_rows=_admin_urge_rows(db, sid, show_all), show_all=show_all,
+                           urge_stats=_admin_urge_stats(db, sid),
                            admin_ops=ops, flash=session.pop("phone_flash", None))
 
 @app.route("/p/admin/urge/op", methods=["POST"])
@@ -9248,13 +9265,13 @@ def admin_phone_urge_op():
             role, _, key = v.partition("|")
             if (role, key) in valid: picks.append((role, key))
     n_phone = n_group = n_skip = 0
-    for role, key in picks:
+    for role, key in dict.fromkeys(picks):
         x = valid[(role, key)]
         if x["urged_ts"] and now - x["urged_ts"] < _URGE_COOLDOWN_MS:
             n_skip += 1
             continue
-        db.execute("INSERT INTO phone_urges (show_id, role, key, created_at) VALUES (?,?,?,?) "
-                   "ON CONFLICT(show_id, role, key) DO UPDATE SET created_at=excluded.created_at", (sid, role, key, now))
+        db.execute("INSERT INTO phone_urges (show_id, role, key, created_at, urge_count, count_exact) VALUES (?,?,?,?,1,1) "
+                   "ON CONFLICT(show_id, role, key) DO UPDATE SET created_at=excluded.created_at, urge_count=phone_urges.urge_count+1", (sid, role, key, now))
         db.execute("DELETE FROM phone_pending_dismiss WHERE show_id=? AND role=? AND key=?", (sid, role, key))   # 催了就别再被「暂不提醒」压住
         n_phone += 1
         if st.get("can_official"):

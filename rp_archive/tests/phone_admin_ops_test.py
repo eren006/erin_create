@@ -229,6 +229,21 @@ m.post("/p/admin/urge/op", data={"csrf": m.csrf, "scope": "overdue"})
 after = {r["key"]: r["created_at"] for r in c.execute("SELECT key, created_at FROM phone_urges WHERE role='林晚'")}
 ok(after.get("s:5001:111", 0) > before.get("s:5001:111", 0), "overdue item can be urged again once the double-tap guard has passed")
 
+# Counts refer to the current wait; double taps and duplicate selections do not increase them.
+ok(c.execute("SELECT urge_count FROM phone_urges WHERE role='林晚' AND key='s:5001:111'").fetchone()[0] == 2, "second reminder counted")
+pg = m.get("/p/admin/urge").get_data(as_text=True)
+ok("已催 2 次" in pg and "上次" in pg, "readable reminder count")
+m.post("/p/admin/urge/op", data={"csrf": m.csrf, "item": ["林晚|s:5001:111", "林晚|s:5001:111"]})
+ok(c.execute("SELECT urge_count FROM phone_urges WHERE role='林晚' AND key='s:5001:111'").fetchone()[0] == 2, "cooldown does not count")
+c.execute("UPDATE phone_urges SET created_at=created_at-60000"); c.commit()
+m.post("/p/admin/urge/op", data={"csrf": m.csrf, "item": ["林晚|s:5001:111", "林晚|s:5001:111"]})
+ok(c.execute("SELECT urge_count FROM phone_urges WHERE role='林晚' AND key='s:5001:111'").fetchone()[0] == 3, "duplicate selection counts once")
+with app.app_context():
+    fresh = next(x for x in A._admin_urge_rows(A.get_db(), SID, True) if x["role"] == "林晚" and x["key"] == "s:5002:222")
+    ok(fresh["urge_count"] == 0, "different wait has independent count")
+c.execute("UPDATE phone_urges SET count_exact=0 WHERE role='林晚'"); c.commit()
+ok("已催至少 3 次" in m.get("/p/admin/urge").get_data(as_text=True), "legacy counts presented as lower bounds")
+
 # ── 催戏：区分「弧太久」（这一轮等得超过规定弧长）和「群已到期」（群超过到期时间） ──
 c.execute("INSERT OR REPLACE INTO phone_reports (show_id, role, data, updated_at) VALUES (?,?,?,?)", (SID, "沈知意", json.dumps({"pending": {"pending": [
     {"gid": "5006", "type": "私约", "elapsed_min": 20, "since": 666, "over": False, "expired": True},     # 没等多久，但群已经过了到期时间
@@ -243,4 +258,10 @@ ok("5008" in m.get("/p/admin/urge?all=1").get_data(as_text=True), "all view show
 n_u = c.execute("SELECT COUNT(*) FROM phone_urges WHERE role='沈知意'").fetchone()[0]
 m.post("/p/admin/urge/op", data={"csrf": m.csrf, "scope": "overdue"})
 ok(c.execute("SELECT COUNT(*) FROM phone_urges WHERE role='沈知意'").fetchone()[0] == n_u + 2, "全部超时 includes expired groups")
+with app.app_context():
+    stats = {r["role"]: r for r in A._admin_urge_stats(A.get_db(), SID)}
+    expected = c.execute("SELECT SUM(urge_count) FROM phone_urges WHERE show_id=? AND role='林晚'", (SID,)).fetchone()[0]
+    ok(stats["林晚"]["count"] == expected and not stats["林晚"]["exact"], "per-role sum preserves legacy lower bound")
+    ok(A._admin_urge_stats(A.get_db(), SID + 1000) == [], "stats isolated by season")
+ok("本季催戏统计" in m.get("/p/admin/urge").get_data(as_text=True), "stats entry shown")
 print("ALL OK")
