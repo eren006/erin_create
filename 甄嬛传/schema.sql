@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS consorts (
     pregnant_since   INTEGER NOT NULL DEFAULT 0,    -- 0=未有孕，否则为有孕那天
 
     arts             TEXT NOT NULL DEFAULT '{}',    -- {"琴": 3, ...} 各才艺修习次数
-    secret           TEXT NOT NULL DEFAULT 'none',
+    secret           TEXT NOT NULL DEFAULT 'lover',
     secret_revealed  INTEGER NOT NULL DEFAULT 0,
     eyes_until_day   INTEGER NOT NULL DEFAULT 0,    -- 眼线有效到哪天（含）
     seek_bonus       INTEGER NOT NULL DEFAULT 0,    -- 今晚翻牌加成，结算后清零
