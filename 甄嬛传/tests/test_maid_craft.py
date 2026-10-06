@@ -7,7 +7,10 @@ game = fixtures.game
 
 
 class MaidCraftTests(unittest.TestCase):
-    setUp = fixtures.LifecycleTests.setUp
+    def setUp(self):
+        fixtures.LifecycleTests.setUp(self)
+        game.MAID_CRAFT_MAX = 0.35      # 本文件专门测做东西，把概率上限开回来
+
     tearDown = fixtures.LifecycleTests.tearDown
     player = fixtures.LifecycleTests.player
     login = fixtures.LifecycleTests.login
