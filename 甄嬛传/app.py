@@ -383,7 +383,7 @@ DRUGS = {
  'jingmeng':dict(name='惊梦香',rank=2,price=100,case='bed',eat=False,days=1,hours=24,desc='最多持续24小时；下一次侍寝不涨圣宠、圣宠扣15%、信任-3，触发一次即失效'),
  'yachan':dict(name='哑蝉汤',rank=3,price=120,case='now',eat=True,days=1,hours=24,desc='才艺暂降5，24小时内召见与侍寝只能选体谅；药效结束恢复被扣才艺'),
  'hanshui':dict(name='寒水散',rank=3,price=200,case='now',eat=True,days=2,hours=48,desc='体质-10、阻孕48小时；有孕时50%概率小产，安胎药可挡一次'),
- 'qingsi':dict(name='青丝引',rank=4,price=250,case='diag',eat=True,days=3,hours=0,desc='慢毒：第一次发作体质-10，之后每次日结算体质-4，直到解毒；诊脉可解毒'),
+ 'qingsi':dict(name='青丝引',rank=4,price=250,case='diag',eat=True,days=3,hours=0,desc='慢毒：第一次发作体质-10，之后每次日结算体质-4，直到解毒；诊脉可解毒；体质耗尽就转成中毒，生死各凭天命'),
  'chunxin':dict(name='春信丹',rank=4,price=300,case='due',eat=True,days=0,hours=24,desc='假孕24小时后揭穿，不会生出孩子；信任不足50时禁足半天、信任-5'),
  'lihun':dict(name='离魂草',rank=5,price=500,case='now',eat=True,days=0,hours=0,desc='致死毒：下次结算判断生死，需及时请太医；存活率受得宠待遇、治疗及福报影响，成功后账号冷却2天'),
  'wuming':dict(name='无名',rank=6,price=800,case='none',eat=False,days=0,hours=0,desc='可配其他药（离魂草除外），24小时后线索浮现，仍可调查；成功后账号冷却1天'),
@@ -9142,7 +9142,10 @@ def tick_drugs(day):
         run('UPDATE consorts SET health=MAX(1,health-?) WHERE id=?',(dmg,c['id']))
         run('UPDATE afflictions SET ticks=ticks+1,last_tick_day=? WHERE id=?',(day,a['id']))
         notify(c['id'],f'青丝引发作，体质-{dmg}。','bad')
-        if get_consort(c['id'])['health']<25:diagnose_slow(a)      # 掉到 25 以下太医自会查出来
+        if get_consort(c['id'])['health']<=1:      # 元气耗尽：慢毒转成中毒，走生死判定（请太医九成能活，不请只有三成五），同时开案子
+            run("UPDATE afflictions SET status='done' WHERE id=?",(a['id'],))
+            poison_player(c['id'],day)
+            open_drug_case(q('SELECT * FROM intrigues WHERE id=?',(a['intrigue_id'],),one=True))
 
 
 def drug_gifts(day):

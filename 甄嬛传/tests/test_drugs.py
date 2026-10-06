@@ -130,17 +130,34 @@ class DrugTests(unittest.TestCase):
         game.tick_drugs(15)
         self.assertEqual(game.get_consort(self.tgt)['health'],before)
 
+    def test_no_auto_diagnosis_below_25_any_more(self):
+        self.apply('qingsi')
+        game.run('UPDATE consorts SET health=30 WHERE id=?',(self.tgt,))
+        game.tick_drugs(10)                 # 30-10=20，掉到 25 以下也不再自动解毒
+        self.assertEqual(game.get_consort(self.tgt)['health'],20)
+        self.assertIsNotNone(game.affliction(self.tgt,'qingsi'))
+        self.assertEqual(len(game.q('SELECT * FROM cases')),0)
+
+    def test_run_out_slow_poison_can_kill_without_treatment(self):
+        self.apply('qingsi')
+        game.run('UPDATE consorts SET health=6 WHERE id=?',(self.tgt,))
+        game.tick_drugs(10)
+        self.assertEqual(game.get_consort(self.tgt)['poisoned_day'],10)
+        with patch.object(game.random,'random',return_value=0.99):      # 没请太医，赌输
+            game.resolve_poison_crises(11)
+        self.assertEqual(game.get_consort(self.tgt)['status'],'dead')
+
     def test_qingsi_description_matches_new_rule(self):
         self.assertIn('-10',game.DRUGS['qingsi']['desc'])
         self.assertIn('直到解毒',game.DRUGS['qingsi']['desc'])
 
-    def test_slow_poison_auto_diagnosis_and_lethal_threshold(self):
+    def test_slow_poison_turns_into_poisoning_when_health_runs_out(self):
         self.apply('qingsi')
         game.run('UPDATE consorts SET health=6 WHERE id=?',(self.tgt,))
         game.tick_drugs(10)
         c=game.get_consort(self.tgt)
         self.assertEqual(c['health'],1)       # 6 - 10 触底留 1
-        self.assertEqual(c['poisoned_day'],0)
+        self.assertEqual(c['poisoned_day'],10,'元气耗尽，转成中毒，走生死判定')
         self.assertIsNone(game.affliction(self.tgt,'qingsi'))
         self.assertEqual(len(game.q('SELECT * FROM cases')),1)
         game.resolve_poison_crises(10)
