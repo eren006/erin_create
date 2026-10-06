@@ -21,6 +21,7 @@ class MaidTests(unittest.TestCase):
         game.DB_PATH = str(Path(self.temp.name) / 'test.db')
         game.app.config['TESTING'] = True
         game.MAID_CRAFT_MAX = 0      # 宫人闲时做东西是随机的，这里关掉；专门的用例在 test_maid_craft
+        game.INTRIGUE_REALTIME = False
         game.init_db()
         self.ctx = game.app.app_context()
         self.ctx.push()

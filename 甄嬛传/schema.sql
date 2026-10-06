@@ -199,6 +199,11 @@ CREATE TABLE IF NOT EXISTS gazette (
     created_ts  INTEGER NOT NULL
 );
 
+-- 流言库用过的条目（邸报里「流言四起」不重复，用完一轮再重来）
+CREATE TABLE IF NOT EXISTS rumor_used (
+    idx INTEGER PRIMARY KEY
+);
+
 -- 日常消息：谁在什么时候做了什么（只记明面上的日常，使计、买药、打探这类暗事不记）
 CREATE TABLE IF NOT EXISTS daily_feed (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

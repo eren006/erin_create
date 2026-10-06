@@ -24,6 +24,7 @@ class LifecycleTests(unittest.TestCase):
         game.ADVENTURE_GARDEN_WEIGHT = 0
         game.TWIN_CHANCE = 0                 # 双胞胎是随机的，默认关掉；要测的用例自己打开
         game.MAID_CRAFT_MAX = 0              # 宫人闲时做东西也是随机的，默认关掉；要测的用例自己打开
+        game.INTRIGUE_REALTIME = False       # 老用例按「提交→手动结算」测，默认关掉实时结算；要测的用例自己打开
         game.init_db()
         self.ctx = game.app.app_context()
         self.ctx.push()

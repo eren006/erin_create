@@ -558,6 +558,90 @@ def conspire_partner_block(c, p, cfg, tgt, day):
 def expire_conspire_invites():
     run("UPDATE intrigues SET status='expired' WHERE status='invited' AND created_ts < ?", (now_ts() - CONSPIRE_INVITE_SECONDS,))
 
+# ── 流言库（2026-10-07）：流言得手时邸报里写「流言四起：……」，每条只用一次，用完一轮再重来 ──────────────────
+RUMORS = [
+    '{t}夜里常偷偷出宫门，也不知是去见了谁，守夜的小太监都瞧见过。',
+    '{t}宫里那只翡翠镯子，原是库房失了的那一只，如今却戴在她腕上。',
+    '{t}平日里待宫人刻薄，克扣月钱不说，动辄罚跪，已有两个丫头哭着求调走。',
+    '{t}夜里睡梦中总唤着一个男子的名字，守夜的宫女都听得真真的。',
+    '{t}给太后抄的经书全是请人代笔，自己一个字都没动过。',
+    '{t}装病争宠，太医去了三回都说脉象平和，偏她次次说胸口疼。',
+    '{t}私下里说皇后娘娘面相刻薄，这话被一个小宫女听了去，已经传遍了。',
+    '{t}在御花园里撞见过几回外头进来的画师，说话竟比对自家姐妹还亲热。',
+    '{t}屋里熏的香是私下托人从宫外带进来的，内务府那边压根没有记档。',
+    '{t}看着温顺，背地里常拿别的小主的生辰八字翻来覆去地念叨。',
+    '{t}拿了内务府的缎子去做衣裳，转手就把原料卖到外头换了银子。',
+    '{t}一个人在偏殿里烧纸，嘴里念念有词，也不知烧的是什么。',
+    '{t}每回见皇上都要先让宫人去探听今日皇上的心情，生怕说错一个字。',
+    '{t}家里托人捎进来的银子数目大得吓人，宫里俸禄哪里攒得出这许多。',
+    '{t}对着镜子练了好几个月的哭相，就等着在皇上跟前使出来。',
+    '{t}宫里的丫头们私下都说，她屋里最近总有股药味，也不知在吃什么方子。',
+    '{t}曾在晨省的路上与另一位小主争执，还推了人一把，只是没人敢作声。',
+    '{t}把皇上赏的东西偷偷拿去典当，说是缺银子使，其实是给外头的人补贴。',
+    '{t}平日里谁的宫里新添了好东西，她都要打发人去看个究竟，回来便说酸话。',
+    '{t}夜里总有人影在她窗外徘徊，也不知是宫人还是别的什么人。',
+    '{t}从不亲自喝宫里送来的汤羹，说是怕有人下毒，倒像是自己心里有鬼。',
+    '{t}曾在梳妆台下藏了一本写满人名的册子，写的是谁欠了她的情。',
+    '{t}对娘家人吹嘘说皇上最听她的话，这话已被人原样传了回来。',
+    '{t}嫌宫里的茶不好，非要托人从江南带茶叶，用度早就逾了制。',
+    '{t}在佛堂跪了半个时辰就晕倒了，旁人都说是做样子给人看。',
+    '{t}背着人把宫里的旧衣裳改了样子穿，却说是皇上新赏的料子。',
+    '{t}与御膳房的太监来往过密，月月有东西从后厨悄悄送进她宫里。',
+    '{t}同屋的小宫女说，她半夜起来对着墙角絮絮说话，白天却什么都不认。',
+    '{t}借着请安的由头，在太妃跟前说了不少别人的闲话，被拆穿了还不认。',
+    '{t}自己屋里的猫死得蹊跷，却一口咬定是别宫的人下的手。',
+    '{t}上个月丢的那支金钗，有人亲眼见她的丫头拿到当铺去了。',
+    '{t}夜里让宫人替她放风，自己却往西边的角门溜了出去。',
+    '{t}总说身子不适不去晨省，可傍晚有人看见她在御花园里走得比谁都快。',
+    '{t}把别人送她的礼物转手又送给了另一位小主，还当着人家的面说是自己亲手做的。',
+    '{t}宫里的老嬷嬷说，她刚入宫时就不是个安分的，连管教的嬷嬷都被她哄得团团转。',
+    '{t}近来脾气越发古怪，一点小事就摔东西，贴身的丫头们都不敢近前。',
+    '{t}偷偷让人在别宫的墙根下埋了东西，也不知是诅咒还是什么。',
+    '{t}说是向着皇后，其实暗地里常给别的娘娘递话，两头讨好。',
+    '{t}一条手帕上绣的竟不是花样，而是一首情诗，不知是写给谁的。',
+    '{t}晚上不许丫头们点灯，一个人坐在黑里，也不知在盘算什么。',
+    '{t}在姐妹们面前装得宽厚大方，一转身就让宫人把人家送的东西扔去了库房。',
+    '{t}得了点宠就敢在宫道上不让路，连位分比她高的主子都敢拦着说话。',
+    '{t}宫里传言，她那副好嗓子是特地请了师傅调教过的，专为唱给皇上听。',
+    '{t}花了大价钱买通了敬事房的小太监，翻牌子那天总能提前知道消息。',
+    '{t}生辰那天故意不说，等别人送了礼才装作惊喜，其实早把消息递了出去。',
+    '{t}喝的是什么补药没人说得清，只知道从来不让宫人经手，都是自己煎。',
+    '{t}和宫里哪位小主都能说上话，偏偏谁的心事都不往心里去，转头就说给下一个人听。',
+    '{t}夜里翻墙头摘了别宫的海棠花，被扫地的嬷嬷撞见，还拿银子封了嘴。',
+    '{t}嘴上念着佛，怀里却总揣着一把小剪刀，谁也不知道是做什么用的。',
+    '{t}近来总往寿康宫跑，说是请安，旁人却见她出来时手里多了一只锦盒。',
+    '{t}一件旧事被翻了出来：她入宫前家里曾有一桩官司，至今没人说得清结果。',
+    '{t}见了位分低的就端着，见了位分高的就谄着，那副嘴脸宫里人都背后学得惟妙惟肖。',
+    '{t}在自己宫里偷偷摆了牌位，不知供的是谁，香火倒是日日不断。',
+    '{t}宫里的小太监说，她最爱打听谁今夜被翻了牌子，打听完就闷在屋里不出声。',
+    '{t}总说自己不爱争宠，偏偏每回皇上驾临，她宫里的灯总比旁人亮上三分。',
+    '{t}从来不用宫里份例的胭脂，说是嫌粗，每月却又偏要多领一份。',
+    '{t}曾背地里议论皇上的衣着，说得有鼻子有眼，被人听去传到了上头。',
+    '{t}有一回在后院和一个陌生男子说话，那人自称是送花木的匠人，可谁也没见过他进来。',
+]
+
+def pick_rumor(name):
+    """从流言库里挑一条没用过的，把 {t} 换成被传的人；用光了就清空重来"""
+    used = {r['idx'] for r in q("SELECT idx FROM rumor_used")}
+    free = [i for i in range(len(RUMORS)) if i not in used]
+    if not free:
+        run("DELETE FROM rumor_used")
+        free = list(range(len(RUMORS)))
+    i = random.choice(free)
+    run("INSERT INTO rumor_used (idx) VALUES (?)", (i,))
+    return RUMORS[i].format(t=name)
+
+INTRIGUE_REALTIME = True      # 2026-10-07 起：使计、下药一提交就判定，不再等日结算（截宠要等翻牌轮抽中，仍在翻牌时判）
+RESULT_WORDS = {'success': '得手了', 'caught': '败露了，被当场拿住', 'fizzle': '没成，好在没人察觉', 'void': '落空了'}
+RESULT_KIND = {'success': 'good', 'caught': 'bad', 'fizzle': 'info', 'void': 'info'}
+
+def resolve_now(iid):
+    """使计提交（或合谋确认）后马上判定；截宠要看翻牌轮抽中谁，留给翻牌轮，返回 None"""
+    if not INTRIGUE_REALTIME: return None
+    it = q("SELECT * FROM intrigues WHERE id=?", (iid,), one=True)
+    if not it or it['status'] != 'pending' or it['method'] == 'steal': return None
+    return resolve_intrigue(it)[0]
+
 def intrigue_label(it):
     if it['method'] == 'drug' and it['drug'] in DRUGS:
         used = it['item_used']
@@ -4427,7 +4511,7 @@ def intrigue_submit():
     elif c['silver'] < cfg['silver']: err = f"银子不够，需要 {cfg['silver']} 两。"
     elif cfg.get('item') and inv_qty(c['id'], cfg['item']) < 1: err = f"手里没有{ITEMS[cfg['item']]['name']}。"
     elif t['user_id'] and t['entered_day'] >= day: err = '她今天才入宫，皇上正新鲜着，这会儿动手太扎眼。'
-    elif q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'",
+    elif q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')",
            (tid, day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
         err = '今天盯着她的人已经够多了，换个日子吧。'
     elif method == 'drug':
@@ -4456,16 +4540,19 @@ def intrigue_submit():
         return redirect(url_for('intrigue'))
     run("UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?", (cfg['energy'], cfg['silver'], c['id']))
     if cfg.get('item'): inv_add(c['id'], cfg['item'], -1)
-    run("""INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts)
-           VALUES (?,?,?,?,?,?,?)""", (day, c['id'], tid, method, cfg['silver'], cfg.get('item', ''), now_ts()))
+    iid = run("""INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts)
+           VALUES (?,?,?,?,?,?,?)""", (day, c['id'], tid, method, cfg['silver'], cfg.get('item', ''), now_ts())).lastrowid
     if method == 'drug':
-        iid = q('SELECT last_insert_rowid()', one=True)[0]
         inv_add(c['id'], used, -1)
         run('UPDATE intrigues SET drug=?, item_used=?, agent_maid_id=? WHERE id=?', (drug, used, mid, iid))
     if method == 'punish':   # 和毒害一样，撤回也不重置冷却
         run('UPDATE consorts SET punish_ready_day=? WHERE id=?', (day + PUNISH_COOLDOWN, c['id']))
     daily_inc(c['id'], 'intrigue')
-    flash(f"已安排下去。{next_settle_text()} 见分晓。", 'info')
+    result = resolve_now(iid)
+    if result:
+        flash(f"你对{display_name(t)}的「{cfg['name']}」{RESULT_WORDS.get(result, '办完了')}。详情见本宫消息。", RESULT_KIND.get(result, 'info'))
+    else:
+        flash('已安排下去。截宠要等对方被翻牌时才见分晓。', 'info')
     return redirect(url_for('intrigue'))
 
 @app.route('/intrigue/conspire/<int:iid>/<action>', methods=['POST'])
@@ -4494,7 +4581,7 @@ def intrigue_conspire(iid, action):
     elif daily_count(a['id'], 'intrigue') >= 1: err = f"{display_name(a)}今天已经另有谋划了。"
     elif a['energy'] < cfg['energy']: err = f"{display_name(a)}精力不够了。"
     elif a['silver'] < conspire_cost(cfg): err = f"{display_name(a)}银子不够了。"
-    elif q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'", (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
+    elif q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')", (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
         err = '今天盯着她的人已经够多了，换个日子吧。'
     elif it['method'] == 'expose' and t['secret_revealed']: err = '这件事已经没有可告发的了。'
     elif it['method'] == 'steal' and (t['pregnant_since'] or is_sick(t)): err = '她今晚本就侍不了寝。'
@@ -4510,7 +4597,11 @@ def intrigue_conspire(iid, action):
     if it['method'] == 'punish': run('UPDATE consorts SET punish_ready_day=? WHERE id=?', (day + PUNISH_COOLDOWN, a['id']))
     run("UPDATE intrigues SET status='pending', day=?, silver_paid=?, partner_silver=?, created_ts=? WHERE id=?", (day, cost, cost, now_ts(), iid))
     notify(a['id'], f"{display_name(c)}答应了合谋：对{display_name(t)}的「{cfg['name']}」已安排下去，你们各付了 {cost} 两。", 'good')
-    flash(f"应下了。{next_settle_text()} 见分晓，你付了 {cost} 两。", 'info')
+    result = resolve_now(iid)
+    if result:
+        flash(f"应下了，你付了 {cost} 两。你们对{display_name(t)}的「{cfg['name']}」{RESULT_WORDS.get(result, '办完了')}。", RESULT_KIND.get(result, 'info'))
+    else:
+        flash(f"应下了，你付了 {cost} 两。截宠要等对方被翻牌时才见分晓。", 'info')
     return redirect(url_for('intrigue'))
 
 @app.route('/intrigue/cancel/<int:iid>', methods=['POST'])
@@ -4724,7 +4815,7 @@ def bot_intrigue(c):
     if not methods: return False
     targets = [t for t in q("""SELECT x.* FROM consorts x JOIN users u ON u.id=x.user_id WHERE u.managed=0 AND x.id!=?
                                AND x.status IN ('normal','confined') AND x.entered_day<?""", (c['id'], day))
-               if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'", (t['id'], day), one=True)['n'] < INTRIGUE_TARGET_DAILY_MAX]
+               if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')", (t['id'], day), one=True)['n'] < INTRIGUE_TARGET_DAILY_MAX]
     if not targets: return False
     for _ in range(4):                                  # 挑到不合适的（比如截宠碰上有孕的）就换一个
         t = random.choices(targets, weights=bot_grudge_weights(c, targets))[0]
@@ -4732,9 +4823,10 @@ def bot_intrigue(c):
         if method == 'steal' and (t['pregnant_since'] or is_sick(t)): continue
         cfg = INTRIGUES[method]
         run("UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?", (cfg['energy'], cfg['silver'], c['id']))
-        run("""INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts)
-               VALUES (?,?,?,?,?,?,?)""", (day, c['id'], t['id'], method, cfg['silver'], '', now_ts()))
+        iid = run("""INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts)
+               VALUES (?,?,?,?,?,?,?)""", (day, c['id'], t['id'], method, cfg['silver'], '', now_ts())).lastrowid
         daily_inc(c['id'], 'intrigue')
+        resolve_now(iid)
         return True
     return False
 
@@ -6916,7 +7008,7 @@ def resolve_intrigue(it, bed_id=None):
             night_mark(tgt['id'], 'victim', trusted=trusted)
             victim = f"宫里起了关于你的流言，是{who}在背后散播。圣宠 -{loss}，德行 -3。" + \
                      ('皇上信你，没全当真。' if trusted else '')
-            gz = f"宫中有流言说{tn}品行不端，传得有鼻子有眼。"
+            gz = f"流言四起：{pick_rumor(tn)}"
         elif m == 'frame':
             trusted = tgt['trust'] >= TRUSTED_LINE
             loss = cut_favor(tgt['id'], 0.1 if trusted else 0.2)
