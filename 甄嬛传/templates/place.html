@@ -86,7 +86,7 @@
   </form>
   <p class="muted" style="margin:6px 0 0">当前：<b>{{ DIETS[c.diet].name }}</b>。{{ DIETS[c.diet].desc }}每晚开伙按选的档次扣银子，不够就自动降一档。</p>
   <h3>佛堂</h3>
-  <p class="muted">福报 {{ c.blessing }}：老死更慢、病重更有活路，也更容易怀上孩子。{% if is_quiet %}你这十天清清静静，没对谁使过计，佛前的香油钱有机会换来延寿。{% else %}这十天里你对人使过计，佛前多半只攒福报，不会延寿。{% endif %}{% if c.longevity %}已延寿 {{ c.longevity }} 年。{% endif %}</p>
+  <p class="muted">福报 {{ c.blessing }}：老死更慢、病重更有活路，也更容易怀上孩子。{% if is_quiet %}你这五天清清静静，没对谁使过计，佛前的香油钱有机会换来延寿。{% else %}这十天里你对人使过计，佛前多半只攒福报，不会延寿。{% endif %}{% if c.longevity %}已延寿 {{ c.longevity }} 年。{% endif %}</p>
   <form method="post" action="{{ url_for('act', key='pray') }}" class="row">
     <input type="hidden" name="back" value="home">
     {% for amt, pt in PRAY_TIERS.items() %}<button name="amount" value="{{ amt }}" class="plain" {{ 'disabled' if c.energy < 1 or c.silver < amt or daily_count(c.id, 'pray') }}>添 {{ amt }} 两香油</button>{% endfor %}

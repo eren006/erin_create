@@ -186,6 +186,7 @@ PREGNANCY_DAYS = 2      # 旧存档未记录喜脉时刻时沿用两次结算
 PREGNANCY_MIN_SECONDS = 24 * 60 * 60
 FERTILE_BEFORE_AGE = 45 # 四十五岁起不再新怀孕
 LETHAL_COOLDOWN = 2     # 致命药成功后账号冷却2天
+CASE_NEWCOMER_SHIELD = 2      # 入宫不满 2 天的人不被拉去陪查（2026-10-06 从 5 天压到 2）
 BRIBE_NEWCOMER_SHIELD = 2     # 入宫不满 2 天的人，宫人不能被打点（2026-10-06 从 5 天压到 2）
 NEWCOMER_LETHAL_SHIELD = 3   # 入宫前 3 天不能被毒害
 RESCUE_PROTECT_DAYS = 2      # 中毒获救后这么多天不能再被毒害（2026-09-28 从 3 压到 2）
@@ -480,9 +481,9 @@ ACTIONS = {
     'plead':   dict(name='向皇上求情', energy=1, silver=50, daily=1, when={'normal'}, target=True,
                     desc='为禁足或冷宫中的姐妹求情，缩短日子。成败看皇上对你的信任'),
     'pray':    dict(name='去佛堂礼佛', energy=1, silver=0, daily=1, when={'normal', 'confined'},
-                    desc='添香油钱，攒福报：福报高的人不容易老死、病重时活路更大。这十天没对人使过计的「躺平」之人，佛前还有机会延年益寿'),
+                    desc='添香油钱，攒福报：福报高的人不容易老死、病重时活路更大。这五天没对人使过计的「躺平」之人，佛前还有机会延年益寿'),
     'shoukang': dict(name='去寿康宫请安', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
-                     desc='太妃姑母会悄悄告诉你一件宫里的旧事。7 天一次'),
+                     desc='太妃姑母会悄悄告诉你一件宫里的旧事。3 天一次'),
     'attend':  dict(name='去养心殿侍疾', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
                     desc='皇上病重时才有。成败看信任：成了信任 +5，你抚养的阿哥圣眷 +5'),
 }
@@ -503,7 +504,7 @@ INTRIGUES = {
     'witch':  dict(name='构陷巫蛊', silver=300, energy=1, min_rank=4, base=0.35, npc_ok=True,
                    desc='成：对方打入冷宫。败露：打入冷宫的是你'),
     'punish': dict(name='发落宫人', silver=50, energy=1, min_rank=5, base=0.50, npc_ok=False,
-                   desc='找个由头，把对方宫里一个宫人拖去慎刑司。要比对方高两级以上，每 7 天一次；'
+                   desc='找个由头，把对方宫里一个宫人拖去慎刑司。要比对方高两级以上，每 3 天一次；'
                         '对方会知道是你。成：那个宫人没了，对方全宫宫人忠心 -5。败露：德行 -8，信任 -10'),
 }
 INTRIGUE_TARGET_DAILY_MAX = 2
@@ -2700,7 +2701,7 @@ def family_backing():
 # ── 太后侄女、太妃侄女的照拂 ─────────────────────────────────────────────────────
 
 def family_patron_tick(day):
-    """太后的侄女每 7 天被召去说话一次，圣宠 +10"""
+    """太后的侄女每 3 天被召去说话一次，圣宠 +10"""
     for c in q("SELECT * FROM consorts WHERE patron='dowager' AND user_id IS NOT NULL AND status='normal' AND entered_day<?", (day,)):
         if (day - c['entered_day']) % DOWAGER_AUDIENCE_INTERVAL == 0:
             add_favor(c['id'], DOWAGER_AUDIENCE_FAVOR, gain_mult=False)
@@ -3343,13 +3344,13 @@ def do_repair():
 
 
 PRAY_TIERS = {20: dict(blessing=1, chance=0.08), 60: dict(blessing=3, chance=0.15), 150: dict(blessing=8, chance=0.25)}
-BLESSING_CAP, QUIET_DAYS, LONGEVITY_MAX = 100, 10, 5
+BLESSING_CAP, QUIET_DAYS, LONGEVITY_MAX = 100, 5, 5   # 躺平要求 2026-10-06 从 10 天压到 5 天
 BLESSING_OLD_AGE_DIV, BLESSING_OLD_AGE_MAX = 200, 0.5     # 福报每 2 点，老死的概率少 1%，最多少一半
 BLESSING_SURVIVE_DIV, BLESSING_SURVIVE_MAX = 500, 0.15    # 福报每 5 点，病重、中毒时多 1% 的活路，最多多 15%
 
 
 def is_quiet(c, day=None):
-    """躺平：这十天没有对人使过计"""
+    """躺平：这五天没有对人使过计"""
     day = cur_day() if day is None else day
     return not q("SELECT 1 FROM intrigues WHERE attacker_id=? AND day>=?", (c['id'], day - QUIET_DAYS), one=True)
 
@@ -4390,7 +4391,7 @@ MAID_REWARD_COST = 20
 MAID_BURY_COST = 20
 MAID_EVENT_CHANCE = 0.3    # 每天第一次进本宫时，宫人来找你的概率
 MAID_NEW_SHIELD = 3        # 刚挑的宫人 3 天内不会被发落
-PUNISH_COOLDOWN = 7        # 发落宫人：出手的人 7 天一次；每个人的宫人 7 天内最多被发落一个
+PUNISH_COOLDOWN = 3        # 发落宫人：出手的人 3 天一次；每个人的宫人 3 天内最多被发落一个（2026-10-06 从 7 压到 3）
 HUAFEI_PUNISH_CHANCE = 0.05
 _HAN2 = re.compile(r'^[一-鿿]{2}$')
 
@@ -5036,7 +5037,7 @@ HEIR_HUNT_MIN_AGE = 12
 HEIR_HUNT_ROLL = 20
 HEIR_HUNT_REWARD = 15
 
-# 每 7 天随机抽一位 6~15 岁的皇嗣，给抚养人一段场景替他应对。题目判定用孩子的属性，不是抚养人自己的——
+# 每 6 天随机抽一位 6~15 岁的皇嗣，给抚养人一段场景替他应对。题目判定用孩子的属性，不是抚养人自己的——
 # 跟别的场景不一样，scene() 里专门判了 sc['key']=='exam' 这一支
 EXAM_PROMPTS = [
     dict(topic='学问', ask='「听闻{h}近来读书用心，都读了些什么？」', opts=[
@@ -5542,7 +5543,7 @@ def heir_filial_tick(day):
 
 
 def heir_plead_tick(day):
-    """开府的皇子替被禁足、关冷宫的母亲（生母和养母）求情，7 天一次，成败都算一次"""
+    """开府的皇子替被禁足、关冷宫的母亲（生母和养母）求情，3 天一次，成败都算一次"""
     for h in q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND title!='' AND plead_ready_day<=?", (day,)):
         targets = []
         for cid in dict.fromkeys((h['mother_id'], h['caretaker_id'])):
@@ -5628,7 +5629,7 @@ def heir_errand_tick(day):
 
 
 def heir_family_letter_tick(day):
-    """抚蒙古的公主，每 7 天给母亲寄一封家书"""
+    """抚蒙古的公主，每 3 天给母亲寄一封家书"""
     for h in q("SELECT * FROM heirs WHERE marriage='mongol' AND marry_day>0 AND ?>marry_day", (day,)):
         if (day - h['marry_day']) % MONGOL_LETTER_INTERVAL: continue
         label = f"{h['title']}{heir_label(h)}"
@@ -5823,7 +5824,7 @@ def heir_feud_tick(day):
 
 
 def heir_faction_tick(day):
-    """结党过多：超过 5 个每晚圣眷 -2，超过 8 个皇上当众训斥（10 天一次）"""
+    """结党过多：超过 5 个每晚圣眷 -2，超过 8 个皇上当众训斥（5 天一次）"""
     for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed'"):
         n = heir_faction_count(h)
         if n <= FACTION_WARN: continue
@@ -5848,7 +5849,7 @@ def depose_crown(h):
 
 
 def heir_court_tick(day):
-    """朝议立储：每 10 天，最高圣眷 ≥ 70 且领先第二名 15 以上，明立太子；否则留中不发。太子圣眷低于 50 就废"""
+    """朝议立储：每 5 天，最高圣眷 ≥ 70 且领先第二名 15 以上，明立太子；否则留中不发。太子圣眷低于 50 就废"""
     for h in q("SELECT * FROM heirs WHERE status='crown'"):
         if heir_standing(h) < CROWN_DEPOSE_BELOW: depose_crown(h)
     if day % CROWN_INTERVAL: return
@@ -8230,7 +8231,7 @@ def recap_seen():
 
 LETTER_DAILY_MAX = 5
 LETTER_MAX_LEN = 300
-LETTER_ATTACH_SHIELD = 5   # 入宫不满 5 天不能附银子、道具、雅趣作品，防小号一进宫就把家底转给大号
+LETTER_ATTACH_SHIELD = 2   # 入宫不满 2 天不能附银子、道具、雅趣作品，防小号一进宫就把家底转给大号（2026-10-06 从 5 天压到 2）
 LETTER_PAGE_SIZE = 20      # 收件箱每页 20 封，标星的不参与翻页，永远排最前面
 
 def reachable_letter_ids(c):
@@ -8552,8 +8553,8 @@ def open_drug_case(it, punished=0, force=False):
     if m: score += {'zuijin': -10, 'suizui': 10}.get(m['trait'], 0)
     run('INSERT INTO case_suspects(case_id,consort_id,suspicion) VALUES(?,?,?)', (case_id, culprit['id'], score))
     victim = get_consort(it['target_id'])
-    candidates = q("SELECT * FROM consorts WHERE id NOT IN (?,?) AND status NOT IN ('dead','xiunv','cold') AND ?-entered_day>=5",
-                   (culprit['id'], victim['id'], day))
+    candidates = q("SELECT * FROM consorts WHERE id NOT IN (?,?) AND status NOT IN ('dead','xiunv','cold') AND ?-entered_day>=?",
+                   (culprit['id'], victim['id'], day, CASE_NEWCOMER_SHIELD))
     def affinity(c):
         r = relation(c['id'], victim['id'])
         return r['affinity'] if r else 0
