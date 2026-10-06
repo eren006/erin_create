@@ -98,7 +98,8 @@ class ConspiracyTests(unittest.TestCase):
     def test_partner_already_busy_is_rejected_at_invite(self):
         self.make_partner()
         game.daily_inc(self.pal, 'intrigue')
-        self.assertIsNone(self.invite())
+        with patch.object(game, 'INTRIGUE_DAILY_MAX', 1):      # 默认不限次数，设上限才有「搭档已有谋划」
+            self.assertIsNone(self.invite())
 
     def test_bonus_lets_a_borderline_roll_succeed_and_splits_influence(self):
         self.make_partner()
@@ -112,7 +113,7 @@ class ConspiracyTests(unittest.TestCase):
         full = game.INFLUENCE_GAINS['rumor']
         gain_a = game.get_consort(self.atk)['influence'] - i_a
         gain_p = game.get_consort(self.pal)['influence'] - i_p
-        self.assertEqual(gain_a, max(1, round(full * 0.5)))
+        self.assertEqual(gain_a, max(1, round(full * game.CONSPIRE_INFLUENCE_SHARE)))
         self.assertEqual(gain_p, gain_a)
 
     def test_same_roll_fails_without_partner(self):

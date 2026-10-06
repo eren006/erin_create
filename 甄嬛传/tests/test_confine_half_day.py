@@ -69,7 +69,7 @@ class ConfineHalfDayTests(unittest.TestCase):
 
     def test_frame_penalty_text_says_half_day(self):
         self.assertIn('半天', game.INTRIGUES['frame']['desc'])
-        self.assertIn('半天', game.INTRIGUES['steal']['desc'])
+        self.assertIn('不受处罚', game.INTRIGUES['steal']['desc'])      # 截宠败露不再罚禁足
 
 
 if __name__ == '__main__':

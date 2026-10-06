@@ -44,7 +44,7 @@ class PlayabilityTests(unittest.TestCase):
 
     def test_pregnancy_pity_counts_only_effective_attempts_and_resets(self):
         with patch.object(game.random, 'random', return_value=.99):
-            for i in range(11):
+            for i in range(game.PREGNANCY_PITY_ATTEMPTS):
                 game.do_bedding(game.get_consort(self.atk), 10+i//2, False, [])
                 self.assertEqual(game.get_consort(self.atk)['pregnant_since'], 0)
             game.do_bedding(game.get_consort(self.atk), 15, False, [])

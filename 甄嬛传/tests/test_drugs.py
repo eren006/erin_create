@@ -298,8 +298,9 @@ class DrugTests(unittest.TestCase):
         self.assertEqual(game.inv_qty(self.atk,'yanzhi'),2)
         self.assertEqual(game.get_consort(self.atk)['energy'],before)
         self.assertEqual(len(game.q('SELECT * FROM intrigues')),0)
-        self.client.post('/intrigue/submit',data=payload)
-        self.client.post('/intrigue/submit',data=payload)
+        with patch.object(game,'INTRIGUE_DAILY_MAX',1):      # 默认不限次数；设上限才有「同一天第二次被拒」
+            self.client.post('/intrigue/submit',data=payload)
+            self.client.post('/intrigue/submit',data=payload)
         self.assertEqual(game.inv_qty(self.atk,'yanzhi'),1)
         self.assertEqual(len(game.q('SELECT * FROM intrigues')),1)
 

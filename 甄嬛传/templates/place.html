@@ -99,7 +99,7 @@
   <h3 style="margin-top:0">教养</h3>
   {% for h in my_heirs %}
   <div style="margin:10px 0;padding-bottom:10px;border-bottom:1px solid var(--line)">
-    <p><b style="font-family:var(--kai)">{{ heir_label(h) }}</b>　<span class="muted">{% set pe = heir_persona(h) %}{{ (pe.name ~ '·' ~ pe.tag) if pe else '' }}　{{ heir_age_years(h) }} 岁　学问 {{ h.study }}　骑射 {{ h.riding }}　品行 {{ h.virtue }}　体质 {{ h.health }}　容貌 {{ h.appearance }}{% if h.temperament %}　气质 {{ h.temperament }}{% endif %}　情分 {{ h.caretaker_affinity }}</span></p>
+    <p><b style="font-family:var(--kai)">{{ heir_label(h) }}</b>{% if h.name %}<span class="muted">（{{ heir_rank_title(h) }}）</span>{% endif %}　<span class="muted">{% set pe = heir_persona(h) %}{{ (pe.name ~ '·' ~ pe.tag) if pe else '' }}　{{ heir_age_years(h) }} 岁　学问 {{ h.study }}　骑射 {{ h.riding }}　品行 {{ h.virtue }}　体质 {{ h.health }}　容貌 {{ h.appearance }}{% if h.temperament %}　气质 {{ h.temperament }}{% endif %}　情分 {{ h.caretaker_affinity }}</span></p>
     <form method="post" action="{{ url_for('heir_raise', hid=h.id) }}" class="row">
       {% for k, r in HEIR_RAISE.items() if not (k == 'ride' and h.gender == '公主') and not (k == 'ride_girl' and h.gender == '皇子') %}
       <button name="opt" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'raise:' ~ h.id) or c.silver < r.get('silver', 0) or (r.get('looks') and h.appearance >= 100) }}{% if r.get('looks') %} title="容貌 +{{ r.looks }}，抚养人容貌 ≥{{ HEIR_GROOM_BEAUTY_LINE }} 时 +{{ r.looks_beauty }}"{% endif %}>{{ r.name }}{% if r.get('silver') %}（{{ r.silver }} 两）{% endif %}</button>
@@ -138,17 +138,23 @@
 <p>{{ '禁足中，出不了宫门。' if c.status == 'confined' else ('冷宫里的人，哪儿也去不了。' if c.status == 'cold' else '现在没什么可做的。') }}</p>
 {% endif %}
 {% for key, a in acts %}
-  {% set blocked = (a.get('sick_block') and sick) or c.energy < a.energy or c.silver < a.silver or counts[key] >= a.daily %}
+  {% set locked = a.get('min_rank') and c.rank < a.min_rank %}
+  {% set blocked = locked or (a.get('sick_block') and sick) or c.energy < a.energy or c.silver < a.silver or counts[key] >= a.daily %}
   <div class="act">
     <div class="what"><b>{{ a.name }}</b>　<span class="cost">
       {%- if a.energy %}精力 {{ a.energy }}{% endif %}{% if a.silver %}　银子 {{ a.silver }}{% endif %}　今日 {{ counts[key] }}/{{ a.daily }}</span>
-      <div class="muted">{{ a.desc }}{% if key == 'plead' %}（你现在求情约 {{ plead_p }}% 能成）{% endif %}</div></div>
+      <div class="muted">{{ a.desc }}{% if locked %}（{{ RANK_NAMES[a.min_rank] }}位以上解锁）{% endif %}{% if key == 'plead' %}（你现在求情约 {{ plead_p }}% 能成）{% endif %}</div></div>
     <form method="post" action="{{ url_for('act', key=key) }}">
       <input type="hidden" name="back" value="{{ request.view_args.key }}">
       {% if key == 'study' %}
         <select name="art" aria-label="才艺">{% for art in ARTS %}<option value="{{ art }}" {{ 'selected' if art==gs.emperor_pref }}>{{ art }}（{{ arts.get(art, 0) }}{% if arts.get(art,0) >= ART_MASTERY %}，精通{% endif %}）</option>{% endfor %}</select>
       {% elif key == 'aid' %}
         {% if aid_targets %}<select name="target_id" aria-label="帮助谁">{% for p in aid_targets %}<option value="{{ p.id }}">{{ dn(p) }}</option>{% endfor %}</select>{% else %}{% set blocked = true %}<span class="muted">眼下没有可帮助的姐妹</span>{% endif %}
+      {% elif key == 'chastise' %}
+        {% if locked %}{% elif chastise_targets %}
+        <select name="target_id" aria-label="责罚谁">{% for p in chastise_targets %}<option value="{{ p.id }}">{{ dn(p) }}</option>{% endfor %}</select>
+        <select name="mode" aria-label="怎么罚"><option value="kneel">罚跪（圣宠 -8）</option><option value="fine">罚俸（银子 -80）</option><option value="confine">禁足半天</option></select>
+        {% else %}{% set blocked = true %}<span class="muted">眼下没有可责罚的低位妃嫔</span>{% endif %}
       {% elif key == 'plead' %}
         {% if plead_targets %}
         <select name="target_id" aria-label="替谁求情">{% for p in plead_targets %}<option value="{{ p.id }}">{{ dn(p) }}（{{ '冷宫' if p.status == 'cold' else '禁足' }}）</option>{% endfor %}</select>

@@ -106,7 +106,7 @@ RANK_NAMES = ['秀女', '官女子', '答应', '常在', '贵人', '嫔', '妃',
 PROMOTE_FAVOR  = {2: 30, 3: 65, 4: 110, 5: 180, 6: 280, 7: 420, 8: 600, 9: 850}   # 晋到该位分所需圣宠
 PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 60, 8: 70, 9: 75}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
 RANK_SLOTS     = {4: 8, 5: 6, 6: 4, 7: 2, 8: 1, 9: 1}                     # 贵人以上有名额，含 NPC
-STIPEND = {1: 5, 2: 10, 3: 15, 4: 25, 5: 40, 6: 60, 7: 90, 8: 130, 9: 200}  # 每日月例银
+STIPEND = {1: 15, 2: 30, 3: 45, 4: 75, 5: 200, 6: 300, 7: 450, 8: 650, 9: 1000}  # 每日月例银（2026-10-07 起：嫔以下 ×3，嫔以上 ×5；原来 5/10/15/25/40/60/90/130/200）
 PLAYER_MAX_RANK = 9   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[9]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
 
 PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:45,7:70,8:110,9:150}
@@ -127,6 +127,7 @@ def entry_stat_roll(uid):
 
 CONSPIRE_INFLUENCE_SHARE = 0.75     # 合谋得手/落空时，两人各拿多少份势力（1=独自出手的全额，两人合计 1.5 份）
 
+_SCHEME_RNG = random.SystemRandom()      # 心计成长单独掷骰，不占用全局随机序列
 SCHEME_GROW_CHANCE, SCHEME_GROW_CHANCE_FIZZLE, SCHEME_GROW_AMOUNT = 0.25, 0.10, 1   # 害人涨心计：得手 25%、没成没被察觉 10%，每次 +1；败露不涨
 
 def gain_intrigue_influence(it, fraction=1.0, share=1.0, actor_id=None):
@@ -147,7 +148,7 @@ def gain_intrigue_influence(it, fraction=1.0, share=1.0, actor_id=None):
             notify(atk['id'],f'你这一回使计得手，势力 +{gain}。同日对同一人不重复增加。','good')
         # 害人历练心计：和势力共用「同日对同一人只算一次」，防止对着一个人狂刷
         p = SCHEME_GROW_CHANCE if fraction >= 1 else SCHEME_GROW_CHANCE_FIZZLE
-        if atk['scheme'] < 100 and random.random() < p:
+        if atk['scheme'] < 100 and _SCHEME_RNG.random() < p:
             add_stat(atk['id'], 'scheme', SCHEME_GROW_AMOUNT)
             notify(atk['id'], f'这一番算计让你长了些见识，心计 +{SCHEME_GROW_AMOUNT}。', 'good')
 
@@ -513,6 +514,10 @@ ACTIONS = {
                     desc='添香油钱，攒福报：福报高的人不容易老死、病重时活路更大。这五天没对人使过计的「躺平」之人，佛前还有机会延年益寿'),
     'shoukang': dict(name='去寿康宫请安', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
                      desc='太妃姑母会悄悄告诉你一件宫里的旧事。3 天一次'),
+    'pizhe':   dict(name='陪皇上批折子', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True, min_rank=5,
+                    desc='嫔位以上才能陪驾：研墨添香，圣宠 +10～14，信任 +2，势力 +4；皇上正在气头上时只能默默陪着，信任 +1、势力 +2'),
+    'chastise': dict(name='责罚低位妃嫔', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True, target=True, min_rank=5,
+                     desc='嫔位以上才能责罚比自己位分低的嫔以下妃嫔：罚跪（对方圣宠 -8）、罚俸（对方银子 -80）或禁足半天。对方每天最多被责罚一次，双方好感 -10，对方会知道是谁。你势力 +3'),
     'attend':  dict(name='去养心殿侍疾', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
                     desc='皇上病重时才有。成败看信任：成了信任 +5，你抚养的阿哥圣眷 +5'),
 }
@@ -1435,7 +1440,7 @@ def init_db():
     migrations = {
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
         'banquet_entries': {'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'tier': 'INTEGER NOT NULL DEFAULT 1', 'buff': 'INTEGER NOT NULL DEFAULT 0', 'note': "TEXT NOT NULL DEFAULT ''"},
-        'consorts': {'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
+        'consorts': {'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
                      'age_months': 'INTEGER NOT NULL DEFAULT 240',
                      'poisoned_day': 'INTEGER NOT NULL DEFAULT 0',
                      'poison_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -1857,6 +1862,20 @@ def assign_title(cid):
     run("UPDATE consorts SET title=? WHERE id=?", (t, cid))
     return t
 
+TITLE_CHOICES_N = 3
+
+def offer_title_choices(cid):
+    """晋到嫔位时，已经有封号的玩家可以从三个没人用的封号里挑一个新的（托管角色不挑，保持原封号）"""
+    c = get_consort(cid)
+    u = q("SELECT managed FROM users WHERE id=?", (c['user_id'],), one=True) if c and c['user_id'] else None
+    if not c or not u or u['managed'] or c['npc_key']: return
+    used = {r['title'] for r in q("SELECT title FROM consorts WHERE title!='' AND status NOT IN ('cold','dead')")}
+    pool = [t for t in TITLE_POOL if t not in used]
+    if not pool: return
+    picks = random.sample(pool, min(TITLE_CHOICES_N, len(pool)))
+    run("UPDATE consorts SET title_choices=? WHERE id=?", (''.join(picks), cid))
+    notify(cid, f"你晋为嫔位，可以换一个新封号了：{'、'.join(picks)}，回宫城挑一个（也可以保留「{c['title']}」）。", 'good')
+
 def set_rank(cid, new_rank, reason_day=None):
     new_rank = max(1, min(9, new_rank))
     old = get_consort(cid)['rank']
@@ -1866,6 +1885,8 @@ def set_rank(cid, new_rank, reason_day=None):
     c = get_consort(cid)
     if new_rank >= 5 and not c['title']:
         assign_title(cid)
+    elif new_rank >= 5 and old < 5 and c['title']:
+        offer_title_choices(cid)
     if not c['npc_key']:
         run("UPDATE consorts SET peak_rank=MAX(peak_rank, ?) WHERE id=?", (new_rank, cid))
         if new_rank > c['prestige_top']:
@@ -3128,6 +3149,8 @@ def act(key):
                          .get(c['status'], '现在做不了这件事。'))
         if cfg.get('sick_block') and is_sick(c):
             raise Reject('你病得起不来身，先静养吧。')
+        if cfg.get('min_rank') and c['rank'] < cfg['min_rank']:
+            raise Reject(f"要{RANK_NAMES[cfg['min_rank']]}位以上才能做这件事。")
         if c['energy'] < cfg['energy']:
             raise Reject('今天精力用完了，等夜里结算后恢复。')
         if c['silver'] < cfg['silver']:
@@ -3393,6 +3416,58 @@ def shorten_punishment(helper, t):
             notify(t['id'], '禁足解了。', 'good')
     return cut
 
+CHASTISE_MODES = ('kneel', 'fine', 'confine')
+CHASTISE_FAVOR, CHASTISE_FINE, CHASTISE_AFFINITY, CHASTISE_INFLUENCE = 8, 80, -10, 3
+
+def chastise_targets(c):
+    return [t for t in q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status IN ('normal','confined') AND rank<5""", (c['id'],))
+            if t['rank'] < c['rank'] and not t['npc_key'] and daily_count(t['id'], 'chastised') == 0]
+
+def do_chastise(c, cfg):
+    if c['rank'] < cfg['min_rank']:
+        raise Reject(f"要{RANK_NAMES[cfg['min_rank']]}位以上才能责罚低位妃嫔。")
+    t = pick_target(c)
+    mode = request.form.get('mode', '')
+    if mode not in CHASTISE_MODES: raise Reject('选一种责罚：罚跪、罚俸，或者禁足。')
+    if t['rank'] >= 5 or t['rank'] >= c['rank']: raise Reject('只能责罚嫔位以下、位分比你低的人。')
+    if t['status'] not in ('normal', 'confined'): raise Reject('她眼下不在宫里当差，罚不了。')
+    if daily_count(t['id'], 'chastised'): raise Reject('她今天已经被责罚过了，别太过了。')
+    if mode == 'confine' and t['status'] == 'confined': raise Reject('她已经在禁足了。')
+    charge(c, cfg)
+    daily_inc(t['id'], 'chastised')
+    me = display_name(c)
+    if mode == 'kneel':
+        lost = cut_favor(t['id'], CHASTISE_FAVOR)
+        pen, what = f"圣宠 -{lost}", '罚跪'
+    elif mode == 'fine':
+        fined = min(CHASTISE_FINE, t['silver'])
+        add_silver(t['id'], -fined)
+        pen, what = f"银子 -{fined}", '罚俸'
+    else:
+        confine(t['id'])
+        pen, what = '禁足半天', '禁足'
+    add_affinity(c['id'], t['id'], CHASTISE_AFFINITY)
+    run('UPDATE consorts SET influence=influence+? WHERE id=?', (CHASTISE_INFLUENCE, c['id']))
+    notify(t['id'], f"{me}寻了个由头责罚你：{what}。{pen}。", 'bad')
+    return f"你寻了个由头责罚了{display_name(t)}（{what}），对方{pen}，双方好感 {CHASTISE_AFFINITY}，你势力 +{CHASTISE_INFLUENCE}。", 'info'
+
+
+def do_pizhe(c, cfg):
+    if c['rank'] < cfg['min_rank']:
+        raise Reject(f"要{RANK_NAMES[cfg['min_rank']]}位以上才能陪皇上批折子。")
+    if emperor_ill():
+        raise Reject('皇上病重，不见外人。要尽心就去侍疾。')
+    charge(c, cfg)
+    if state()['emperor_mood'] == '震怒':
+        add_trust(c['id'], 1)
+        run('UPDATE consorts SET influence=influence+2 WHERE id=?', (c['id'],))
+        return '皇上正在气头上，你只在一旁默默研墨，一个字也没敢多说。信任 +1，势力 +2。', 'info'
+    g_ = add_favor(c['id'], random.randint(10, 14))
+    add_trust(c['id'], 2)
+    run('UPDATE consorts SET influence=influence+4 WHERE id=?', (c['id'],))
+    return f"你在养心殿陪皇上批了半日折子，研墨添香，皇上偶尔抬头与你说两句朝中的事。圣宠 +{g_}，信任 +2，势力 +4。", 'good'
+
+
 def do_attend(c, cfg):
     if not emperor_ill():
         raise Reject('皇上龙体安康，用不着侍疾。')
@@ -3587,7 +3662,7 @@ def do_maid_gossip(c, cfg):
     return ' '.join(lines), 'info'
 
 ACTION_HANDLERS = dict(maid_snack=do_maid_snack, maid_shop=do_maid_shop, maid_scribe=do_maid_scribe, maid_watch=do_maid_watch, maid_gossip=do_maid_gossip, schemestudy=do_schemestudy, perform=do_perform, palace_work=do_palace_work, aid=do_aid, greet=do_greet, study=do_study, groom=do_groom, rest=do_rest, reflect=do_reflect,
-                       eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend, shoukang=do_shoukang, pray=do_pray)
+                       eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend, pizhe=do_pizhe, chastise=do_chastise, shoukang=do_shoukang, pray=do_pray)
 
 # ── 秘密坦白 ───────────────────────────────────────────────────────────────────
 
@@ -5170,6 +5245,8 @@ FEED_TEXT = {
     'palace_work': lambda t: '在礼仪堂协办宫务',
     'aid':         lambda t: f"给{display_name(t)}送去了日常补养" if t else '给姐妹送去了日常补养',
     'attend':      lambda t: '去养心殿侍疾',
+    'pizhe':       lambda t: '陪皇上批了折子',
+    'chastise':    lambda t: '责罚了低位的妃嫔',
     'shoukang':    lambda t: '去寿康宫给太妃请安',
 }
 
@@ -5511,12 +5588,41 @@ def heir_label(h):
     if h['name']: return h['name']
     return f"{heir_rank_word(h['ordinal'])}阿哥" if h['gender'] == '皇子' else f"{heir_rank_word(h['ordinal'])}公主"
 
+def heir_rank_title(h):
+    """排行加性别：大皇子、二皇子、大公主……（有名字的孩子在页面上用它标出排行）"""
+    return f"{heir_rank_word(h['ordinal'])}{'皇子' if h['gender'] == '皇子' else '公主'}"
+
+app.jinja_env.globals['heir_rank_title'] = heir_rank_title
 app.jinja_env.globals['heir_label'] = heir_label
 app.jinja_env.globals['treat_cost'] = treat_cost
 app.jinja_env.globals['temper_desc'] = temper_desc
 app.jinja_env.globals['shop_price'] = shop_price
 app.jinja_env.globals['cn_ordinal'] = cn_ordinal
 app.jinja_env.globals['TIER_OFFICE_TEXT'] = {k: FAMILY_CAREER_TITLES[k][TIER_OFFICE[k]] for k in TIER_JOB}
+
+@app.route('/title_pick', methods=['POST'])
+@login_required
+def title_pick():
+    c = g.me
+    choices = c['title_choices'] or ''
+    pick = request.form.get('pick', '').strip()
+    if not choices:
+        flash('眼下没有可换的封号。', 'bad')
+    elif pick == 'keep':
+        run("UPDATE consorts SET title_choices='' WHERE id=?", (c['id'],))
+        flash(f"你留下了原来的封号「{c['title']}」。", 'info')
+    elif pick not in choices:
+        flash('请从备选的三个封号里选一个。', 'bad')
+    elif q("SELECT 1 FROM consorts WHERE title=? AND id!=? AND status NOT IN ('cold','dead')", (pick, c['id']), one=True):
+        flash('这个封号刚被别人用了，重新备选几个。', 'bad')
+        run("UPDATE consorts SET title_choices='' WHERE id=?", (c['id'],))
+        offer_title_choices(c['id'])
+    else:
+        old = c['title']
+        run("UPDATE consorts SET title=?, title_choices='' WHERE id=?", (pick, c['id']))
+        gazette(f"{old}{RANK_NAMES[c['rank']]}改封号为「{pick}」，今称{pick}{RANK_NAMES[c['rank']]}。", 'decree')
+        flash(f"皇上允了，你的封号改为「{pick}」。", 'good')
+    return redirect(url_for('index'))
 
 @app.route('/heirs', methods=['GET', 'POST'])
 @login_required
@@ -8838,9 +8944,9 @@ def rebirth():
 
 PLACES = {
     'home':    dict(name='本宫', actions=['study', 'schemestudy', 'groom', 'rest', 'reflect', 'eyes', 'shoukang']),
-    'jingren': dict(name='礼仪堂', actions=['greet', 'palace_work', 'aid']),
+    'jingren': dict(name='礼仪堂', actions=['greet', 'palace_work', 'aid', 'chastise']),
     'garden':  dict(name='御花园', actions=['garden']),
-    'yangxin': dict(name='养心殿', actions=['seek', 'perform', 'attend', 'plead']),
+    'yangxin': dict(name='养心殿', actions=['seek', 'perform', 'pizhe', 'attend', 'plead']),
 }
 
 
@@ -8913,7 +9019,7 @@ def place(key):
                       (c['id'],)) if key == 'yangxin' else []
     return render_template('place.html', c=c, key=key, title=title, desc=desc, extra=extra, acts=acts,
                            counts=counts, sick=is_sick(c), arts=arts_of(c), ARTS=ARTS, ART_MASTERY=ART_MASTERY,
-                           aid_targets=q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status IN ('normal','confined')", (c['id'],)), plead_targets=plead_targets, plead_p=int(plead_chance(c) * 100),
+                           aid_targets=q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status IN ('normal','confined')", (c['id'],)), plead_targets=plead_targets, chastise_targets=chastise_targets(c) if key == 'jingren' else [], plead_p=int(plead_chance(c) * 100),
                            maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, heir_todo=heir_todo, HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, PRENATAL=PRENATAL,
                            DIETS=DIETS, PREGNANCY_DAYS=PREGNANCY_DAYS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS,
                            is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False, open_living=request.args.get('living') == '1',

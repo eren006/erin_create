@@ -150,7 +150,8 @@ class ManagedConsortTests(unittest.TestCase):
     def test_at_most_one_a_day_and_never_when_sick_or_confined(self):
         cid = self.bot()
         self.assertTrue(game.bot_intrigue(game.get_consort(cid)))
-        self.assertFalse(game.bot_intrigue(game.get_consort(cid)), '一天只谋划一件事')
+        with patch.object(game, 'INTRIGUE_DAILY_MAX', 1):      # 默认不限次数，设上限才有每日一件
+            self.assertFalse(game.bot_intrigue(game.get_consort(cid)), '一天只谋划一件事')
         game.run("DELETE FROM daily_counters")
         game.run("UPDATE consorts SET status='confined' WHERE id=?", (cid,))
         self.assertFalse(game.bot_intrigue(game.get_consort(cid)))

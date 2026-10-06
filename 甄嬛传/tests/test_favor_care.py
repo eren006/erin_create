@@ -16,10 +16,10 @@ class FavorCareTests(unittest.TestCase):
 
     def test_income_tiers_for_guiren(self):
         game.run('UPDATE consorts SET rank=4 WHERE id=?',(self.atk,))
-        self.assertEqual(game.favor_stipend(self.set_care(150)),52)
-        self.assertEqual(game.favor_stipend(self.set_care(40)),25)
-        self.assertEqual(game.favor_stipend(self.set_care(39)),17)
-        self.assertEqual(game.favor_stipend(self.set_care(0,1)),25)
+        self.assertEqual(game.favor_stipend(self.set_care(150)),127)
+        self.assertEqual(game.favor_stipend(self.set_care(40)),75)
+        self.assertEqual(game.favor_stipend(self.set_care(39)),52)
+        self.assertEqual(game.favor_stipend(self.set_care(0,1)),75)
 
     def test_newcomer_protection_and_cold_palace(self):
         c=self.set_care(0)

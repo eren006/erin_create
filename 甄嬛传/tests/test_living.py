@@ -198,11 +198,11 @@ class LivingTests(unittest.TestCase):
     # ── 饮食 ─────────────────────────────────────────────────────────────────
 
     def test_diet_costs_scale_with_rank(self):
-        self.assertEqual(game.diet_cost(4, 'normal'), 10)
-        self.assertEqual(game.diet_cost(4, 'lavish'), 25)
-        self.assertEqual(game.diet_cost(4, 'frugal'), 4)
-        self.assertEqual(game.diet_cost(1, 'frugal'), 1)
-        self.assertEqual(game.diet_cost(8, 'normal'), 52)
+        self.assertEqual(game.diet_cost(4, 'normal'), 30)
+        self.assertEqual(game.diet_cost(4, 'lavish'), 75)
+        self.assertEqual(game.diet_cost(4, 'frugal'), 12)
+        self.assertEqual(game.diet_cost(1, 'frugal'), 2)
+        self.assertEqual(game.diet_cost(8, 'normal'), 260)
         for r in range(1, 9):
             c = game.diet_costs(r)
             self.assertTrue(c['frugal'] < c['normal'] < c['lavish'])

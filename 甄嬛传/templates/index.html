@@ -68,6 +68,16 @@
 {% if open_cases_count %}<p class="state-conf" role="alert">你被卷进了 {{ open_cases_count }} 桩案子，<a href="{{ url_for('drug_cases') }}">去慎刑司陈情</a>。</p>{% endif %}
 <form method="post" action="{{ url_for('diagnose') }}"><button class="plain">请太医诊脉（20 两，每日一次）</button></form>
 
+{% if c.title_choices %}
+<section class="sheet" style="margin-top:18px">
+  <b>晋了嫔位，可以换一个新封号</b>
+  <p class="muted" style="margin:6px 0">原来的封号是「{{ c.title }}」，皇上点了三个，选一个，或者保留原来的：</p>
+  <form method="post" action="{{ url_for('title_pick') }}" class="row">
+    {% for ch in c.title_choices %}<button name="pick" value="{{ ch }}">{{ ch }}</button>{% endfor %}
+    <button name="pick" value="keep" class="plain">保留「{{ c.title }}」</button>
+  </form>
+</section>
+{% endif %}
 <section class="me-top">
   <div class="pai big {{ 'cold' if c.status=='cold' }}">{{ dn(c) }}</div>
   <div class="facts">
