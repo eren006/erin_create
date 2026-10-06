@@ -186,6 +186,7 @@ PREGNANCY_DAYS = 2      # 旧存档未记录喜脉时刻时沿用两次结算
 PREGNANCY_MIN_SECONDS = 24 * 60 * 60
 FERTILE_BEFORE_AGE = 45 # 四十五岁起不再新怀孕
 LETHAL_COOLDOWN = 2     # 致命药成功后账号冷却2天
+CASE_JOIN_WINDOW, CASE_JOIN_MAX = 3, 1   # 一个人 3 天内最多被拉去陪查 1 次（真凶不算）
 CASE_NEWCOMER_SHIELD = 2      # 入宫不满 2 天的人不被拉去陪查（2026-10-06 从 5 天压到 2）
 BRIBE_NEWCOMER_SHIELD = 2     # 入宫不满 2 天的人，宫人不能被打点（2026-10-06 从 5 天压到 2）
 NEWCOMER_LETHAL_SHIELD = 3   # 入宫前 3 天不能被毒害
@@ -8561,8 +8562,8 @@ def open_drug_case(it, punished=0, force=False):
     candidates = sorted(candidates, key=lambda c: (affinity(c), abs(c['favor'] - victim['favor'])))
     for c in candidates:
         active = q("SELECT COUNT(*) FROM case_suspects s JOIN cases c ON c.id=s.case_id WHERE s.consort_id=? AND c.status='open'", (c['id'],), one=True)[0]
-        recent = q('SELECT COUNT(*) FROM case_suspects s JOIN cases c ON c.id=s.case_id WHERE s.consort_id=? AND c.culprit_id!=? AND c.day>?', (c['id'], c['id'], day-7), one=True)[0]
-        if active >= 2 or recent >= 2: continue
+        recent = q('SELECT COUNT(*) FROM case_suspects s JOIN cases c ON c.id=s.case_id WHERE s.consort_id=? AND c.culprit_id!=? AND c.day>?', (c['id'], c['id'], day-CASE_JOIN_WINDOW), one=True)[0]   # 陪查：3 天内最多 1 次（2026-10-06 从 7 天 2 次压）
+        if active >= 2 or recent >= CASE_JOIN_MAX: continue
         run('INSERT INTO case_suspects(case_id,consort_id,suspicion) VALUES(?,?,?)', (case_id, c['id'], min(40, 10+random.randint(0,20)+(10 if affinity(c)<0 else 0))))
         if q('SELECT COUNT(*) FROM case_suspects WHERE case_id=?', (case_id,), one=True)[0] >= 4: break
     suspects = q('SELECT consort_id FROM case_suspects WHERE case_id=?', (case_id,))
@@ -8804,11 +8805,11 @@ def resolve_drug_cases(day):
         run('UPDATE cases SET status=?,closed_day=?,convicted_id=?,wrongful=? WHERE id=?',('convicted' if convicted else 'unsolved',day,convicted,int(bool(convicted and convicted!=case['culprit_id'])),case['id']))
 
 
-APPEAL_MIN_DAYS_CLOSED = 5
+APPEAL_MIN_DAYS_CLOSED = 3   # 2026-10-06 从 5 压到 3
 APPEAL_ENERGY, APPEAL_SILVER = 1, 100
 APPEAL_WRONGFUL_BASE, APPEAL_WRONGFUL_PER_SCHEME = 0.55, 0.003
 APPEAL_GUILTY_BASE = 0.08          # 真被定了罪的人想翻案脱罪，希望很小
-APPEAL_INTERVAL = 5   # 2026-09-28 从 10 压到 5
+APPEAL_INTERVAL = 3   # 2026-09-28 从 10 压到 5，2026-10-06 再压到 3
 
 
 def can_appeal(c, case):
