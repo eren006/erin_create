@@ -3,7 +3,7 @@
 玩家以秀女身份入宫，经殿选后在后宫里争宠、结盟、使计。
 皇帝是系统 NPC，每晚固定时刻（SETTLE_HOUR）统一结算：阴谋 → 翻牌子 → 生产 → 晋封 → 月例。
 """
-import os, re, json, random, math, time, threading, traceback
+import os, re, json, random, math, time, threading, traceback, secrets
 from datetime import datetime, timezone, timedelta
 from functools import wraps
 from flask import (Flask, render_template, request, redirect,
@@ -340,16 +340,15 @@ def clamp(v, lo=0, hi=100):
 # ── 秘密 ───────────────────────────────────────────────────────────────────────
 
 SECRETS = {
-    'none':      dict(name='身家清白', weight=45, penalty='', confess=''),
-    'lover':     dict(name='入宫前曾有意中人', weight=15,
+    'lover':     dict(name='入宫前曾有意中人', weight=28,
                       penalty='圣宠折半，德行 -15', confess='圣宠 -20%'),
-    'fake':      dict(name='冒认了出身', weight=12,
+    'fake':      dict(name='冒认了出身', weight=22,
                       penalty='降一级位分', confess='圣宠 -30%'),
-    'book':      dict(name='私藏禁书', weight=10,
+    'book':      dict(name='私藏禁书', weight=18,
                       penalty='禁足半天', confess='禁足半天'),
-    'scar':      dict(name='脸上旧伤一直用脂粉遮着', weight=13,
+    'scar':      dict(name='脸上旧伤一直用脂粉遮着', weight=22,
                       penalty='容貌 -10，圣宠 -20%', confess='容貌 -5'),
-    'physician': dict(name='与太医过从甚密', weight=5,
+    'physician': dict(name='与太医过从甚密', weight=10,
                       penalty='打入冷宫', confess='禁足半天'),
 }
 
@@ -1456,7 +1455,7 @@ def init_db():
                        'dowager_uid': 'INTEGER NOT NULL DEFAULT 0',
                        'event_started': 'INTEGER NOT NULL DEFAULT 1',
                        'maintenance': 'INTEGER NOT NULL DEFAULT 0'},
-        'users': {'qq_number': "TEXT NOT NULL DEFAULT ''", 'stat_roll_reign': 'INTEGER NOT NULL DEFAULT 0', 'stat_roll': "TEXT NOT NULL DEFAULT ''", 'east_palace_reign': 'INTEGER NOT NULL DEFAULT 0',
+        'users': {'managed': 'INTEGER NOT NULL DEFAULT 0', 'qq_number': "TEXT NOT NULL DEFAULT ''", 'stat_roll_reign': 'INTEGER NOT NULL DEFAULT 0', 'stat_roll': "TEXT NOT NULL DEFAULT ''", 'east_palace_reign': 'INTEGER NOT NULL DEFAULT 0',
                   'east_palace_old': 'INTEGER NOT NULL DEFAULT 0',
                   'forge_used': 'INTEGER NOT NULL DEFAULT 0',
                   'drug_ready_day': 'INTEGER NOT NULL DEFAULT 0', 'lethal_ready_day': 'INTEGER NOT NULL DEFAULT 0',
@@ -1508,6 +1507,7 @@ def init_db():
     migrate_drug_balance(db)
     seed_npcs(db)
     seed_npc_heirs(db)
+    migrate_no_clean_secret(db)
     db.commit()
     db.close()
     with app.app_context():
@@ -1532,6 +1532,12 @@ def npc_heir_specs(day, reign_no, reign_start_day, emperor_start_age=20):
 def seed_npc_heirs(db):
     """皇嗣全部来自本届玩家，不预置潜邸子女。"""
     return
+
+def migrate_no_clean_secret(db):
+    """取消「身家清白」：老档里 secret='none' 的角色重抽一个真秘密，已查到的人看到的就是新秘密"""
+    for (cid,) in db.execute("SELECT id FROM consorts WHERE secret NOT IN (%s)" % ','.join('?'*len(SECRETS)), list(SECRETS)).fetchall():
+        db.execute('UPDATE consorts SET secret=? WHERE id=?', (roll_secret(), cid))
+
 
 def migrate_families(db):
     """老档：每个有过角色的账号补一个家族（姓氏、门第取第一位角色的），角色补上入宫序号和辈分说法"""
@@ -1906,7 +1912,7 @@ def login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         u = q("SELECT * FROM users WHERE username=?", (username,), one=True)
-        if u and check_password_hash(u['password_hash'], password):
+        if u and not u['managed'] and check_password_hash(u['password_hash'], password):      # 托管角色没有人能登录
             if u['banned']:
                 flash('该账号因违规已被停用，如有异议请联系管理员。', 'bad')
                 return render_template('login.html')
@@ -2714,7 +2720,7 @@ def family_letter():
     daily_inc(c['id'], 'fam_letter')
     r = random.random()
     if r < 0.35:
-        npcs = [n for n in q("SELECT * FROM consorts WHERE npc_key IS NOT NULL AND status!='dead' AND secret!='none'")
+        npcs = [n for n in q("SELECT * FROM consorts WHERE npc_key IS NOT NULL AND status!='dead' AND 1=1")
                 if not q("SELECT 1 FROM known_secrets WHERE knower_id=? AND target_id=?", (c['id'], n['id']), one=True)]
         if npcs:
             n = random.choice(npcs)
@@ -2774,7 +2780,7 @@ def do_shoukang(c, cfg):
         raise Reject(f"刚去过寿康宫，{SHOUKANG_INTERVAL - (day - c['shoukang_day'])} 天后才好再去。")
     charge(c, cfg)
     run("UPDATE consorts SET shoukang_day=? WHERE id=?", (day, c['id']))
-    npcs = [n for n in q("SELECT * FROM consorts WHERE npc_key IS NOT NULL AND status!='dead' AND secret!='none'")
+    npcs = [n for n in q("SELECT * FROM consorts WHERE npc_key IS NOT NULL AND status!='dead' AND 1=1")
             if not q("SELECT 1 FROM known_secrets WHERE knower_id=? AND target_id=?", (c['id'], n['id']), one=True)]
     if not npcs: return '姑母拉着你说了半天旧事，都是些无关紧要的闲话。', 'info'
     n = random.choice(npcs)
@@ -3191,8 +3197,6 @@ def do_garden(c, cfg):
             t = get_consort(random.choice(cands)['id'])
             run("INSERT OR IGNORE INTO known_secrets (knower_id, target_id, day) VALUES (?,?,?)",
                 (c['id'], t['id'], cur_day()))
-            if t['secret'] == 'none':
-                return f"你在假山后听见{display_name(t)}的宫女在嚼舌根，说的都是些无关紧要的事——看来她确实清白。", 'info'
             return f"你在假山后听见{display_name(t)}的宫女在嚼舌根：原来她{SECRETS[t['secret']]['name']}。", 'good'
         return "你在假山后听见有人在说话，走近却没了人影。", 'info'
     if ev == 'npc':
@@ -3237,8 +3241,6 @@ def do_spy(c, cfg):
     if random.random() < p:
         run("INSERT OR IGNORE INTO known_secrets (knower_id, target_id, day) VALUES (?,?,?)",
             (c['id'], t['id'], cur_day()))
-        if t['secret'] == 'none':
-            return f"{m['name']}使银子打听了一圈：{display_name(t)}身家清白，没什么把柄。", 'info'
         return f"{m['name']}打听到了：{display_name(t)}{SECRETS[t['secret']]['name']}。", 'good'
     if random.random() < (0.6 if eyes_active(t) else 0.25):
         who = display_name(c) if eyes_active(t) else '有人'
@@ -3479,7 +3481,7 @@ ACTION_HANDLERS = dict(maid_snack=do_maid_snack, maid_shop=do_maid_shop, maid_sc
 def apply_secret_penalty(cid, confessed):
     c = get_consort(cid)
     s = c['secret']
-    if not confessed and s != 'none': add_prestige(c, PRESTIGE_EXPOSED, f"{full_name(c)}的秘密被人告发")
+    if not confessed: add_prestige(c, PRESTIGE_EXPOSED, f"{full_name(c)}的秘密被人告发")
     if s == 'lover':
         if confessed: cut_favor(cid, 0.2)
         else:
@@ -3841,8 +3843,6 @@ def bond_visit_perk(c, key, aff):
             if cands:
                 t = get_consort(random.choice(cands)['id'])
                 run("INSERT OR IGNORE INTO known_secrets (knower_id, target_id, day) VALUES (?,?,?)", (c['id'], t['id'], day))
-                if t['secret'] == 'none':
-                    return f"端妃说起{display_name(t)}：「那孩子……干干净净的，没什么可说的。」"
                 return f"端妃淡淡提了一句：「{display_name(t)}？……她{SECRETS[t['secret']]['name']}。」"
     elif key == 'lipin' and aff >= BOND_CLOSE:
         t = huafei_likely_target(exclude_id=c['id'])
@@ -4436,7 +4436,6 @@ def intrigue_submit():
         if t['secret_revealed']: err = '她的事早就人尽皆知了。'
         elif not q("SELECT 1 FROM known_secrets WHERE knower_id=? AND target_id=?", (c['id'], tid), one=True):
             err = '你手里没有她的把柄，先去打探。'
-        elif t['secret'] == 'none': err = '她身家清白，没什么可告发的。'
     elif method == 'steal' and (t['pregnant_since'] or is_sick(t)):
         err = '她今晚本就侍不了寝。'
     elif method == 'punish':
@@ -4497,7 +4496,7 @@ def intrigue_conspire(iid, action):
     elif a['silver'] < conspire_cost(cfg): err = f"{display_name(a)}银子不够了。"
     elif q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'", (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
         err = '今天盯着她的人已经够多了，换个日子吧。'
-    elif it['method'] == 'expose' and (t['secret_revealed'] or t['secret'] == 'none'): err = '这件事已经没有可告发的了。'
+    elif it['method'] == 'expose' and t['secret_revealed']: err = '这件事已经没有可告发的了。'
     elif it['method'] == 'steal' and (t['pregnant_since'] or is_sick(t)): err = '她今晚本就侍不了寝。'
     elif it['method'] == 'punish': err = punish_block(a, t, day)
     if not err: err = conspire_partner_block(a, c, cfg, t, day)
@@ -4623,6 +4622,91 @@ def watch_guard(cid):
 def shop_price(c, it):
     price = it['price']
     return max(1, round(price * SHOP_ERRAND_DISCOUNT)) if daily_count(c['id'], 'maid_shop') > 0 else price
+
+# ── 托管角色（看起来和真玩家一模一样，由系统代为过日子）────────────────────────────────
+# 它有自己的账号、家族、位分、宫室，翻牌、晋封、被使计、生孩子都和玩家一样；区别只在 users.managed=1：
+# 没人能登录，平时白天晚上按概率做日常（晨省、练才艺、串门……），串门会像真人一样给玩家留消息。
+# 玩家这边没有任何"NPC"的标记（npc_key 为空）；管理员后台标注「托管」。
+BOT_AWAKE_HOURS = (8, 23)           # 这个钟点范围内才有动静（和真人作息差不多）
+BOT_ACTION_CHANCE = 1 / 75          # 每分钟动手的概率，约每 75 分钟一件事
+BOT_ACTIONS = (('greet', 4), ('study', 3), ('garden', 3), ('visit', 3), ('groom', 1), ('seek', 2))   # 日常动作及权重，复用玩家动作的同一套处理函数
+
+def spawn_managed_consort(surname, given, rank=4, tier='dali', personality='gentle', age=22):
+    """新建一个托管角色并直接安顿进宫（不走殿选）。surname 不能和已有家族重复"""
+    if surname_taken(surname):
+        raise ValueError(f'姓氏「{surname}」已经有人家用了')
+    if q("SELECT 1 FROM consorts WHERE surname=? AND given=?", (surname, given), one=True):
+        raise ValueError('宫里已经有同名的人了')
+    day = cur_day()
+    uid = run("INSERT INTO users (username, password_hash, qq_number, created_ts, managed) VALUES (?,?,?,?,1)",
+              ('sys_' + secrets.token_hex(4), generate_password_hash(secrets.token_hex(16), method='pbkdf2:sha256'), '', now_ts())).lastrowid
+    create_family(uid, surname, tier)
+    st = dict(appearance=random.randint(42, 58), talent=random.randint(40, 56), scheme=random.randint(36, 54),
+              virtue=random.randint(42, 60), health=random.randint(72, 90))
+    cid = run("""INSERT INTO consorts (user_id, surname, given, family, personality, appearance, talent, scheme, virtue, health,
+                 silver, secret, status, created_ts, reign_no, seq, entry_age, lineage, patron, inherit, heirloom_maid_id)
+                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'xiunv', ?, ?,?,?,?,?,?,?)""",
+              (uid, surname, given, tier, personality, st['appearance'], st['talent'], st['scheme'], st['virtue'], st['health'],
+               FAMILIES[tier]['silver'] + 60, roll_secret(), now_ts(), state()['reign_no'], 1, age, '', '', '{}', 0)).lastrowid
+    room = empty_residence((('east', 'west'), ('back',)))
+    if room is None: raise RuntimeError('宫中屋舍已满')
+    palace, hall = room
+    run("""UPDATE consorts SET status='normal', rank=?, rank_since_day=1, palace=?, hall=?, favor=?, entered_day=1,
+           dianxuan_score=70, energy=?, trust=?, last_audience_day=?, recap_seen_day=?, peak_rank=?, prestige_top=?,
+           age_months=?, entry_origin='new', guide_step=-1 WHERE id=?""",
+        (rank, palace, hall, 55, ENERGY_MAX, TRUST_START, day, day - 1, rank, rank, (age + AGE_YEARS_PER_DAY * (day - 1)) * 12, cid))
+    if rank >= 4: assign_title(cid)
+    housing_sync()
+    return cid
+
+def managed_consorts():
+    return q("SELECT c.* FROM consorts c JOIN users u ON u.id=c.user_id WHERE u.managed=1 AND c.status IN ('normal','confined')")
+
+def bot_care(c):
+    """病了请太医、孩子没名字就自己挑一个——托管角色没有人替她操心"""
+    for col, flag in (('poisoned_day', 'poison_treatment'), ('ill_day', 'ill_treatment')):
+        if c[col] and not c[flag] and c['silver'] >= treat_cost(c):
+            add_silver(c['id'], -treat_cost(c))
+            run(f"UPDATE consorts SET {flag}=1 WHERE id=?", (c['id'],))
+    for h in q("SELECT id FROM heirs WHERE mother_id=? AND name=''", (c['id'],)):
+        ensure_name_choices(h['id'])
+        hh = get_heir(h['id'])
+        if hh['name_choices']:
+            run("UPDATE heirs SET name=?, name_choices='' WHERE id=?", (hh['gen_word'] + random.choice(hh['name_choices']), h['id']))
+
+def bot_do(c, key):
+    """让托管角色做一件日常：套用玩家同一套检查和处理函数，所以效果、通知、日常记录都和真人一样"""
+    cfg = action_config(c, key)
+    day = cur_day()
+    if not cfg or c['status'] not in cfg['when'] or c['energy'] < cfg['energy'] or c['silver'] < cfg['silver']: return False
+    if daily_count(c['id'], key) >= cfg['daily']: return False
+    data = {}
+    if key == 'study': data['art'] = random.choice(ARTS)
+    if key == 'visit':
+        others = [x for x in q("""SELECT x.* FROM consorts x JOIN users u ON u.id=x.user_id WHERE u.managed=0 AND x.id!=?
+                                 AND x.status='normal'""", (c['id'],)) if daily_count(c['id'], f"visit:{x['id']}") == 0]
+        if not others: return False
+        data['target_id'] = random.choice(others)['id']
+    with app.test_request_context('/', method='POST', data=data):
+        try:
+            ACTION_HANDLERS[key](c, cfg)
+        except Reject:
+            return False
+        daily_inc(c['id'], key)
+        feed_for_action(c, key)
+    run("UPDATE consorts SET pending_scene='' WHERE id=? AND pending_scene!=''", (c['id'],))   # 没人替她拿主意的场景直接作废
+    return True
+
+def bot_tick(now):
+    st = state()
+    if not st['event_started'] or st['maintenance'] or st['mourning']: return
+    for c in managed_consorts():
+        bot_care(c)
+        c = get_consort(c['id'])
+        if c['status'] != 'normal' or is_sick(c) or c['energy'] <= 0: continue
+        if not (BOT_AWAKE_HOURS[0] <= now.hour < BOT_AWAKE_HOURS[1]) or random.random() >= BOT_ACTION_CHANCE: continue
+        keys, weights = zip(*BOT_ACTIONS)
+        bot_do(c, random.choices(keys, weights=weights)[0])
 
 def spy_success_p(c, t, m):
     p = 0.35 + (c['scheme'] - t['scheme']) * 0.01 - (0.15 if eyes_active(t) else 0)
@@ -7390,7 +7474,7 @@ def do_bedding(bed, day, primary, tray):
 
 
 def bed_weight(c, day):
-    w = 10 + c['favor'] * 0.15 + c['appearance'] * 0.3 + c['talent'] * 0.15 + c['seek_bonus']
+    w = 10 + c['favor'] * 0.15 + c['appearance'] * 0.5 + c['talent'] * 0.15 + c['seek_bonus']
     if emperor_art_bonus(c): w += 20
     if c['diet_eff'] == 'lavish': w += LAVISH_BED_BONUS
     if c['user_id'] and day - c['entered_day'] <= 3: w += 15   # 皇上喜新
@@ -7927,6 +8011,7 @@ def maybe_settle():
     settle_due = past_settle_time(now) and state()['last_settle_date'] != today
     promotion_tick(pace_key, settle_due)
     release_confinements()
+    bot_tick(now)
     if settle_due:
         settle_day(bed_key=key)
         for r in _player_rows():check_achievements(r['id'])
@@ -7949,7 +8034,7 @@ def admin_login():
 @app.route('/admin')
 @admin_required
 def admin():
-    rows = q("SELECT c.*, u.username, u.qq_number FROM consorts c LEFT JOIN users u ON u.id=c.user_id ORDER BY c.user_id IS NULL, c.rank DESC, c.favor DESC")
+    rows = q("SELECT c.*, u.username, u.qq_number, u.managed FROM consorts c LEFT JOIN users u ON u.id=c.user_id ORDER BY c.user_id IS NULL, c.rank DESC, c.favor DESC")
     pend = q("SELECT * FROM intrigues WHERE status='pending' ORDER BY id")
     reports = q("SELECT * FROM reports WHERE status='open' ORDER BY id")
     done_reports = q("SELECT * FROM reports WHERE status!='open' ORDER BY handled_ts DESC LIMIT 10")
