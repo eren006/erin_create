@@ -46,6 +46,33 @@ class PregnancyClockTests(unittest.TestCase):
         with patch.object(game.time,'time',return_value=186400),patch.object(game.random,'random',return_value=0.99):game.resolve_births(10,False)
         self.assertEqual(game.get_consort(self.atk)['health'],game.BIRTH_HEALTH_FLOOR)
 
+    def test_twins_two_heirs_adjacent_ordinals_and_extra_health_loss(self):
+        game.TWIN_CHANCE = 1
+        game.run("UPDATE consorts SET health=90 WHERE id=?",(self.atk,))
+        self.conceive()
+        with patch.object(game.time,'time',return_value=186400),patch.object(game.random,'choice',side_effect=lambda seq:'皇子' if seq==['皇子','公主'] else seq[0]):
+            game.resolve_births(10,False)
+        kids=game.q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id",(self.atk,))
+        self.assertEqual(len(kids),2)
+        self.assertEqual(kids[1]['ordinal'],kids[0]['ordinal']+1)
+        self.assertEqual(game.get_consort(self.atk)['health'],90-game.BIRTH_HEALTH_LOSS-game.TWIN_EXTRA_HEALTH_LOSS)
+        self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%双生阿哥%'",one=True))
+
+    def test_mixed_twins_are_called_dragon_phoenix(self):
+        game.TWIN_CHANCE = 1
+        self.conceive()
+        picks=iter(['皇子','公主'])
+        with patch.object(game.time,'time',return_value=186400),patch.object(game.random,'choice',side_effect=lambda seq:next(picks) if seq==['皇子','公主'] else seq[0]):
+            game.resolve_births(10,False)
+        self.assertEqual(sorted(r['gender'] for r in game.q("SELECT gender FROM heirs")),['公主','皇子'])
+        self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%龙凤胎%'",one=True))
+
+    def test_single_birth_when_not_twins(self):
+        game.TWIN_CHANCE = 0
+        self.conceive()
+        with patch.object(game.time,'time',return_value=186400):game.resolve_births(10,False)
+        self.assertEqual(len(game.q("SELECT * FROM heirs")),1)
+
     def test_progress_stages(self):
         self.conceive()
         for elapsed,percent,stage in ((0,0,'初孕'),(8*3600,33,'安胎'),(16*3600,66,'待产'),(86400,100,'临盆')):

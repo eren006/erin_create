@@ -7019,6 +7019,7 @@ PRENATAL = {
     'ride':   dict(name='听乐观射', stat='riding', gain=2, line='你常让人在院里演武、奏乐，孩子出世后骑射底子更好。'),
     'virtue': dict(name='礼佛积德', stat='virtue', gain=2, line='你日日礼佛抄经，孩子出世后品行底子更好。'),
 }
+TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS = 0.10, 15   # 2026-10-06：每次临盆 10% 是双胞胎，体质再多扣 15
 BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR = 25, 8, 5   # 2026-10-06：每次生产必扣体质，生得越多扣得越狠，防一个人孩子太多
 LABOR_RISK_BASE, LABOR_RISK_PER_REST = 0.30, 0.10    # 体质不到 50 的人难产概率，每次安胎静养减 10 个点
 
@@ -7060,31 +7061,42 @@ def pregnancy_progress(c):
 def resolve_births(day, include_legacy=True):
     resolve_realtime_drugs(day)
     for c in q("SELECT * FROM consorts WHERE status!='dead' AND pregnant_since>0 AND NOT EXISTS(SELECT 1 FROM afflictions a WHERE a.consort_id=consorts.id AND a.drug='chunxin' AND a.status='active') AND ((pregnancy_started_ts>0 AND pregnancy_started_ts<=?) OR (pregnancy_started_ts=0 AND ? AND ?-pregnant_since>=?))", (time.time()-PREGNANCY_MIN_SECONDS, int(include_legacy), day, PREGNANCY_DAYS)):
-        gender = random.choice(['皇子', '公主'])
-        n = q("SELECT COUNT(*) n FROM heirs WHERE gender=?", (gender,), one=True)['n']
-        ordinal = n + (6 if gender == '皇子' else 3)
-        personality = random.choice(list(HEIR_PERSONALITIES))
+        twins = random.random() < TWIN_CHANCE
+        genders = [random.choice(['皇子', '公主']) for _ in range(2 if twins else 1)]
         pre = prenatal_state(c)
         prior_births = q('SELECT COUNT(*) n FROM heirs WHERE mother_id=?', (c['id'],), one=True)['n']
-        gifts = roll_heir_gifts(c)
-        run("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, born_day, personality, study, riding, virtue, health,
-                                gift_study, gift_riding, gift_virtue)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (c['id'], c['id'], gender, ordinal, day, personality,
-             clamp(random.randint(10, 30) + c['talent'] * 0.1 + pre.get('study', 0), 0, 100),
-             clamp(random.randint(10, 30) + pre.get('riding', 0), 0, 100),
-             clamp(random.randint(10, 30) + c['virtue'] * 0.1 + pre.get('virtue', 0), 0, 100),
-             clamp(60 + c['health'] * 0.1, 0, 100),
-             gifts['study'], gifts['riding'], gifts['virtue']))
+        born = []   # [(label, 资质文字)]
+        for gender in genders:
+            n = q("SELECT COUNT(*) n FROM heirs WHERE gender=?", (gender,), one=True)['n']
+            ordinal = n + (6 if gender == '皇子' else 3)
+            personality = random.choice(list(HEIR_PERSONALITIES))
+            gifts = roll_heir_gifts(c)
+            run("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, born_day, personality, study, riding, virtue, health,
+                                    gift_study, gift_riding, gift_virtue)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (c['id'], c['id'], gender, ordinal, day, personality,
+                 clamp(random.randint(10, 30) + c['talent'] * 0.1 + pre.get('study', 0), 0, 100),
+                 clamp(random.randint(10, 30) + pre.get('riding', 0), 0, 100),
+                 clamp(random.randint(10, 30) + c['virtue'] * 0.1 + pre.get('virtue', 0), 0, 100),
+                 clamp(60 + c['health'] * 0.1, 0, 100),
+                 gifts['study'], gifts['riding'], gifts['virtue']))
+            born.append((f"{cn_ordinal(ordinal)}{'阿哥' if gender == '皇子' else '公主'}",
+                         gift_text(dict(gift_study=gifts['study'], gift_riding=gifts['riding'], gift_virtue=gifts['virtue']))))
         run("UPDATE consorts SET pregnant_since=0, pregnancy_started_ts=0, prenatal='{}' WHERE id=?", (c['id'],))
-        birth_loss = min(BIRTH_HEALTH_LOSS + BIRTH_HEALTH_PER_PRIOR * prior_births, max(0, c['health'] - BIRTH_HEALTH_FLOOR))
+        birth_loss = min(BIRTH_HEALTH_LOSS + BIRTH_HEALTH_PER_PRIOR * prior_births + (TWIN_EXTRA_HEALTH_LOSS if twins else 0),
+                         max(0, c['health'] - BIRTH_HEALTH_FLOOR))
         if birth_loss > 0: add_stat(c['id'], 'health', -birth_loss)
         run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day + POSTPARTUM_SICK_DAYS, c['id']))
         extra = f'生产耗去元气，体质 -{birth_loss}。' if birth_loss > 0 else ''
         if c['health'] < 50 and random.random() < max(0.0, LABOR_RISK_BASE - LABOR_RISK_PER_REST * pre.get('rest', 0)):
             add_stat(c['id'], 'health', -20); extra += '难产了一整夜，元气大伤，体质再 -20。'
-        label = f"{cn_ordinal(ordinal)}{'阿哥' if gender == '皇子' else '公主'}"
-        if gender == '皇子':
+        if twins:
+            label = '、'.join(b[0] for b in born)
+            kind = '龙凤胎' if len(set(genders)) == 2 else ('双生阿哥' if genders[0] == '皇子' else '双生公主')
+            label = f"{kind}（{label}）"
+        else:
+            label = born[0][0]
+        if '皇子' in genders:
             add_prestige(c, PRESTIGE_BORN_PRINCE, f"{full_name(c)}诞下皇子")
             add_favor(c['id'], 100, gain_mult=False)
             if c['rank'] < PLAYER_MAX_RANK and slot_free(c['rank'] + 1, c['id']) and c['influence']>=PROMOTE_INFLUENCE[c['rank']+1]:
@@ -7092,10 +7104,11 @@ def resolve_births(day, include_legacy=True):
                 extra += f"母凭子贵，晋为{display_name(get_consort(c['id']))}。"
         else:
             add_favor(c['id'], 60, gain_mult=False)
-        gazette(f"{display_name(c)}诞下{label}。{extra}资质：{gift_text(dict(gift_study=gifts['study'], gift_riding=gifts['riding'], gift_virtue=gifts['virtue']))}。", 'birth')
+        gift_line = '；'.join((f"{b[0]}：{b[1]}" if twins else b[1]) for b in born)
+        gazette(f"{display_name(c)}诞下{label}。{extra}资质：{gift_line}。", 'birth')
         notify(c['id'], f"你诞下了{label}。{extra}", 'good')
-        notify(c['id'], f"请嬷嬷看了孩子的根骨：{gift_text(dict(gift_study=gifts['study'], gift_riding=gifts['riding'], gift_virtue=gifts['virtue']))}。", 'info')
-        night_mark(c['id'], 'birth', label=label, son=gender == '皇子')
+        notify(c['id'], f"请嬷嬷看了孩子的根骨：{gift_line}。", 'info')
+        night_mark(c['id'], 'birth', label=label, son='皇子' in genders)
 
 
 def prenatal_state(c):
@@ -7576,7 +7589,7 @@ def help_page():
                            PROMOTE_VIRTUE=PROMOTE_VIRTUE, MAID_QUOTA=MAID_QUOTA, MAID_WAGE=MAID_WAGE,
                            diet_norm={r: diet_cost(r, 'normal') for r in range(1, 10)}, DIETS=DIETS, DIET_RATIO=DIET_RATIO,
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
-                           FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
+                           FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, TWIN_CHANCE=TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS=TWIN_EXTRA_HEALTH_LOSS, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
                            HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, CONFINE_DAYS=CONFINE_DAYS,
                            COLD_DAYS=COLD_DAYS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_DAYS=PREGNANCY_DAYS,
                            settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,

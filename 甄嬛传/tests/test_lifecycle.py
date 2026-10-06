@@ -22,6 +22,7 @@ class LifecycleTests(unittest.TestCase):
         game.app.config['TESTING'] = True
         game.ADVENTURE_ROAD_CHANCE = 0       # 奇遇是随机的，别让它打断别的测试
         game.ADVENTURE_GARDEN_WEIGHT = 0
+        game.TWIN_CHANCE = 0                 # 双胞胎是随机的，默认关掉；要测的用例自己打开
         game.init_db()
         self.ctx = game.app.app_context()
         self.ctx.push()
