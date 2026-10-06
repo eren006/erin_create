@@ -52,11 +52,12 @@ class BeddingRoundsTests(unittest.TestCase):
         self.assertEqual(game.bedding_round(1,'test'),[])
 
     def test_schedule_every_four_hours(self):
-        self.assertEqual(game.BED_ROUND_HOURS,(1,5,9,13,17,21))
+        self.assertEqual(game.BED_ROUND_HOURS,(0,4,8,12,16,20))
         for hour in game.BED_ROUND_HOURS:
             now=datetime(2026,10,5,hour,0,tzinfo=game.TZ)
             self.assertEqual(game.latest_bedding_slot(now),f'2026-10-05:{hour:02}')
-        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,0,30,tzinfo=game.TZ)),'2026-10-04:21')
+        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,0,30,tzinfo=game.TZ)),'2026-10-05:00')
+        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,23,30,tzinfo=game.TZ)),'2026-10-05:20')
 
     def test_direct_bedding_also_respects_cap(self):
         with patch.object(game.random,'random',return_value=.99999):
@@ -71,22 +72,23 @@ class BeddingRoundsTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):game.bedding_round(1,'test')
         self.assertEqual(game.state()['last_bed_round_key'],'')
 
-    def test_scheduler_routes_daytime_and_nightly_round(self):
+    def test_scheduler_routes_daytime_and_midnight_round(self):
         self.enable()
-        for hour in (1,5,9,13,17):
+        game.run("UPDATE game_state SET last_settle_date='2026-10-05'")
+        for hour in (4,8,12,16,20):
             now=datetime(2026,10,5,hour,0,tzinfo=game.TZ)
             with patch.object(game,'datetime') as clock, patch.object(game,'bedding_round') as bed, patch.object(game,'settle_day') as settle:
                 clock.now.return_value=now
                 game.maybe_settle()
                 settle.assert_not_called()
                 bed.assert_called_once_with(1,f'2026-10-05:{hour:02}')
-        now=datetime(2026,10,5,23,0,tzinfo=game.TZ)
+        now=datetime(2026,10,6,0,0,tzinfo=game.TZ)      # 0 点：这一轮同时是日结算，换新一天
         with patch.object(game,'datetime') as clock, patch.object(game,'bedding_round') as bed, patch.object(game,'settle_day') as settle:
             clock.now.return_value=now
             game.maybe_settle()
-            settle.assert_called_once_with(bed_key='2026-10-05:21')
-            bed.assert_called_once_with(1,'2026-10-05:21')
-            game.run("UPDATE game_state SET last_settle_date='2026-10-05',last_bed_round_key='2026-10-05:21',day=2")
+            settle.assert_called_once_with(bed_key='2026-10-06:00')
+            bed.assert_called_once_with(1,'2026-10-06:00')
+            game.run("UPDATE game_state SET last_settle_date='2026-10-06',last_bed_round_key='2026-10-06:00',day=2")
         with patch.object(game,'datetime') as clock:
             clock.now.return_value=now
             with patch.object(game,'do_bedding') as effect:

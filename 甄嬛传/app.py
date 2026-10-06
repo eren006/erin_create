@@ -48,7 +48,7 @@ app.permanent_session_lifetime = timedelta(days=30)
 DB_PATH       = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "zhenhuan.db"))
 ADMIN_USER    = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASS    = os.environ.get("ADMIN_PASSWORD", "zhenhuan_admin_888")
-SETTLE_HOUR   = int(os.environ.get("SETTLE_HOUR", 23))
+SETTLE_HOUR   = int(os.environ.get("SETTLE_HOUR", 0))    # 2026-10-06 起每天 0 点换新一天（原 23 点）
 SETTLE_MINUTE = int(os.environ.get("SETTLE_MINUTE", 0))
 TZ            = timezone(timedelta(hours=8))
 now_ts        = lambda: int(time.time())
@@ -7246,7 +7246,7 @@ def bed_weight(c, day):
     if c['npc_key']: w *= NPC_BED_MULT
     return max(1, w)
 
-BED_ROUND_HOURS = (1,5,9,13,17,21)
+BED_ROUND_HOURS = (0,4,8,12,16,20)    # 2026-10-06 起整点对齐（原 1/5/9/13/17/21）
 
 
 def eligible_bedding(c,day):
@@ -7313,7 +7313,7 @@ def next_bedding_text():
 
 def latest_bedding_slot(now):
     slots=[now.replace(hour=h,minute=0,second=0,microsecond=0) for h in BED_ROUND_HOURS]
-    slots+=[(now-timedelta(days=1)).replace(hour=21,minute=0,second=0,microsecond=0)]
+    slots+=[(now-timedelta(days=1)).replace(hour=BED_ROUND_HOURS[-1],minute=0,second=0,microsecond=0)]
     return max(slot for slot in slots if slot<=now).strftime('%Y-%m-%d:%H')
 
 
@@ -7701,19 +7701,19 @@ def on_server_error(e):
     return '出了点问题，已经记下了，稍后再试。', 500
 
 
-ENERGY_REGEN = 2   # 白天每个翻牌时点（1/5/9/13/17 点）每人回 2 点精力，封顶 ENERGY_MAX；23 点日结算回满
+ENERGY_REGEN = 2   # 除结算那一轮外，每个翻牌时点（4/8/12/16/20 点）每人回 2 点精力，封顶 ENERGY_MAX；0 点日结算回满
 
 @atomic
 def energy_tick(key):
     """每 4 小时回一点精力。和翻牌轮共用时点，但不受皇上病重/国丧影响"""
     st = state()
-    if st['last_energy_key'] == key or key.endswith(':21'): return
+    if st['last_energy_key'] == key or key.endswith(':%02d' % SETTLE_HOUR): return
     run('UPDATE game_state SET last_energy_key=? WHERE id=1', (key,))
     run("UPDATE consorts SET energy=MIN(?, energy+?) WHERE user_id IS NOT NULL AND status!='dead' AND energy<?",
         (ENERGY_MAX, ENERGY_REGEN, ENERGY_MAX))
 
 
-HEALTH_DECAY_HOUR = 23       # 每晚 23 点，所有人体质自然衰减一次（与日结算时刻无关）
+HEALTH_DECAY_HOUR = SETTLE_HOUR   # 和日结算同一时刻（0 点），所有人体质自然衰减一次
 HEALTH_DECAY_BASE = 0.5      # 20 岁时每晚平均掉这么多点体质（2026-10-06 从 0.2 提到 0.5）
 HEALTH_DECAY_PER_YEAR = 0.08 # 20 岁以后每长一岁，每晚平均多掉这么多（原 0.03）
 HEALTH_DECAY_FLOOR = 20      # 自然衰减最低到这里（和饮食、屋损的下限一致）
@@ -7731,10 +7731,10 @@ def health_decay_tick():
 
 
 @atomic
-def promotion_tick(key):
-    """晋封每 4 小时检查一次（和翻牌轮同时点）；21 点那一轮由日结算自己查，免得同一分钟晋两级"""
+def promotion_tick(key, settle_due=False):
+    """晋封每 4 小时检查一次（和翻牌轮同时点）；这一分钟日结算要跑的话由结算自己查，免得同一分钟晋两级"""
     st = state()
-    if st['last_promo_key'] == key or key.endswith(':21'): return
+    if st['last_promo_key'] == key or settle_due: return
     run("UPDATE game_state SET last_promo_key=? WHERE id=1", (key,))
     if resolve_promotions(st['day']):
         for r in _player_rows(): check_achievements(r['id'])
@@ -7742,7 +7742,7 @@ def promotion_tick(key):
 
 @atomic
 def maybe_settle():
-    """翻牌每4小时、22点宴会、23点日结算；补执行时也先发宴会奖励。"""
+    """翻牌每4小时（0/4/8/12/16/20 点）、22点宴会、0点日结算；补执行时也先发宴会奖励。"""
     now=datetime.now(TZ)
     st=state()
     if not st['event_started'] or st['maintenance']:return
@@ -7753,8 +7753,9 @@ def maybe_settle():
     maybe_banquet(now)
     today = now.date().isoformat()
     st = state()
-    promotion_tick(key)
-    if past_settle_time(now) and state()['last_settle_date']!=now.date().isoformat():
+    settle_due = past_settle_time(now) and state()['last_settle_date'] != today
+    promotion_tick(key, settle_due)
+    if settle_due:
         settle_day(bed_key=key)
         for r in _player_rows():check_achievements(r['id'])
     if now.hour >= HEALTH_DECAY_HOUR and state()['last_decay_date'] != today:

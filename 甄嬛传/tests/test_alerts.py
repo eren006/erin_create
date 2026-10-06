@@ -97,9 +97,8 @@ class AlertTests(fixtures.unittest.TestCase):
 
     def test_overdue_minutes(self):
         st = dict(last_settle_date='2026-09-24')
-        self.assertEqual(game.settle_overdue_minutes(self.now(20, 59), st), 0, '还没到点')
-        self.assertEqual(game.settle_overdue_minutes(self.now(23, 0), st), 0)
-        self.assertEqual(game.settle_overdue_minutes(self.now(23, 45), st), 45)
+        self.assertEqual(game.settle_overdue_minutes(self.now(0, 0), st), 0, '刚到 0 点，还没拖')
+        self.assertEqual(game.settle_overdue_minutes(self.now(0, 45), st), 45)
         self.assertEqual(game.settle_overdue_minutes(self.now(23, 59), dict(last_settle_date='2026-09-25')), 0, '今天已结算')
 
     def test_cycle_records_a_settle_exception_and_does_not_raise(self):
