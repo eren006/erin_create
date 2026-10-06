@@ -125,6 +125,8 @@ def entry_stat_roll(uid):
     return json.loads(account['stat_roll'])
 
 
+CONSPIRE_INFLUENCE_SHARE = 0.75     # 合谋得手/落空时，两人各拿多少份势力（1=独自出手的全额，两人合计 1.5 份）
+
 def gain_intrigue_influence(it, fraction=1.0, share=1.0, actor_id=None):
     atk,tgt=get_consort(actor_id or it['attacker_id']),get_consort(it['target_id'])
     if not atk or not tgt or not atk['user_id'] or not tgt['user_id'] or atk['id']==tgt['id']: return
@@ -133,7 +135,7 @@ def gain_intrigue_influence(it, fraction=1.0, share=1.0, actor_id=None):
     if daily_count(atk['id'],key): return
     gain=INFLUENCE_GAINS.get(it['method'],0)
     if fraction < 1 and gain: gain=max(1,round(gain*fraction))
-    if share < 1 and gain: gain=max(1,round(gain*share))   # 合谋：两人分这份势力
+    if share < 1 and gain: gain=max(1,round(gain*share))   # 合谋：两人各拿 CONSPIRE_INFLUENCE_SHARE 份
     if gain:
         run('UPDATE consorts SET influence=influence+? WHERE id=?',(gain,atk['id']))
         daily_inc(atk['id'],key)
@@ -7157,8 +7159,8 @@ def resolve_intrigue(it, bed_id=None):
         if conspired: notify(partner['id'], f"你与{display_name(atk)}合谋对{tn}的「{cfg['name']}」成了。", 'good')
         if gz: gazette(gz, 'scandal')
         if conspired:
-            gain_intrigue_influence(it, share=0.5)
-            gain_intrigue_influence(it, share=0.5, actor_id=partner['id'])
+            gain_intrigue_influence(it, share=CONSPIRE_INFLUENCE_SHARE)
+            gain_intrigue_influence(it, share=CONSPIRE_INFLUENCE_SHARE, actor_id=partner['id'])
         else:
             gain_intrigue_influence(it)
         return done('success')
@@ -7221,8 +7223,8 @@ def resolve_intrigue(it, bed_id=None):
     if it['method'] == 'punish' and tgt['user_id']:
         notify(tgt['id'], f"{an}想找由头发落你宫里的人，被你挡了回去。")
     if conspired:
-        gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION, share=0.5)
-        gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION, share=0.5, actor_id=partner['id'])
+        gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION, share=CONSPIRE_INFLUENCE_SHARE)
+        gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION, share=CONSPIRE_INFLUENCE_SHARE, actor_id=partner['id'])
     else:
         gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION)
     return done('fizzle')
