@@ -1381,7 +1381,7 @@ def init_db():
                      'repair': "TEXT NOT NULL DEFAULT ''",
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'personality': "TEXT NOT NULL DEFAULT ''",
@@ -2922,7 +2922,9 @@ def index():
                      slot=slot_free(nxt, c['id']), days_ok=(day - c['rank_since_day']) >= promotion_wait_days(c))
     heirs = q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id", (c['id'],))
     maid_gap = 0 if c['status'] == 'cold' else maid_quota(c['rank']) - len(active_maids(c['id']))
-    return render_template('index.html', c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap,
+    unnamed_heirs = [h for h in heirs if not h['name']]
+    for h in unnamed_heirs: ensure_name_choices(h['id'])      # 老档里没点过字的，补上，提醒才有的选
+    return render_template('index.html', c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs,
                            sick=is_sick(c), eyes=eyes_active(c), secret=SECRETS[c['secret']], guide=guide_view(c),
                            day=day, PREGNANCY_DAYS=PREGNANCY_DAYS, tiles=map_tiles(c))
 
@@ -4994,6 +4996,78 @@ def maternal_kin(c, h):
     return bool(m and uid and consort_uid(m) == uid and m['reign_no'] == c['reign_no'])
 
 
+# ── 字辈与起名库（2026-10-06）：名字 = 本届字辈 + 皇上点的三个字里母亲选的一个 ────────────────────
+NAME_GENERATIONS = {   # 每一届一个字辈，儿子、女儿各排各的，按届数轮着用；孩子出生时就定下，之后换届也不变
+    '皇子': ['弘', '永', '绵', '奕', '载', '溥', '毓', '启'],
+    '公主': ['芳', '怡', '秀', '玲', '巧', '梅', '菱', '彤'],
+}
+NAME_CHOICES_N = 3
+NAME_CHARS = {
+    '皇子': {
+        '毅': '刚毅果敢', '渊': '学识渊博', '承': '承继基业', '睿': '明智通达', '恪': '恭谨敬事', '谨': '谨慎持重', '瑾': '怀瑾握瑜，品德如美玉',
+        '琮': '礼器，端方有度', '璋': '圭璋，品德高洁', '煦': '温暖和煦，待人宽厚', '晟': '光明兴盛', '昀': '日光，前程明朗', '琰': '美玉，才德出众',
+        '珩': '佩玉，庄重雅正', '泓': '水深而清，胸怀宽广', '瀚': '浩瀚无边，志向高远', '宸': '北辰所居，贵不可言', '衡': '权衡公平，持正不阿', '烨': '光辉灿烂',
+        '湛': '清澈深厚', '恒': '持之以恒', '邦': '国之根本', '肃': '严整端肃', '昭': '光明磊落', '铭': '铭记于心，不负所托', '谦': '谦和礼让', '博': '博闻广识',
+        '敏': '敏而好学', '嵘': '峥嵘，才干突出', '栋': '国之栋梁', '彦': '才德出众的贤士', '钧': '千钧之重，担得起事', '勋': '功勋卓著', '钦': '恭敬诚笃',
+        '翊': '辅佐护佑，家国之翼', '琛': '珍宝，贤能可贵', '焘': '光照天下', '诚': '至诚守信', '赫': '显赫威严', '岳': '山岳，稳重如山', '澈': '澄澈明净，心地坦荡',
+        '稷': '社稷，心系天下', '晔': '光明灿烂', '暄': '温暖明亮', '曜': '日月星辰之光，光耀门楣', '旻': '秋天，天道高远', '昱': '日光明亮', '晖': '日光，光辉普照',
+        '暻': '明亮，前路光明', '皓': '洁白光明，品行清白', '琅': '美玉相击，清朗有声', '瑜': '美玉，美德无瑕', '瑛': '玉的光彩，才华外露', '琨': '美玉，贵重高洁',
+        '璟': '玉的光彩，才德兼备', '珺': '美玉，君子之德', '玮': '珍奇美玉，才德珍贵', '琪': '美玉，品格高贵', '骁': '骏马，勇武善战', '骥': '千里马，志在千里',
+        '骏': '良马，才智出众', '驰': '奔驰，意气风发', '翰': '笔墨文章，文采斐然', '轩': '器宇轩昂', '峻': '高峻，品格崇高', '巍': '巍峨，气势雄伟',
+        '峰': '山峰，登高望远', '嵩': '高山，稳固崇高', '崇': '崇高，崇尚德行', '岱': '泰山，镇守一方', '屹': '屹立不倒', '霖': '及时甘雨，泽被万民',
+        '沛': '充沛，福泽丰厚', '淳': '淳朴敦厚', '澍': '及时雨，滋润万物', '渟': '水积而静，沉稳深邃', '泽': '恩泽，惠及后人', '洵': '诚信，确实可靠',
+        '济': '济世，救助天下', '仁': '仁厚爱人', '义': '重义守信', '礼': '知礼守节', '智': '睿智明达', '信': '诚信不欺', '忠': '忠诚不二', '孝': '孝顺恭敬',
+        '廉': '廉洁正直', '德': '品德高尚', '正': '端正不阿', '端': '端方正直', '朗': '开朗明达', '俊': '才智出众', '杰': '人中豪杰', '英': '英才卓越',
+        '威': '威严持重', '锐': '锐意进取', '勤': '勤勉不怠', '韬': '韬略，深谋远虑', '策': '筹谋善策', '谋': '深谋远虑',
+    },
+    '公主': {
+        '婉': '温婉贤淑', '嘉': '美好吉祥', '柔': '柔顺温和', '宁': '安宁康泰', '瑶': '美玉，珍贵无比', '琼': '美玉，高贵无瑕', '璇': '美玉，璇玑星辰',
+        '琬': '美玉，圭玉端庄', '玥': '传说中的神珠，稀世珍宝', '澜': '清波，从容舒展', '妍': '美丽聪慧', '姝': '容貌与品性皆美', '灵': '聪慧灵秀', '慧': '聪慧明理',
+        '淑': '贤淑善良', '懿': '美德，温柔贤善', '贞': '坚贞不移', '仪': '仪态端方', '徽': '美善，德行美好', '蕙': '香草，品性高洁', '兰': '幽兰，清雅脱俗',
+        '芷': '香草，芬芳清远', '莹': '晶莹剔透', '茹': '柔韧而有包容', '清': '清朗澄明', '雅': '文雅端庄', '宜': '和顺适宜', '安': '平安无虞', '福': '福泽绵长',
+        '禧': '吉祥喜庆', '静': '娴静从容', '珍': '被捧在掌心的珍宝', '琦': '美玉，奇异珍贵', '韵': '风雅有致', '黛': '青黛，眉目如画', '荣': '荣华昌盛',
+        '琳': '美玉，声如玉响', '岚': '山间云气，飘逸灵动', '蓉': '芙蓉，出水清丽', '娴': '文静优雅', '媛': '才貌兼备的佳人', '娜': '柔美婀娜', '婷': '美好秀丽',
+        '娇': '娇美可人', '妙': '美妙绝伦', '嫣': '笑靥美好', '姣': '容貌姣好', '婕': '美好，宫中女官之选', '嫱': '古时宫中女官，美丽高雅', '倩': '笑容美好',
+        '俪': '佳偶，相配成双', '佳': '美好', '欣': '欢欣喜悦', '悦': '愉悦安乐', '愉': '愉快从容', '怜': '怜爱，惹人疼惜', '愫': '真情实意', '慈': '慈爱温厚',
+        '惠': '恩惠，贤惠', '恬': '恬静安适', '宓': '安静，安然', '容': '从容大方', '如': '如意顺遂', '意': '称心如意', '心': '心地善良', '思': '思虑周到',
+        '念': '惦念，重情', '月': '月色皎洁', '星': '星辰璀璨', '晴': '晴朗明媚', '曦': '晨光熹微', '昕': '黎明，朝气', '旭': '朝阳初升', '暖': '温暖',
+        '霞': '彩霞满天', '虹': '彩虹，吉兆', '露': '晨露，晶莹', '雪': '洁白无瑕', '霜': '凌霜，坚韧', '梨': '梨花，洁白清雅', '桃': '桃花，艳丽',
+        '杏': '杏花，灿烂', '棠': '海棠，富贵', '荷': '荷花，出淤泥而不染', '莲': '莲花，高洁', '菊': '菊花，傲霜', '茉': '茉莉，清香', '莉': '茉莉，淡雅',
+        '薇': '蔷薇，美丽', '萱': '萱草，忘忧', '蕊': '花蕊，娇嫩', '蓓': '蓓蕾，含苞待放', '璐': '美玉，润泽', '璎': '珠玉串饰', '珊': '珊瑚，珍贵',
+        '珂': '玉石，洁白', '琴': '琴声，雅致', '笙': '乐器，悠扬', '箫': '洞箫，清远', '诗': '诗意盎然', '书': '书香门第', '画': '如画', '绣': '锦绣',
+        '锦': '锦绣前程', '绮': '华美', '纱': '轻柔', '缘': '缘分', '柳': '柳枝，柔韧',
+    },
+}
+
+def gen_word_for(reign_no, gender):
+    words = NAME_GENERATIONS[gender]
+    return words[(max(1, reign_no) - 1) % len(words)]
+
+def used_name_chars(gender, gen):
+    return {r['name'][len(gen):] for r in q("SELECT name FROM heirs WHERE gender=? AND gen_word=? AND name!=''", (gender, gen))}
+
+def roll_name_choices(h):
+    """皇上随机点三个字，同届同性别已经用过的字不再点"""
+    pool = list(NAME_CHARS[h['gender']])
+    used = used_name_chars(h['gender'], h['gen_word'])
+    gens = {w for ws in NAME_GENERATIONS.values() for w in ws}        # 任何一届、任何性别的字辈都不当名字点
+    avail = [ch for ch in pool if ch not in used and ch not in gens] or pool
+    return random.sample(avail, min(NAME_CHOICES_N, len(avail)))
+
+def get_heir(hid):
+    return q("SELECT * FROM heirs WHERE id=?", (hid,), one=True)
+
+def ensure_name_choices(hid):
+    h = get_heir(hid)
+    if not h or h['name'] or h['name_choices']: return
+    gen = h['gen_word'] or gen_word_for(state()['reign_no'], h['gender'])
+    run("UPDATE heirs SET gen_word=? WHERE id=?", (gen, hid))
+    run("UPDATE heirs SET name_choices=? WHERE id=?", (''.join(roll_name_choices(get_heir(hid))), hid))
+
+def name_choice_view(h):
+    """页面用：[(字, 寓意)]；没有待选的返回 []"""
+    return [(ch, NAME_CHARS[h['gender']].get(ch, '')) for ch in (h['name_choices'] or '')]
+
 def heir_label(h):
     if h['name']: return h['name']
     return f"{cn_ordinal(h['ordinal'])}阿哥" if h['gender'] == '皇子' else f"{cn_ordinal(h['ordinal'])}公主"
@@ -5010,18 +5084,23 @@ def heirs():
     if request.method == 'POST':
         try: hid = int(request.form.get('heir_id', 0))
         except ValueError: hid = 0
-        name = request.form.get('name', '').strip()
+        pick = request.form.get('pick', '').strip()
         h = q("SELECT * FROM heirs WHERE id=? AND mother_id=?", (hid, c['id']), one=True)
         if not h or h['name']:
             flash('名字已经定了，改不了。', 'bad')
-        elif not (2 <= len(name) <= 4):
-            flash('名字 2~4 个字。', 'bad')
-        elif blocked_hit('赐名', name):
-            flash(BLOCKED_MSG, 'bad')
+        elif pick not in (h['name_choices'] or ''):
+            flash('请从皇上点的三个字里选一个。', 'bad')
+        elif q("SELECT 1 FROM heirs WHERE gen_word=? AND name=?", (h['gen_word'], h['gen_word'] + pick), one=True):
+            flash('这个字刚被同辈的别人用了，重新点几个字吧。', 'bad')
+            run("UPDATE heirs SET name_choices='' WHERE id=?", (hid,))
+            ensure_name_choices(hid)
         else:
-            run("UPDATE heirs SET name=? WHERE id=?", (name, hid))
-            flash(f"皇上允了，赐名「{name}」。", 'good')
+            name = h['gen_word'] + pick
+            run("UPDATE heirs SET name=?, name_choices='' WHERE id=?", (name, hid))
+            flash(f"皇上允了，赐名「{name}」——{NAME_CHARS[h['gender']].get(pick, '')}。", 'good')
         return redirect(url_for('heirs'))
+    for mine in q("SELECT id FROM heirs WHERE mother_id=? AND name=''", (c['id'],)):
+        ensure_name_choices(mine['id'])      # 老档里没点过字的，补上
     rows = q("SELECT h.*, c.surname FROM heirs h LEFT JOIN consorts c ON c.id=h.mother_id ORDER BY h.id")
     day = cur_day()
     acts = {}
@@ -5052,7 +5131,7 @@ def heirs():
             a['battle_participant'] = c['id'] in (battle['challenger_id'],battle['defender_id'])
         if a: acts[h['id']] = a
     targets = entrust_candidates(c) if any(a.get('entrust') for a in acts.values()) else []
-    return render_template('heirs.html', c=c, rows=rows, get_consort=get_consort, acts=acts, targets=targets,
+    return render_template('heirs.html', c=c, rows=rows, get_consort=get_consort, acts=acts, targets=targets, name_choice_view=name_choice_view, cur_gen={g_: gen_word_for(state()['reign_no'], g_) for g_ in NAME_GENERATIONS},
                            ERRAND_APPROACHES=ERRAND_APPROACHES, MONGOL_LETTER_INTERVAL=MONGOL_LETTER_INTERVAL, CUSTODY_ACTIONS=CUSTODY_ACTIONS)
 
 # ── 皇嗣成长（九点六节 A~D：还没做成年、抚养关系博弈、夺嫡） ─────────────────────
@@ -7080,6 +7159,8 @@ def resolve_births(day, include_legacy=True):
                  clamp(random.randint(10, 30) + c['virtue'] * 0.1 + pre.get('virtue', 0), 0, 100),
                  clamp(60 + c['health'] * 0.1, 0, 100),
                  gifts['study'], gifts['riding'], gifts['virtue']))
+            hid = q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id']
+            ensure_name_choices(hid)
             born.append((f"{cn_ordinal(ordinal)}{'阿哥' if gender == '皇子' else '公主'}",
                          gift_text(dict(gift_study=gifts['study'], gift_riding=gifts['riding'], gift_virtue=gifts['virtue']))))
         run("UPDATE consorts SET pregnant_since=0, pregnancy_started_ts=0, prenatal='{}' WHERE id=?", (c['id'],))
@@ -7108,6 +7189,7 @@ def resolve_births(day, include_legacy=True):
         gazette(f"{display_name(c)}诞下{label}。{extra}资质：{gift_line}。", 'birth')
         notify(c['id'], f"你诞下了{label}。{extra}", 'good')
         notify(c['id'], f"请嬷嬷看了孩子的根骨：{gift_line}。", 'info')
+        notify(c['id'], "皇上为孩子点了几个字，去「子嗣」页挑一个定名，名字是本届字辈加你选的字。", 'info')
         night_mark(c['id'], 'birth', label=label, son='皇子' in genders)
 
 

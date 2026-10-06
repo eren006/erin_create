@@ -115,6 +115,9 @@
 <div class="state-conf">禁足中，第 {{ c.status_until_day }} 天夜里解禁。这几天出不了宫门，只能在自己宫里修习、保养、自省。</div>
 {% endif %}
 
+{% if unnamed_heirs %}
+<p class="state-conf" style="border-left:4px solid var(--zhu);padding-left:10px">你的{% for h in unnamed_heirs %}{{ heir_label(h) }}{{ '、' if not loop.last }}{% endfor %}还没有名字。皇上已经点了三个字，等你三选一。<a href="{{ url_for('heirs') }}">去子嗣页取名</a></p>
+{% endif %}
 {% if maid_gap > 0 %}
 <p class="state-conf">按{{ RANK_NAMES[c.rank] }}的份例，你宫里还能再添 {{ maid_gap }} 个宫人。<a href="{{ url_for('maids_page') }}">去内务府挑人</a></p>
 {% endif %}

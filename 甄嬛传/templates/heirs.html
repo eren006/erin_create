@@ -2,6 +2,7 @@
 {% block title %}子嗣{% endblock %}
 {% block body %}
 <h2>皇嗣</h2>
+<p class="muted">本届字辈：皇子「{{ cur_gen['皇子'] }}」、公主「{{ cur_gen['公主'] }}」。孩子出生时皇上随机点三个字，母亲三选一，名字就是字辈加这个字。</p>
 <p class="muted">侍寝后有机会怀上龙胎，诊出喜脉后满24小时自动临盆，孕中可查看进度、安胎和胎教。诞下皇子的母亲在有名额时晋一级位分。孕中要当心，宫里不是人人都盼着你平安生产。</p>
 {% if rows %}
 <div class="scroll"><table>
@@ -15,8 +16,11 @@
     <td>{{ heir_age_years(h) }} 岁{% if h.status=='crown' %}<br><span class="muted">太子</span>{% elif h.status=='deposed' %}<br><span class="muted">废黜圈禁</span>{% endif %}{% if h.title %}<br><span class="muted">{{ h.title }}{% if h.marriage=='capital' %}·留京{% elif h.marriage=='mongol' %}·抚蒙古{% endif %}</span>{% elif h.marriage=='choice' %}<br><span class="muted">待指婚</span>{% endif %}</td>
     <td>{{ h.study }}/{{ h.riding }}/{{ h.virtue }}/{{ h.health }}</td>
     <td>{{ h.caretaker_affinity }}{% if fo and fo.id != h.mother_id %}<span class="muted">（生母 {{ h.mother_affinity }}）</span>{% endif %}</td>
-    <td>{% if h.mother_id == c.id and not h.name %}
-      <form method="post" class="row"><input type="hidden" name="heir_id" value="{{ h.id }}"><input name="name" maxlength="4" placeholder="取名" style="width:100px" aria-label="名字"><button class="plain">请皇上赐名</button></form>
+    <td>{% if h.mother_id == c.id and not h.name %}{% set gen = h.gen_word or cur_gen[h.gender] %}
+      <div class="muted" style="font-size:13px;margin-bottom:4px">字辈「{{ gen }}」，皇上点了三个字，选一个：</div>
+      <form method="post" class="row" style="gap:6px;flex-wrap:wrap"><input type="hidden" name="heir_id" value="{{ h.id }}">
+        {% for ch, meaning in name_choice_view(h) %}<button class="plain" name="pick" value="{{ ch }}" title="{{ meaning }}" style="text-align:left"><b style="font-family:var(--kai);font-size:17px">{{ gen }}{{ ch }}</b><br><span class="muted" style="font-size:12px">{{ meaning }}</span></button>{% endfor %}
+      </form>
     {% endif %}
     {% set a = acts.get(h.id) %}{% if a %}
       {% if a.entrust %}
