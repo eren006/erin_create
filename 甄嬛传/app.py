@@ -1479,7 +1479,7 @@ def init_db():
                      'repair': "TEXT NOT NULL DEFAULT ''",
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'personality': "TEXT NOT NULL DEFAULT ''",
@@ -1592,6 +1592,7 @@ def init_db():
     seed_npcs(db)
     seed_npc_heirs(db)
     migrate_no_clean_secret(db)
+    migrate_heir_looks(db)
     db.commit()
     db.close()
     with app.app_context():
@@ -5427,6 +5428,53 @@ def roll_name_choices(h):
     avail = [ch for ch in pool if ch not in used and ch not in gens] or pool
     return random.sample(avail, min(NAME_CHOICES_N, len(avail)))
 
+# ── 皇嗣的容貌与气质（2026-10-07）：容貌随母亲；气质按容貌分档，每 20 点一档，每档 10 种里随机给一种 ──────────
+TEMPER_TIERS = [      # 容貌 0～19 / 20～39 / 40～59 / 60～79 / 80 以上
+    [('朴拙', '不事雕琢，一派天然'), ('木讷', '话不多，凡事慢半拍'), ('怯生', '见了生人先往后躲'), ('憨直', '想什么说什么'), ('孩子气', '没长大似的，笑起来很甜'),
+     ('清瘦', '身形单薄，眉眼安静'), ('淡泊', '与世无争的样子'), ('沉默', '一整天说不了几句话'), ('粗朴', '手脚结实，不爱打扮'), ('笨拙可爱', '做什么都慢吞吞，反倒招人疼')],
+    [('平和', '脾气好，从不与人争执'), ('安静', '坐得住，一本书能看半天'), ('本分', '规规矩矩，从不惹事'), ('憨厚', '实在，人缘不坏'), ('温吞', '凡事不急不躁'),
+     ('拘谨', '在人前放不开'), ('敦实', '身板结实，看着就让人放心'), ('素净', '衣着朴素，不爱艳色'), ('质朴', '不懂修饰，却很真诚'), ('腼腆', '一说话就脸红')],
+    [('端庄', '坐有坐相，站有站相'), ('清秀', '眉目干净，看着舒服'), ('斯文', '谈吐有礼，一身书卷气'), ('伶俐', '眼珠一转就是主意'), ('从容', '遇事不慌，自有章法'),
+     ('爽朗', '笑声敞亮，没有心事'), ('稳重', '小小年纪就沉得住气'), ('灵动', '一双眼睛会说话'), ('温雅', '举止温和有度'), ('大方', '落落大方，不怯场')],
+    [('俊逸', '身姿挺拔，神采飞扬'), ('明艳', '往那儿一站就亮堂'), ('秀雅', '清雅脱俗，不落俗套'), ('飒爽', '利落干脆，英气逼人'), ('清贵', '眉宇间自带一份矜贵'),
+     ('娴静', '安安静静，却叫人移不开眼'), ('灵秀', '聪明漂亮，天生的好模样'), ('风流', '举手投足都有韵致'), ('温润', '如玉一般，让人想亲近'), ('挺拔', '站如青松，一看就是好苗子')],
+    [('倾城', '一出现满座皆静'), ('绝尘', '清冷出尘，不似凡人'), ('惊鸿', '惊鸿一瞥，难以忘怀'), ('风华', '举手投足皆是风采'), ('璧人', '如玉如璧，人见人夸'),
+     ('天人之姿', '宫里人都说是画里走出来的'), ('芳华', '灼灼其华，明媚照人'), ('瑶光', '像天上的星子，亮得晃眼'), ('凤仪', '自有一股母仪天下的气度'), ('龙章', '龙章凤姿，将来必成大器')],
+]
+TEMPER_STEP = 20
+
+def temper_tier_of(appearance):
+    return max(0, min(len(TEMPER_TIERS) - 1, int(appearance) // TEMPER_STEP))
+
+def roll_temperament(appearance):
+    return random.choice(TEMPER_TIERS[temper_tier_of(appearance)])[0]
+
+def temper_desc(name):
+    for tier in TEMPER_TIERS:
+        for n, d in tier:
+            if n == name: return d
+    return ''
+
+def refresh_temperament(hid):
+    """容貌变了、跨了档就在新档里重新随机一种气质；没跨档不动。出生时和老档补齐都走这里"""
+    h = get_heir(hid)
+    if not h: return
+    tier = temper_tier_of(h['appearance'])
+    if h['temper_tier'] == tier and h['temperament']: return
+    run("UPDATE heirs SET temper_tier=?, temperament=? WHERE id=?", (tier, roll_temperament(h['appearance']), hid))
+
+def set_heir_appearance(hid, value):
+    run("UPDATE heirs SET appearance=? WHERE id=?", (clamp(int(value), 0, 100), hid))
+    refresh_temperament(hid)
+
+def migrate_heir_looks(db):
+    """老档里的皇嗣补上容貌（随母亲）和气质"""
+    for hid, mother in db.execute("SELECT id, mother_id FROM heirs WHERE temper_tier=-1").fetchall():
+        row = db.execute("SELECT appearance FROM consorts WHERE id=?", (mother,)).fetchone() if mother else None
+        app_ = clamp(int((row[0] if row else 40) * 0.7) + random.randint(-8, 8), 5, 100)
+        db.execute("UPDATE heirs SET appearance=?, temper_tier=?, temperament=? WHERE id=?",
+                   (app_, temper_tier_of(app_), roll_temperament(app_), hid))
+
 def get_heir(hid):
     return q("SELECT * FROM heirs WHERE id=?", (hid,), one=True)
 
@@ -5447,6 +5495,7 @@ def heir_label(h):
 
 app.jinja_env.globals['heir_label'] = heir_label
 app.jinja_env.globals['treat_cost'] = treat_cost
+app.jinja_env.globals['temper_desc'] = temper_desc
 app.jinja_env.globals['shop_price'] = shop_price
 app.jinja_env.globals['cn_ordinal'] = cn_ordinal
 app.jinja_env.globals['TIER_OFFICE_TEXT'] = {k: FAMILY_CAREER_TITLES[k][TIER_OFFICE[k]] for k in TIER_JOB}
@@ -7543,7 +7592,9 @@ def resolve_births(day, include_legacy=True):
                  gifts['study'], gifts['riding'], gifts['virtue']))
             hid = q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id']
             ensure_name_choices(hid)
-            born_ids.append(q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id'])
+            hid_new = q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id']
+            born_ids.append(hid_new)
+            set_heir_appearance(hid_new, c['appearance'] * 0.7 + random.randint(-8, 8))      # 容貌随母亲，气质按容貌分档随机
             born.append((f"{heir_rank_word(ordinal)}{'阿哥' if gender == '皇子' else '公主'}",
                          gift_text(dict(gift_study=gifts['study'], gift_riding=gifts['riding'], gift_virtue=gifts['virtue']))))
         run("UPDATE consorts SET pregnant_since=0, pregnancy_started_ts=0, prenatal='{}' WHERE id=?", (c['id'],))

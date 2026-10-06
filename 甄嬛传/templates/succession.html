@@ -65,7 +65,7 @@
 <h3>皇嗣养育所</h3>
 {% for h in orphans %}
 <div class="sheet" style="margin:8px 0">
-  <b style="font-family:var(--kai)">{{ heir_label(h) }}</b>　{{ heir_age_years(h) }} 岁　学问 {{ h.study }}　骑射 {{ h.riding }}　品行 {{ h.virtue }}
+  <b style="font-family:var(--kai)">{{ heir_label(h) }}</b>　{{ heir_age_years(h) }} 岁　学问 {{ h.study }}　骑射 {{ h.riding }}　品行 {{ h.virtue }}　容貌 {{ h.appearance }}{% if h.temperament %}　气质 {{ h.temperament }}{% endif %}
   <span class="muted">由乳母和师傅照料，嫔位以上可申请领养；无申请时继续留所。</span>
   {% if h.id in my_claims %}<span class="muted">你已求过，等今晚皇上定夺。</span>
   {% elif c.rank >= 5 %}<form method="post" action="{{ url_for('succession_claim', hid=h.id) }}" style="display:inline"><button class="plain">申请领养（1 精力）</button></form>
