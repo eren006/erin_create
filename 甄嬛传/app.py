@@ -126,14 +126,15 @@ def entry_stat_roll(uid):
     return json.loads(account['stat_roll'])
 
 
-def gain_intrigue_influence(it, fraction=1.0):
-    atk,tgt=get_consort(it['attacker_id']),get_consort(it['target_id'])
+def gain_intrigue_influence(it, fraction=1.0, share=1.0, actor_id=None):
+    atk,tgt=get_consort(actor_id or it['attacker_id']),get_consort(it['target_id'])
     if not atk or not tgt or not atk['user_id'] or not tgt['user_id'] or atk['id']==tgt['id']: return
     if it['method']=='drug' and it['drug']=='chunxin': return
     key=f"influence_target:{tgt['id']}"
     if daily_count(atk['id'],key): return
     gain=INFLUENCE_GAINS.get(it['method'],0)
     if fraction < 1 and gain: gain=max(1,round(gain*fraction))
+    if share < 1 and gain: gain=max(1,round(gain*share))   # 合谋：两人分这份势力
     if gain:
         run('UPDATE consorts SET influence=influence+? WHERE id=?',(gain,atk['id']))
         daily_inc(atk['id'],key)
@@ -514,6 +515,34 @@ INTRIGUES = {
 }
 INTRIGUE_TARGET_DAILY_MAX = 2
 LEGACY_INTRIGUE_NAMES = dict(lethal='毒害', poison='暗下麝香')
+
+# ── 合谋（2026-10-06）：一人发起、另一人确认；确认前不扣任何东西 ───────────────────────────────
+CONSPIRE_BONUS = 0.20          # 合谋双方成功率各 +20%，仍受 85% 上限
+CONSPIRE_AFFINITY_MIN = 60     # 好感必须大于这个数
+CONSPIRE_COST_RATIO = 1.5      # 每人各付单人价的 1.5 倍
+CONSPIRE_INVITE_SECONDS = 24 * 3600   # 邀请 1 天内不确认就作废
+CONSPIRE_METHODS = ('rumor', 'steal', 'frame', 'expose', 'witch', 'punish')   # 下药另有案子系统，暂不支持合谋
+
+def conspire_cost(cfg):
+    return int(round(cfg['silver'] * CONSPIRE_COST_RATIO))
+
+def conspire_affinity(a_id, b_id):
+    rel = relation(a_id, b_id)
+    return rel['affinity'] if rel else 0
+
+def conspire_partner_block(c, p, cfg, tgt, day):
+    """合伙人这一头够不够格；发起时和确认时都要查"""
+    if not p or not p['user_id'] or p['id'] == c['id'] or p['id'] == tgt['id']: return '这个人不能当合谋的伙伴。'
+    if p['status'] != 'normal' or is_sick(p): return f"{display_name(p)}眼下顾不上这件事。"
+    if p['rank'] < cfg['min_rank']: return f"{display_name(p)}位分不够，使不动「{cfg['name']}」。"
+    if conspire_affinity(c['id'], p['id']) <= CONSPIRE_AFFINITY_MIN: return f"你和{display_name(p)}的交情还不够，好感要超过 {CONSPIRE_AFFINITY_MIN} 才能合谋。"
+    if daily_count(p['id'], 'intrigue') >= 1: return f"{display_name(p)}今天已经另有谋划了。"
+    if p['energy'] < cfg['energy']: return f"{display_name(p)}精力不够。"
+    if p['silver'] < conspire_cost(cfg): return f"{display_name(p)}银子不够，合谋每人要 {conspire_cost(cfg)} 两。"
+    return None
+
+def expire_conspire_invites():
+    run("UPDATE intrigues SET status='expired' WHERE status='invited' AND created_ts < ?", (now_ts() - CONSPIRE_INVITE_SECONDS,))
 
 def intrigue_label(it):
     if it['method'] == 'drug' and it['drug'] in DRUGS:
@@ -1388,7 +1417,8 @@ def init_db():
         'cases': {'victim_trust_loss': 'INTEGER NOT NULL DEFAULT 15','convicted_id': 'INTEGER NOT NULL DEFAULT 0', 'wrongful': 'INTEGER NOT NULL DEFAULT 0',
                   'appeal_ready_day': 'INTEGER NOT NULL DEFAULT 0'},
         'intrigues': {'resolved_ts': 'REAL NOT NULL DEFAULT 0','drug': "TEXT NOT NULL DEFAULT ''",
-                      'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0'},
+                      'agent_maid_id': 'INTEGER NOT NULL DEFAULT 0',
+                      'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'partner_silver': 'INTEGER NOT NULL DEFAULT 0'},
         'letters': {'hobby_item_id': 'INTEGER NOT NULL DEFAULT 0',
                     'is_broadcast': 'INTEGER NOT NULL DEFAULT 0',
                     'broadcast_id': 'INTEGER NOT NULL DEFAULT 0',
@@ -3357,7 +3387,7 @@ BLESSING_SURVIVE_DIV, BLESSING_SURVIVE_MAX = 500, 0.15    # 福报每 5 点，�
 def is_quiet(c, day=None):
     """躺平：这五天没有对人使过计"""
     day = cur_day() if day is None else day
-    return not q("SELECT 1 FROM intrigues WHERE attacker_id=? AND day>=?", (c['id'], day - QUIET_DAYS), one=True)
+    return not q("SELECT 1 FROM intrigues WHERE (attacker_id=? OR partner_id=?) AND status NOT IN ('invited','declined','expired') AND day>=?", (c['id'], c['id'], day - QUIET_DAYS), one=True)
 
 
 def blessing_survive_bonus(c):
@@ -4281,10 +4311,14 @@ def intrigue_targets(c):
 def intrigue():
     c = g.me
     day = cur_day()
-    mine = q("SELECT * FROM intrigues WHERE attacker_id=? ORDER BY id DESC LIMIT 15", (c['id'],))
+    expire_conspire_invites()
+    mine = q("SELECT * FROM intrigues WHERE attacker_id=? OR (partner_id=? AND status NOT IN ('invited','declined','expired')) ORDER BY id DESC LIMIT 15", (c['id'], c['id']))
+    invites = q("SELECT * FROM intrigues WHERE partner_id=? AND status='invited' ORDER BY id DESC", (c['id'],))
+    partners = [p for p in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status='normal' ORDER BY rank DESC", (c['id'],)) if conspire_affinity(c['id'], p['id']) > CONSPIRE_AFFINITY_MIN]
     known = q("""SELECT k.target_id, c.secret, c.secret_revealed FROM known_secrets k
                  JOIN consorts c ON c.id=k.target_id WHERE k.knower_id=?""", (c['id'],))
-    return render_template('intrigue.html', c=c, targets=intrigue_targets(c), INTRIGUES=INTRIGUES, mine=mine,
+    return render_template('intrigue.html', c=c, targets=intrigue_targets(c), INTRIGUES=INTRIGUES, mine=mine, invites=invites, partners=partners,
+                           CONSPIRE_METHODS=CONSPIRE_METHODS, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, conspire_cost=conspire_cost,
                            known=known, SECRETS=SECRETS, day=day, get_consort=get_consort,
                            used_today=daily_count(c['id'], 'intrigue'), inventory={k: inv_qty(c['id'], k) for k in (*ITEMS, *DRUGS)}, agents=drug_agents(c['id']))
 
@@ -4305,6 +4339,9 @@ def intrigue_submit():
     drug = request.form.get('effect', '') if used == 'wuming' else used
     try: mid = int(request.form.get('agent_maid_id', 0))
     except ValueError: mid = -1
+    try: pid = int(request.form.get('partner_id', 0))
+    except ValueError: pid = 0
+    partner = get_consort(pid) if pid else None
     if not cfg: err = '选一个计策。'
     elif c['status'] != 'normal': err = '你自身难保，先顾好自己吧。'
     elif is_sick(c): err = '你病着，没力气算计别人。'
@@ -4330,8 +4367,19 @@ def intrigue_submit():
         err = '她今晚本就侍不了寝。'
     elif method == 'punish':
         err = punish_block(c, t, day)
+    if not err and pid:
+        if method not in CONSPIRE_METHODS: err = '这件事不能合谋。'
+        elif c['silver'] < conspire_cost(cfg): err = f"合谋每人要 {conspire_cost(cfg)} 两，你的银子不够。"
+        elif q("SELECT 1 FROM intrigues WHERE attacker_id=? AND status='invited'", (c['id'],), one=True): err = '你已有一份合谋邀请在等对方回话。'
+        else: err = conspire_partner_block(c, partner, cfg, t, day)
     if err:
         flash(err, 'bad')
+        return redirect(url_for('intrigue'))
+    if pid:   # 合谋：只发邀请，对方点头后双方才扣银子、精力和今天的谋划名额
+        run("""INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts, status, partner_id)
+               VALUES (?,?,?,?,0,'',?,'invited',?)""", (day, c['id'], tid, method, now_ts(), pid))
+        notify(pid, f"{display_name(c)}邀你合谋对{display_name(t)}「{cfg['name']}」：成算各 +{int(CONSPIRE_BONUS*100)}%，每人 {conspire_cost(cfg)} 两，败露两人一起受罚。去「使计」页回话，一天内有效。", 'info')
+        flash(f"已把合谋的意思递给{display_name(partner)}，等她点头；一天内不回话就作废，期间不扣你的银子。", 'info')
         return redirect(url_for('intrigue'))
     run("UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?", (cfg['energy'], cfg['silver'], c['id']))
     if cfg.get('item'): inv_add(c['id'], cfg['item'], -1)
@@ -4347,13 +4395,66 @@ def intrigue_submit():
     flash(f"已安排下去。{next_settle_text()} 见分晓。", 'info')
     return redirect(url_for('intrigue'))
 
+@app.route('/intrigue/conspire/<int:iid>/<action>', methods=['POST'])
+@login_required
+def intrigue_conspire(iid, action):
+    c = g.me
+    day = cur_day()
+    expire_conspire_invites()
+    it = q("SELECT * FROM intrigues WHERE id=? AND partner_id=? AND status='invited'", (iid, c['id']), one=True)
+    if not it:
+        flash('这份合谋的邀请已经没有了。', 'bad')
+        return redirect(url_for('intrigue'))
+    a, t, cfg = get_consort(it['attacker_id']), get_consort(it['target_id']), INTRIGUES[it['method']]
+    if action == 'decline':
+        run("UPDATE intrigues SET status='declined' WHERE id=?", (iid,))
+        notify(a['id'], f"{display_name(c)}婉拒了合谋对{display_name(t)}「{cfg['name']}」的提议。", 'info')
+        flash('你回绝了。', 'info')
+        return redirect(url_for('intrigue'))
+    if action != 'accept':
+        flash('请选择回话。', 'bad')
+        return redirect(url_for('intrigue'))
+    err = None
+    if c['status'] != 'normal' or is_sick(c): err = '你眼下顾不上这件事。'
+    elif a['status'] != 'normal' or is_sick(a): err = f"{display_name(a)}眼下顾不上这件事。"
+    elif t['status'] in ('xiunv', 'cold', 'dead'): err = '这个人已经不能当目标了。'
+    elif daily_count(a['id'], 'intrigue') >= 1: err = f"{display_name(a)}今天已经另有谋划了。"
+    elif a['energy'] < cfg['energy']: err = f"{display_name(a)}精力不够了。"
+    elif a['silver'] < conspire_cost(cfg): err = f"{display_name(a)}银子不够了。"
+    elif q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'", (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
+        err = '今天盯着她的人已经够多了，换个日子吧。'
+    elif it['method'] == 'expose' and (t['secret_revealed'] or t['secret'] == 'none'): err = '这件事已经没有可告发的了。'
+    elif it['method'] == 'steal' and (t['pregnant_since'] or is_sick(t)): err = '她今晚本就侍不了寝。'
+    elif it['method'] == 'punish': err = punish_block(a, t, day)
+    if not err: err = conspire_partner_block(a, c, cfg, t, day)
+    if err:
+        flash(err, 'bad')
+        return redirect(url_for('intrigue'))
+    cost = conspire_cost(cfg)
+    for x in (a, c):
+        run("UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?", (cfg['energy'], cost, x['id']))
+        daily_inc(x['id'], 'intrigue')
+    if it['method'] == 'punish': run('UPDATE consorts SET punish_ready_day=? WHERE id=?', (day + PUNISH_COOLDOWN, a['id']))
+    run("UPDATE intrigues SET status='pending', day=?, silver_paid=?, partner_silver=?, created_ts=? WHERE id=?", (day, cost, cost, now_ts(), iid))
+    notify(a['id'], f"{display_name(c)}答应了合谋：对{display_name(t)}的「{cfg['name']}」已安排下去，你们各付了 {cost} 两。", 'good')
+    flash(f"应下了。{next_settle_text()} 见分晓，你付了 {cost} 两。", 'info')
+    return redirect(url_for('intrigue'))
+
 @app.route('/intrigue/cancel/<int:iid>', methods=['POST'])
 @login_required
 def intrigue_cancel(iid):
     c = g.me
+    inv = q("SELECT * FROM intrigues WHERE id=? AND attacker_id=? AND status='invited'", (iid, c['id']), one=True)
+    if inv:
+        run("UPDATE intrigues SET status='cancelled' WHERE id=?", (iid,))
+        flash('合谋的邀请收回了，没有扣你任何东西。', 'info')
+        return redirect(url_for('intrigue'))
     it = q("SELECT * FROM intrigues WHERE id=? AND attacker_id=? AND status='pending'", (iid, c['id']), one=True)
     if it:
         run("UPDATE intrigues SET status='cancelled' WHERE id=?", (iid,))
+        if it['partner_id'] and it['partner_silver']:
+            add_silver(it['partner_id'], it['partner_silver'])
+            notify(it['partner_id'], f"{display_name(c)}把这回的合谋撤了，你付的银子退还了，精力和今天的名额回不来。", 'info')
         add_silver(c['id'], it['silver_paid'])
         if it['item_used']: inv_add(c['id'], it['item_used'], 1)
         flash('你把人叫了回来，银子和东西收回了，花掉的精力回不来。', 'info')
@@ -6326,7 +6427,7 @@ def heir_event_choose():
 
 # ── 每晚结算 ───────────────────────────────────────────────────────────────────
 
-def intrigue_success_p(atk, tgt, cfg):
+def intrigue_success_p(atk, tgt, cfg, conspired=False):
     p = cfg['base'] + (atk['scheme'] - tgt['scheme']) * 0.008
     if atk['personality'] == 'deep': p += 0.05
     if eyes_active(tgt): p -= 0.12
@@ -6345,6 +6446,7 @@ def intrigue_success_p(atk, tgt, cfg):
         if bond(tgt['id'], 'huanghou') >= BOND_CLOSE: p -= BOND_HUANGHOU_GUARD
         if bond(tgt['id'], 'huafei') >= BOND_INTIMATE: p -= BOND_HUAFEI_GUARD
     if atk['user_id'] and bond(atk['id'], 'caoguiren') >= BOND_INTIMATE: p += BOND_CAO_BOOST
+    if conspired: p += CONSPIRE_BONUS
     return max(0.08, min(0.85, p))
 
 def intrigue_caught_p(atk, tgt):
@@ -6362,6 +6464,13 @@ def resolve_intrigue(it, bed_id=None):
     atk, tgt = get_consort(it['attacker_id']), get_consort(it['target_id'])
     an, tn = display_name(atk), display_name(tgt)
     new_bed = None
+    partner = get_consort(it['partner_id']) if 'partner_id' in it.keys() and it['partner_id'] else None
+    conspired = bool(partner and partner['status'] == 'normal' and not is_sick(partner)
+                     and conspire_affinity(atk['id'], partner['id']) > CONSPIRE_AFFINITY_MIN)
+    if partner and not conspired:   # 伙伴临阵出了岔子或交情淡了：合谋作废，按单人判定，钱不退
+        for x in (atk, partner):
+            notify(x['id'], f"{display_name(atk)}与{display_name(partner)}对{tn}的合谋临阵出了岔子（有人顾不上，或交情不够了），只能按单人算，成算没有加成。", 'info')
+    if conspired: an = f"{an}、{display_name(partner)}"
 
     def done(result):
         run("UPDATE intrigues SET status='done', result=? WHERE id=?", (result, it['id']))
@@ -6387,9 +6496,9 @@ def resolve_intrigue(it, bed_id=None):
         return done('void')
     tell_name = eyes_active(tgt)
     if it['method'] == 'expose':
-        success, caught = random.random() < intrigue_success_p(atk, tgt, cfg), True
+        success, caught = random.random() < intrigue_success_p(atk, tgt, cfg, conspired), True
     else:
-        success = random.random() < intrigue_success_p(atk, tgt, cfg)
+        success = random.random() < intrigue_success_p(atk, tgt, cfg, conspired)
         caught = (not success) and random.random() < intrigue_caught_p(atk, tgt)
 
     if success:
@@ -6463,48 +6572,62 @@ def resolve_intrigue(it, bed_id=None):
                      (f"眼线说，是{an}的人动的手。" if tell_name else '')
             gz = f"{tn}宫中搜出巫蛊之物，皇上大怒，废为庶人，打入冷宫。"
         if tgt['user_id']: notify(tgt['id'], victim, 'bad')
-        if atk['user_id']: notify(atk['id'], f"你对{tn}的「{cfg['name']}」成了。", 'good')
+        if atk['user_id']: notify(atk['id'], f"你{'与' + display_name(partner) + '合谋' if conspired else ''}对{tn}的「{cfg['name']}」成了。", 'good')
+        if conspired: notify(partner['id'], f"你与{display_name(atk)}合谋对{tn}的「{cfg['name']}」成了。", 'good')
         if gz: gazette(gz, 'scandal')
-        gain_intrigue_influence(it)
+        if conspired:
+            gain_intrigue_influence(it, share=0.5)
+            gain_intrigue_influence(it, share=0.5, actor_id=partner['id'])
+        else:
+            gain_intrigue_influence(it)
         return done('success')
 
     if caught:
         mood_extra = state()['emperor_mood'] == '震怒'
         m = it['method']
-        if m == 'lethal':
-            send_to_cold(atk['id'])
-            pen = '毒害败露，废位并打入冷宫'
-        elif m == 'rumor':
-            add_stat(atk['id'], 'virtue', -5); cut_favor(atk['id'], 0.1)
-            pen = '德行 -5，圣宠 -10%'
-        elif m == 'frame':
-            confine(atk['id'], CONFINE_DAYS); cut_favor(atk['id'], 0.15)
-            pen = f'禁足 {CONFINE_DAYS} 天，圣宠 -15%'
-        elif m == 'poison':
-            if atk['rank'] > 1: set_rank(atk['id'], atk['rank'] - 1)
-            confine(atk['id'], 3)
-            pen = '降一级位分，禁足 3 天'
-        elif m == 'steal':
-            cut_favor(atk['id'], 0.15); confine(atk['id'], 1)
-            pen = '圣宠 -15%，禁足 1 天'
-        elif m == 'expose':
-            add_stat(atk['id'], 'virtue', -8); cut_favor(atk['id'], 0.15)
-            pen = '德行 -8，圣宠 -15%'
-        elif m == 'punish':
-            add_stat(atk['id'], 'virtue', -8)
-            pen = '德行 -8'
-        else:  # witch
-            send_to_cold(atk['id'])
-            pen = '打入冷宫'
-        if mood_extra and m != 'witch':
-            cut_favor(atk['id'], 0.1); pen += '（皇上正在气头上，圣宠再 -10%）'
-        if atk['user_id']:
-            tloss = 10 if m in ('expose', 'punish') else 15
-            add_trust(atk['id'], -tloss)
-            bond_caught_huanghou(atk['id'])
-            pen += f'，信任 -{tloss}'
-            night_mark(atk['id'], 'caught')
-        if atk['user_id']: notify(atk['id'], f"你对{tn}的「{cfg['name']}」败露了。{pen}。", 'bad')
+
+        def punish_for(a):
+            """败露的惩罚落到 a 头上，返回写给她的说明"""
+            if m == 'lethal':
+                send_to_cold(a['id'])
+                pen = '毒害败露，废位并打入冷宫'
+            elif m == 'rumor':
+                add_stat(a['id'], 'virtue', -5); cut_favor(a['id'], 0.1)
+                pen = '德行 -5，圣宠 -10%'
+            elif m == 'frame':
+                confine(a['id'], CONFINE_DAYS); cut_favor(a['id'], 0.15)
+                pen = f'禁足 {CONFINE_DAYS} 天，圣宠 -15%'
+            elif m == 'poison':
+                if a['rank'] > 1: set_rank(a['id'], a['rank'] - 1)
+                confine(a['id'], 3)
+                pen = '降一级位分，禁足 3 天'
+            elif m == 'steal':
+                cut_favor(a['id'], 0.15); confine(a['id'], 1)
+                pen = '圣宠 -15%，禁足 1 天'
+            elif m == 'expose':
+                add_stat(a['id'], 'virtue', -8); cut_favor(a['id'], 0.15)
+                pen = '德行 -8，圣宠 -15%'
+            elif m == 'punish':
+                add_stat(a['id'], 'virtue', -8)
+                pen = '德行 -8'
+            else:  # witch
+                send_to_cold(a['id'])
+                pen = '打入冷宫'
+            if mood_extra and m != 'witch':
+                cut_favor(a['id'], 0.1); pen += '（皇上正在气头上，圣宠再 -10%）'
+            if a['user_id']:
+                tloss = 10 if m in ('expose', 'punish') else 15
+                add_trust(a['id'], -tloss)
+                bond_caught_huanghou(a['id'])
+                pen += f'，信任 -{tloss}'
+                night_mark(a['id'], 'caught')
+            return pen
+
+        pen = punish_for(atk)
+        if atk['user_id']: notify(atk['id'], f"你{'与' + display_name(partner) + '合谋' if conspired else ''}对{tn}的「{cfg['name']}」败露了。{pen}。", 'bad')
+        if conspired:
+            pen_p = punish_for(partner)
+            notify(partner['id'], f"你与{display_name(atk)}合谋对{tn}的「{cfg['name']}」败露了。{pen_p}。", 'bad')
         if tgt['user_id']: notify(tgt['id'], f"{an}想对你「{cfg['name']}」，被当场拿住。", 'good')
         if m == 'expose':
             gazette(f"{an}在御前告发{tn}，查无实据，皇上斥其搬弄是非。", 'scandal')
@@ -6512,10 +6635,15 @@ def resolve_intrigue(it, bed_id=None):
             gazette(f"{an}意图{cfg['name']}{tn}，事情败露。{pen}。", 'scandal')
         return done('caught')
 
-    if atk['user_id']: notify(atk['id'], f"你对{tn}的「{cfg['name']}」没成，好在没人察觉。")
+    if atk['user_id']: notify(atk['id'], f"你{'与' + display_name(partner) + '合谋' if conspired else ''}对{tn}的「{cfg['name']}」没成，好在没人察觉。")
+    if conspired: notify(partner['id'], f"你与{display_name(atk)}合谋对{tn}的「{cfg['name']}」没成，好在没人察觉。")
     if it['method'] == 'punish' and tgt['user_id']:
         notify(tgt['id'], f"{an}想找由头发落你宫里的人，被你挡了回去。")
-    gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION)
+    if conspired:
+        gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION, share=0.5)
+        gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION, share=0.5, actor_id=partner['id'])
+    else:
+        gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION)
     return done('fizzle')
 
 def npc_schemes(day):
@@ -7402,7 +7530,7 @@ def help_page():
                            PROMOTE_VIRTUE=PROMOTE_VIRTUE, MAID_QUOTA=MAID_QUOTA, MAID_WAGE=MAID_WAGE,
                            diet_norm={r: diet_cost(r, 'normal') for r in range(1, 10)}, DIETS=DIETS, DIET_RATIO=DIET_RATIO,
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
-                           FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
+                           FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
                            HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, CONFINE_DAYS=CONFINE_DAYS,
                            COLD_DAYS=COLD_DAYS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_DAYS=PREGNANCY_DAYS,
                            settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,

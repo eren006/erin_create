@@ -14,6 +14,17 @@
 <h2>使计</h2><p><a href="{{ url_for('drug_cases') }}">去慎刑司查案</a>　<a href="{{ url_for('agents_page') }}">打点宫人</a></p>
 <p class="muted">一天只能谋划一件事，今夜翻牌子前统一见分晓。对方心计越高、有眼线、有姐妹护着，越难得手；失手还可能被当场拿住。</p>
 
+{% if invites %}
+<h3>收到的合谋邀请</h3>
+{% for iv in invites %}{% set a = get_consort(iv.attacker_id) %}{% set tg = get_consort(iv.target_id) %}{% set cf = INTRIGUES[iv.method] %}
+<div class="sheet" style="margin-bottom:10px">
+  <p style="margin:0 0 6px">{{ dn(a) }}邀你合谋对{{ dn(tg) }}「{{ cf.name }}」：成算各 +{{ (CONSPIRE_BONUS*100)|int }}%，你要付 {{ conspire_cost(cf) }} 两{% if cf.energy %}、精力 {{ cf.energy }}{% endif %}，还要占今天的谋划名额；败露两人一起受罚。</p>
+  <form method="post" action="{{ url_for('intrigue_conspire', iid=iv.id, action='accept') }}" style="display:inline-block"><button>答应</button></form>
+  <form method="post" action="{{ url_for('intrigue_conspire', iid=iv.id, action='decline') }}" style="display:inline-block"><button class="plain">婉拒</button></form>
+</div>
+{% endfor %}
+{% endif %}
+
 {% if c.status != 'normal' %}
 <p>你自身难保，先顾好自己吧。</p>
 {% elif used_today %}
@@ -24,6 +35,13 @@
   <select id="t" name="target_id" required>
     {% for t in targets %}<option value="{{ t.id }}">{{ dn(t) }}{{ '（宫里老人）' if t.npc_key }}{{ '（有喜）' if t.pregnant_since }}</option>{% endfor %}
   </select>
+  {% if partners %}
+  <label for="p">合谋人（可选）</label>
+  <select id="p" name="partner_id"><option value="0">不合谋，自己动手</option>
+    {% for p in partners %}<option value="{{ p.id }}">{{ dn(p) }}</option>{% endfor %}
+  </select>
+  <p class="muted">合谋：你们两人成算各 +{{ (CONSPIRE_BONUS*100)|int }}%，各付单人价的 {{ CONSPIRE_COST_RATIO }} 倍（{% for k in CONSPIRE_METHODS %}{{ INTRIGUES[k].name }} {{ conspire_cost(INTRIGUES[k]) }}{{ '、' if not loop.last }}{% endfor %} 两），败露两人一起受罚，得手势力各得一半。只能找好感超过 60 的人；对方点头后才生效，一天内不回话就作废，期间不扣你任何东西；下药不能合谋。</p>
+  {% endif %}
   <div class="methods">
   {% for k, m in INTRIGUES.items() %}
     {% set off = c.rank < m.min_rank or c.silver < m.silver or c.energy < m.energy or (m.get('item') and inventory.get(m.item,0) < 1) %}
@@ -52,9 +70,9 @@
 <div class="scroll"><table>
   <tr><th>日</th><th>对象</th><th>计策</th><th>结果</th><th></th></tr>
   {% for it in mine %}{% set t = get_consort(it.target_id) %}
-  <tr><td>{{ it.day }}</td><td>{{ dn(t) }}</td><td>{{ intrigue_label(it) }}</td>
-    <td>{{ {'pending':'等今夜','cancelled':'已撤回'}.get(it.status) or {'success':'成了','caught':'败露','fizzle':'没成','void':'落空'}.get(it.result, '') }}</td>
-    <td>{% if it.status == 'pending' %}<form method="post" action="{{ url_for('intrigue_cancel', iid=it.id) }}"><button class="plain">撤回</button></form>{% endif %}</td></tr>
+  <tr><td>{{ it.day }}</td><td>{{ dn(t) }}</td><td>{{ intrigue_label(it) }}{% if it.partner_id and it.status not in ('declined','expired') %}<br><span class="muted">{% if it.attacker_id == c.id %}与{{ dn(get_consort(it.partner_id)) }}合谋{% else %}{{ dn(get_consort(it.attacker_id)) }}邀你合谋{% endif %}</span>{% endif %}</td>
+    <td>{{ {'pending':'等今夜','cancelled':'已撤回','invited':'等对方点头','declined':'对方婉拒','expired':'邀请过期'}.get(it.status) or {'success':'成了','caught':'败露','fizzle':'没成','void':'落空'}.get(it.result, '') }}</td>
+    <td>{% if it.attacker_id == c.id and it.status in ('pending','invited') %}<form method="post" action="{{ url_for('intrigue_cancel', iid=it.id) }}"><button class="plain">撤回</button></form>{% endif %}</td></tr>
   {% endfor %}
 </table></div>
 {% else %}<p class="muted">你还没算计过谁。</p>{% endif %}
