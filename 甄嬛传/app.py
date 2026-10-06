@@ -485,7 +485,7 @@ ACTIONS = {
     'reflect': dict(name='闭门自省', energy=1, silver=0, daily=2, when={'confined', 'cold'},
                     desc='德行 +2；在冷宫里还有一线机会让皇上想起你'),
     'eyes':    dict(name='安插眼线', energy=0, silver=100, daily=1, when={'normal', 'confined'},
-                    desc='五天内更难被算计，被害时能知道是谁'),
+                    desc='两天内更难被算计，被害时能知道是谁'),
     'visit':   dict(name='串门', energy=1, silver=0, daily=3, when={'normal'}, sick_block=True, target=True,
                     desc='双方好感 +6~10；每天第一次串门不花精力'),
     'spy':     dict(name='打探底细', energy=0, silver=30, daily=1, when={'normal'}, target=True, errand=True,
@@ -530,6 +530,10 @@ INTRIGUES = {
                         '对方会知道是你。成：那个宫人没了，对方全宫宫人忠心 -5。败露：德行 -8，信任 -5'),
 }
 INTRIGUE_TARGET_DAILY_MAX = 2
+INTRIGUE_DAILY_MAX = None      # 每人每天最多谋划几件事；None = 不限（2026-10-07 起，原来 1）。同一目标每天最多被 2 件事盯上仍算
+
+def intrigue_capped(cid):
+    return INTRIGUE_DAILY_MAX is not None and daily_count(cid, 'intrigue') >= INTRIGUE_DAILY_MAX
 LEGACY_INTRIGUE_NAMES = dict(lethal='毒害', poison='暗下麝香')
 
 # ── 合谋（2026-10-06）：一人发起、另一人确认；确认前不扣任何东西 ───────────────────────────────
@@ -552,7 +556,7 @@ def conspire_partner_block(c, p, cfg, tgt, day):
     if p['status'] != 'normal' or is_sick(p): return f"{display_name(p)}眼下顾不上这件事。"
     if p['rank'] < cfg['min_rank']: return f"{display_name(p)}位分不够，使不动「{cfg['name']}」。"
     if conspire_affinity(c['id'], p['id']) <= CONSPIRE_AFFINITY_MIN: return f"你和{display_name(p)}的交情还不够，好感要超过 {CONSPIRE_AFFINITY_MIN} 才能合谋。"
-    if daily_count(p['id'], 'intrigue') >= 1: return f"{display_name(p)}今天已经另有谋划了。"
+    if intrigue_capped(p['id']): return f"{display_name(p)}今天已经另有谋划了。"
     if p['energy'] < cfg['energy']: return f"{display_name(p)}精力不够。"
     if p['silver'] < conspire_cost(cfg): return f"{display_name(p)}银子不够，合谋每人要 {conspire_cost(cfg)} 两。"
     return None
@@ -1825,6 +1829,8 @@ def active_sister_count(cid):
         s = get_consort(sid)
         if s and s['status'] in ('normal', 'confined'): n += 1
     return n
+
+EYES_DAYS = 2      # 眼线有效天数，含安插当天（2026-10-07 起，原来 5 天）
 
 def eyes_active(c):
     return c['eyes_until_day'] >= cur_day()
@@ -3244,8 +3250,8 @@ def do_reflect(c, cfg):
 
 def do_eyes(c, cfg):
     charge(c, cfg)
-    run("UPDATE consorts SET eyes_until_day=? WHERE id=?", (cur_day() + 4, c['id']))
-    return "你打点了几个宫人做眼线，接下来五天宫里的风吹草动都瞒不过你。", 'good'
+    run("UPDATE consorts SET eyes_until_day=? WHERE id=?", (cur_day() + EYES_DAYS - 1, c['id']))
+    return f"你打点了几个宫人做眼线，接下来{EYES_DAYS}天宫里的风吹草动都瞒不过你。", 'good'
 
 SEEK_SCENE_CHANCE = 0.3   # 皇上心情平和时，送汤羹有三成会被留下（yangxin_emperor 场景）
 
@@ -4492,7 +4498,7 @@ def intrigue():
     return render_template('intrigue.html', c=c, targets=intrigue_targets(c), INTRIGUES=INTRIGUES, mine=mine, invites=invites, partners=partners,
                            CONSPIRE_METHODS=CONSPIRE_METHODS, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, conspire_cost=conspire_cost,
                            known=known, SECRETS=SECRETS, day=day, get_consort=get_consort,
-                           used_today=daily_count(c['id'], 'intrigue'), inventory={k: inv_qty(c['id'], k) for k in (*ITEMS, *DRUGS)}, agents=drug_agents(c['id']))
+                           used_today=intrigue_capped(c['id']), inventory={k: inv_qty(c['id'], k) for k in (*ITEMS, *DRUGS)}, agents=drug_agents(c['id']))
 
 @app.route('/intrigue/submit', methods=['POST'])
 @login_required
@@ -4520,7 +4526,7 @@ def intrigue_submit():
     elif not t or t['id'] == c['id'] or t['status'] in ('xiunv', 'cold', 'dead'): err = '这个人不能当目标。'
     elif t['npc_key'] and not cfg['npc_ok']: err = f"「{cfg['name']}」不能用在她身上。"
     elif c['rank'] < cfg['min_rank']: err = f"位分到{RANK_NAMES[cfg['min_rank']]}才使得动「{cfg['name']}」。"
-    elif daily_count(c['id'], 'intrigue') >= 1: err = '一天只能谋划一件事，多了容易露马脚。'
+    elif intrigue_capped(c['id']): err = f'一天只能谋划 {INTRIGUE_DAILY_MAX} 件事，多了容易露马脚。'
     elif c['energy'] < cfg['energy']: err = f"精力不够，需要 {cfg['energy']} 点。"
     elif c['silver'] < cfg['silver']: err = f"银子不够，需要 {cfg['silver']} 两。"
     elif cfg.get('item') and inv_qty(c['id'], cfg['item']) < 1: err = f"手里没有{ITEMS[cfg['item']]['name']}。"
@@ -4592,7 +4598,7 @@ def intrigue_conspire(iid, action):
     if c['status'] != 'normal' or is_sick(c): err = '你眼下顾不上这件事。'
     elif a['status'] != 'normal' or is_sick(a): err = f"{display_name(a)}眼下顾不上这件事。"
     elif t['status'] in ('xiunv', 'cold', 'dead'): err = '这个人已经不能当目标了。'
-    elif daily_count(a['id'], 'intrigue') >= 1: err = f"{display_name(a)}今天已经另有谋划了。"
+    elif intrigue_capped(a['id']): err = f"{display_name(a)}今天已经另有谋划了。"
     elif a['energy'] < cfg['energy']: err = f"{display_name(a)}精力不够了。"
     elif a['silver'] < conspire_cost(cfg): err = f"{display_name(a)}银子不够了。"
     elif q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')", (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
@@ -4735,7 +4741,7 @@ def shop_price(c, it):
 BOT_AWAKE_HOURS = (8, 23)           # 这个钟点范围内才有动静（和真人作息差不多）
 BOT_ACTION_CHANCE = 1 / 75          # 每分钟动手的概率，约每 75 分钟一件事
 BOT_ACTIONS = (('greet', 4), ('study', 3), ('garden', 3), ('visit', 3), ('groom', 1), ('seek', 2))   # 日常动作及权重，复用玩家动作的同一套处理函数
-BOT_INTRIGUE_CHANCE = 1 / 900       # 白天每分钟起意害人的概率，约每个白天一次；一天最多一件（和玩家共用「每天只能谋划一件事」）
+BOT_INTRIGUE_CHANCE = 1 / 900       # 白天每分钟起意害人的概率，约每个白天一次；每天谋划次数和玩家共用 INTRIGUE_DAILY_MAX（现在不限）
 BOT_INTRIGUE_METHODS = (('rumor', 5), ('steal', 3), ('frame', 2))    # 只用便宜的三种；下药、巫蛊、告发、发落不做
 BOT_GRUDGE_DAYS, BOT_GRUDGE_ATTACKED, BOT_GRUDGE_VICTIM = 5, 4, 2   # 结仇：最近 5 天内，谁算计过她每次 +4 权重，她算计过谁每次 +2（盯着同一个人下手），其余人权重 1
 BOT_SILVER_FLOOR = 400              # 托管角色的银子低于这个数就自动补到这个数，保证她出得起手
@@ -4823,7 +4829,7 @@ def bot_grudge_weights(c, targets):
 def bot_intrigue(c):
     """托管角色偶尔害人：只用流言、截宠、栽赃三种便宜的，目标在真玩家里随机挑（带结仇权重），套用玩家同一套检查和结算"""
     day = cur_day()
-    if daily_count(c['id'], 'intrigue') >= 1 or c['status'] != 'normal' or is_sick(c): return False
+    if intrigue_capped(c['id']) or c['status'] != 'normal' or is_sick(c): return False
     methods = [(m, w) for m, w in BOT_INTRIGUE_METHODS if c['rank'] >= INTRIGUES[m]['min_rank']
                and c['silver'] >= INTRIGUES[m]['silver'] and c['energy'] >= INTRIGUES[m]['energy']]
     if not methods: return False
