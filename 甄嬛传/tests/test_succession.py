@@ -39,6 +39,7 @@ class SuccessionTests(unittest.TestCase):
 
     # ── 系统皇子 ─────────────────────────────────────────────────────────────
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_seed_creates_third_and_fourth_prince_once(self):
         game.run("UPDATE consorts SET status='normal' WHERE npc_key='qifei'")
         self.seed(); self.seed()
@@ -51,6 +52,7 @@ class SuccessionTests(unittest.TestCase):
         self.assertEqual(game.heir_age_years(fourth), 8)
         self.assertEqual(fourth['orphan_deadline_day'], game.cur_day() + game.NPC_ORPHAN_DEADLINE_DAYS)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_heirs_page_renders_motherless_prince(self):
         self.seed()
         page = self.client.get('/heirs').get_data(as_text=True)
@@ -72,6 +74,7 @@ class SuccessionTests(unittest.TestCase):
         low = self.prince(0, caretaker=0, study=0, riding=0, virtue=0, favor=10, npc_key='fourth')
         self.assertEqual(game.heir_standing(self.row(low)), 10, '没到封顶的照实算')
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_npc_caretaker_bonus_is_capped(self):
         queen = game.q("SELECT id FROM consorts WHERE npc_key='huanghou'", one=True)['id']
         game.run('UPDATE consorts SET trust=0 WHERE id=?', (queen,))
@@ -123,6 +126,7 @@ class SuccessionTests(unittest.TestCase):
 
     # ── 四阿哥抱养 ────────────────────────────────────────────────────────────
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_orphan_goes_to_a_claimant(self):
         self.seed()
         fourth = game.q("SELECT * FROM heirs WHERE npc_key='fourth'", one=True)
@@ -132,6 +136,7 @@ class SuccessionTests(unittest.TestCase):
         self.assertEqual(h['caretaker_id'], self.atk)
         self.assertFalse(game.q('SELECT 1 FROM heir_claims'), '抽完清掉排队')
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_claim_lottery_weights_by_trust_and_rank(self):
         self.seed()
         fourth = game.q("SELECT * FROM heirs WHERE npc_key='fourth'", one=True)
@@ -145,6 +150,7 @@ class SuccessionTests(unittest.TestCase):
         self.assertEqual(self.row(fourth['id'])['caretaker_id'], boss)
         self.assertTrue(any('没有选中' in m for m in self.msgs(self.atk)))
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_claim_needs_pin_rank(self):
         self.seed()
         fourth = game.q("SELECT * FROM heirs WHERE npc_key='fourth'", one=True)
@@ -153,6 +159,7 @@ class SuccessionTests(unittest.TestCase):
         self.client.post(f"/succession/claim/{fourth['id']}")
         self.assertFalse(game.q('SELECT 1 FROM heir_claims'))
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_queen_takes_the_orphan_on_deadline_when_nobody_asked(self):
         self.seed()
         game.run("UPDATE consorts SET status='normal' WHERE npc_key='huanghou'")
@@ -163,6 +170,7 @@ class SuccessionTests(unittest.TestCase):
         queen = game.q("SELECT id FROM consorts WHERE npc_key='huanghou'", one=True)
         self.assertEqual(self.row(fourth['id'])['caretaker_id'], queen['id'])
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_orphan_can_be_claimed_even_on_the_deadline_day(self):
         self.seed()
         game.run("UPDATE consorts SET status='normal' WHERE npc_key='huanghou'")
@@ -490,6 +498,7 @@ class SuccessionTests(unittest.TestCase):
 
     # ── 页面与整晚结算 ────────────────────────────────────────────────────────
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_succession_page_renders_everything(self):
         self.seed()
         game.run("UPDATE consorts SET status='normal' WHERE npc_key='qifei'")
@@ -500,6 +509,7 @@ class SuccessionTests(unittest.TestCase):
         for text in ('明着站', '劝他收敛些', '万寿节寿礼', '求皇上把他交给我', '公主进言', '挑拨兄弟', '三阿哥'):
             self.assertIn(text, page)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_full_settle_with_seeded_npc_princes_runs(self):
         self.seed()
         game.run("UPDATE consorts SET status='normal' WHERE npc_key IN ('qifei','huanghou')")

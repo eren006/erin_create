@@ -12,7 +12,9 @@
 </style>
 {% endblock %}
 {% block body %}
+<p>本届随机基础属性：{% for k,v in entry_stat_roll(session.uid).items() %}{{ STAT_NAMES[k] }} {{ v }}　{% endfor %}。先抽天资，再选家族与性格调整。</p>
 {% if not fam %}
+<p class="muted">新帝由太子登基，后宫全由新人建立。每届首次创建有 {{ (EAST_PALACE_CHANCE * 100)|int }}% 概率成为东宫旧人，初始圣宠 +{{ EAST_PALACE_FAVOR }}、信任 +{{ EAST_PALACE_TRUST }}，不直接晋位；同届重建不重抽。</p>
 <h2>立家</h2>
 <p class="muted">一个账号就是一个家族。姓氏和门第在这里一次定下，以后不能改；往后每位入宫的女儿都姓这个姓、有这份出身。人没了，家里送下一位，名字、宿怨、宫人、孩子都能接上。</p>
 <form method="post">
@@ -24,20 +26,24 @@
   </div>
   <label for="sc" style="margin-top:10px">自己填一个</label>
   <input id="sc" name="surname_custom" maxlength="2" value="{{ form.get('surname_custom', '') }}" style="width:90px">
-  <h3>门第</h3>
+  <h3>家世类型与具体出身</h3>
   <div class="pick">
   {% for k, f in FAMILIES.items() %}
     <label><input type="radio" name="family" value="{{ k }}" required {{ 'checked' if form.get('family')==k }}>
       <b>{{ f.name }}</b><br>{{ f.desc }}<br>
+      <span>选择这一类型下的家族出身：</span>
+      <select name="background_{{ k }}" aria-label="{{ f.name }}具体出身" onchange="this.closest('label').querySelector('input[type=radio]').checked=true">
+      {% for origin in family_origin_options(k) %}<option value="{{ origin }}" {{ 'selected' if form.get('background_' ~ k)==origin }}>{{ origin }}</option>{% endfor %}
+      </select><br>
       <span class="muted">{% for s, v in f.mods.items() %}{{ STAT_NAMES[s] }}{{ '%+d'|format(v) }} {% endfor %}起始银子 {{ f.silver }}　殿选 {{ '%+d'|format(f.dx) }}<br>家主起点：{{ TIER_OFFICE_TEXT[k] }}</span></label>
   {% endfor %}
   </div>
-  <p class="muted">门第决定家主（你的父亲）的官职起点，也决定每位成员的属性加成、起始银子和殿选加分。</p>
+  <p class="muted">类型决定加成；具体出身在玩家家族之间不重复，选定后跨届继承。门第决定家主（你的父亲）的官职起点，也决定每位成员的属性加成、起始银子和殿选加分。</p>
   <button>定下这一门</button>
 </form>
 {% else %}
 <h2>{{ fam.surname }}氏　送一位入宫</h2>
-<p class="muted">{{ FAMILIES[fam.tier].name }}。家主{{ fam.head_role }}{{ fam.head_name }}。</p>
+<p class="muted">{{ FAMILIES[fam.tier].name }} · {{ fam.background }}。家主{{ fam.head_role }}{{ fam.head_name }}。</p>
 <div class="sheet" style="margin:10px 0">
   <b>她是：{{ lineage }}</b>
   {% if inh.patron == 'dowager' %}<p class="muted">姑母是当朝太后：殿选 +10，起始信任 30，太后每 {{ DOWAGER_AUDIENCE_INTERVAL }} 天召你说话一次；只是六宫都知道你是太后的人，被人算计的机会也更多。</p>
@@ -54,7 +60,7 @@
   </div>
   <label for="age">入宫年龄</label>
   <select id="age" name="age">{% for n in range(18,23) %}<option value="{{ n }}" {{ 'selected' if (form.get('age',20)|int)==n }}>{{ n }}岁</option>{% endfor %}</select>
-  <p class="muted">宫中一天是半年，每晚长半岁；四十五岁起不再有孕。</p>
+  <p class="muted">宫中一天是 {{ AGE_YEARS_PER_DAY }} 年，皇帝、妃子和孩子每晚都长 {{ AGE_YEARS_PER_DAY }} 岁；四十五岁起不再有孕。</p>
 
   <h3>性格</h3>
   <div class="pick">
@@ -65,17 +71,19 @@
   {% endfor %}
   </div>
 
-  <h3>自身所长</h3>
-  <p class="muted">共 12 点，每项最多 10 点。殿选时皇上和太后会从不同方面考你。出身加成：{% for s, v in FAMILIES[fam.tier].mods.items() %}{{ STAT_NAMES[s] }}{{ '%+d'|format(v) }} {% endfor %}</p>
-  <table class="pts">
-    {% for k in ['appearance','talent','scheme','virtue'] %}
-    <tr><td>{{ STAT_NAMES[k] }}</td><td><input type="number" name="{{ k }}" min="0" max="10" value="{{ form.get(k) or 0 }}" class="pt"></td>
-        <td class="muted">合计 <span id="t-{{ k }}"></span></td></tr>
-    {% endfor %}
-    <tr><td>体质</td><td></td><td class="muted">合计 <span id="t-health"></span></td></tr>
-  </table>
-  <p>剩余点数：<b id="left">12</b></p>
-
+  <h3>随机天资</h3>
+  <p class="muted">开局属性已随机抽取，家族与性格合计每项最多调整 ±10。同账号本届抽取固定，不能刷新重抽；不再手动加点。</p>
+  <table>{% for k,v in entry_stat_roll(session.uid).items() %}<tr><td>{{ STAT_NAMES[k] }}</td><td>基础 {{ v }} → 调整后 <span id="t-{{ k }}">{{ v }}</span></td></tr>{% endfor %}</table>
+<script>
+const rolled={{ entry_stat_roll(session.uid)|tojson }};
+const familyMods={{ FAMILIES[fam.tier].mods|tojson }};
+function previewStats(){
+ const chosen=document.querySelector('input[name="personality"]:checked');
+ const per=chosen?JSON.parse(chosen.dataset.mods):{};
+ for(const k in rolled){const delta=Math.max(-10,Math.min(10,(familyMods[k]||0)+(per[k]||0)));document.getElementById('t-'+k).textContent=Math.max(5,Math.min(100,rolled[k]+delta));}
+}
+document.getElementById('f').addEventListener('input',previewStats);previewStats();
+</script>
   {% if heirlooms %}
   <h3>带一位姐姐的旧宫人</h3>
   <select name="heirloom_maid"><option value="0">不带</option>
@@ -85,18 +93,6 @@
   {% endif %}
   <button>呈上名册，参加殿选</button>
 </form>
-<script>
-const BASE={appearance:40,talent:30,scheme:30,virtue:40,health:70};
-const TIER={{ FAMILIES[fam.tier].mods|tojson }};
-function recalc(){
-  let used=0, tot={...BASE};
-  document.querySelectorAll('.pt').forEach(i=>{const v=Math.max(0,Math.min(10,+i.value||0));used+=v;tot[i.name]+=v;});
-  for(const k in TIER)tot[k]+=TIER[k];
-  document.querySelectorAll('input[type=radio]:checked').forEach(r=>{const m=JSON.parse(r.dataset.mods);for(const k in m)tot[k]+=m[k];});
-  for(const k in tot){const el=document.getElementById('t-'+k);if(el)el.textContent=Math.max(5,Math.min(100,tot[k]));}
-  const left=12-used, L=document.getElementById('left');L.textContent=left;L.style.color=left<0?'var(--bad)':'';
-}
-document.getElementById('f').addEventListener('input',recalc);recalc();
-</script>
+
 {% endif %}
 {% endblock %}

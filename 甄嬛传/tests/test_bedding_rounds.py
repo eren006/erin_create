@@ -1,0 +1,100 @@
+"""四小时翻牌：轮次幂等、每日上限与日结算隔离。"""
+import unittest
+from unittest.mock import patch
+from datetime import datetime
+import test_lifecycle as fixtures
+
+game=fixtures.game
+
+class BeddingRoundsTests(unittest.TestCase):
+    setUp=fixtures.LifecycleTests.setUp
+    tearDown=fixtures.LifecycleTests.tearDown
+    player=fixtures.LifecycleTests.player
+    login=fixtures.LifecycleTests.login
+
+    def enable(self):
+        game.run('UPDATE game_state SET event_started=1,emperor_death_day=0,maintenance=0,mourning=0,day=1')
+
+    def test_six_rounds_cap_three_and_do_not_run_daily_effects(self):
+        self.enable()
+        before=game.get_consort(self.atk)
+        with patch.object(game.random,'random',return_value=.99999):
+            for hour in game.BED_ROUND_HOURS:
+                game.bedding_round(1,f'2026-10-05:{hour:02}')
+        for cid in (self.atk,self.tgt):
+            c=game.get_consort(cid)
+            self.assertEqual(c['bed_daily_count'],game.BED_DAILY_MAX)
+            self.assertEqual(c['pregnancy_misses'],game.BED_DAILY_MAX)
+            self.assertEqual(c['age_months'],before['age_months'])
+            self.assertEqual(c['silver'],before['silver'])
+            self.assertEqual(c['energy'],before['energy'])
+        self.assertEqual(game.cur_day(),1)
+        with patch.object(game.random,'random',return_value=.99999):
+            self.assertEqual(len(game.bedding_round(2,'2026-10-06:01')),1)
+        self.assertEqual(sum(game.get_consort(cid)['bedded_count'] for cid in (self.atk,self.tgt)),2*game.BED_DAILY_MAX+1)
+
+    def test_round_key_is_persisted_and_idempotent(self):
+        self.enable()
+        with patch.object(game.random,'random',return_value=.99999):
+            self.assertEqual(len(game.bedding_round(1,'2026-10-05:01')),1)
+            self.assertEqual(game.bedding_round(1,'2026-10-05:01'),[])
+        self.assertEqual(game.state()['last_bed_round_key'],'2026-10-05:01')
+        self.assertEqual(sum(game.get_consort(cid)['bedded_count'] for cid in (self.atk,self.tgt)),1)
+
+    def test_paused_or_unstarted_round_does_not_consume_key(self):
+        for field in ('maintenance','mourning'):
+            self.enable()
+            game.run(f'UPDATE game_state SET {field}=1')
+            self.assertEqual(game.bedding_round(1,'test'),[])
+            self.assertEqual(game.state()['last_bed_round_key'],'')
+        self.enable()
+        game.run('UPDATE game_state SET event_started=0')
+        self.assertEqual(game.bedding_round(1,'test'),[])
+
+    def test_schedule_every_four_hours(self):
+        self.assertEqual(game.BED_ROUND_HOURS,(1,5,9,13,17,21))
+        for hour in game.BED_ROUND_HOURS:
+            now=datetime(2026,10,5,hour,0,tzinfo=game.TZ)
+            self.assertEqual(game.latest_bedding_slot(now),f'2026-10-05:{hour:02}')
+        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,0,30,tzinfo=game.TZ)),'2026-10-04:21')
+
+    def test_direct_bedding_also_respects_cap(self):
+        with patch.object(game.random,'random',return_value=.99999):
+            for _ in range(4):game.do_bedding(game.get_consort(self.atk),10,False,[])
+        c=game.get_consort(self.atk)
+        self.assertEqual(c['bedded_count'],game.BED_DAILY_MAX)
+        self.assertEqual(c['pregnancy_misses'],game.BED_DAILY_MAX)
+
+    def test_failure_rolls_back_round_and_effects(self):
+        self.enable()
+        with patch.object(game,'do_bedding',side_effect=RuntimeError('round failed')):
+            with self.assertRaises(RuntimeError):game.bedding_round(1,'test')
+        self.assertEqual(game.state()['last_bed_round_key'],'')
+
+    def test_scheduler_routes_daytime_and_nightly_round(self):
+        self.enable()
+        for hour in (1,5,9,13,17):
+            now=datetime(2026,10,5,hour,0,tzinfo=game.TZ)
+            with patch.object(game,'datetime') as clock, patch.object(game,'bedding_round') as bed, patch.object(game,'settle_day') as settle:
+                clock.now.return_value=now
+                game.maybe_settle()
+                settle.assert_not_called()
+                bed.assert_called_once_with(1,f'2026-10-05:{hour:02}')
+        now=datetime(2026,10,5,23,0,tzinfo=game.TZ)
+        with patch.object(game,'datetime') as clock, patch.object(game,'bedding_round') as bed, patch.object(game,'settle_day') as settle:
+            clock.now.return_value=now
+            game.maybe_settle()
+            settle.assert_called_once_with(bed_key='2026-10-05:21')
+            bed.assert_called_once_with(1,'2026-10-05:21')
+            game.run("UPDATE game_state SET last_settle_date='2026-10-05',last_bed_round_key='2026-10-05:21',day=2")
+        with patch.object(game,'datetime') as clock:
+            clock.now.return_value=now
+            with patch.object(game,'do_bedding') as effect:
+                game.maybe_settle()
+                effect.assert_not_called()
+
+    def test_queen_eligible_but_pregnant_and_ill_excluded(self):
+        game.run('UPDATE consorts SET rank=9 WHERE id=?',(self.atk,))
+        self.assertTrue(game.eligible_bedding(game.get_consort(self.atk),10))
+        game.run('UPDATE consorts SET pregnant_since=9 WHERE id=?',(self.atk,))
+        self.assertFalse(game.eligible_bedding(game.get_consort(self.atk),10))

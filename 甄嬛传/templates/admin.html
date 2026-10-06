@@ -2,6 +2,13 @@
 {% block title %}后台{% endblock %}
 {% block body %}
 <h2>后台</h2>
+<div class="sheet" style="margin:12px 0;border-left:4px solid var(--zhu)">
+<b>{{ '维护暂停中' if gs.maintenance else '游戏正常开放' }}</b>
+<p class="muted">一键暂停玩家操作和自动结算；玩家可以浏览，管理员仍可调整。恢复不会重置天数或角色。</p>
+<form method="post" action="{{ url_for('admin_emperor') }}">
+<button name="act" value="{{ 'maintenance_off' if gs.maintenance else 'maintenance_on' }}">{{ '恢复游戏（关闭维护模式）' if gs.maintenance else '维护暂停（开启维护模式）' }}</button>
+</form></div>
+
 <p class="muted">宫中第 {{ gs.day }} 日，皇上{{ gs.emperor_mood }}，喜好{{ gs.emperor_pref }}。下次自动结算：{{ next_settle }}。<a href="{{ url_for('admin_logout') }}">退出后台</a></p>
 
 <div class="row" style="margin:12px 0 4px">
@@ -51,13 +58,15 @@
 </table></div>
 {% endif %}
 
+<h3>报名名单（最近 100 个账号）</h3>
+<div class="scroll"><table><tr><th>账号</th><th>QQ 号</th></tr>{% for u in registrations %}<tr><td>{{ u.username }}</td><td>{{ u.qq_number or '未填写（旧账号）' }}</td></tr>{% endfor %}</table></div>
 <h3>妃嫔</h3>
 <div class="scroll"><table>
-  <tr><th>名号</th><th>账号</th><th>属性</th><th>秘密</th><th>圣宠 / 银子 / 位分 / 状态</th></tr>
+  <tr><th>名号</th><th>账号 / QQ</th><th>属性</th><th>秘密</th><th>圣宠 / 银子 / 位分 / 状态</th></tr>
   {% for r in rows %}
   <tr>
     <td>{{ dn(r) }}<br><span class="muted">{{ full_name(r) }}{{ '（NPC）' if r.npc_key }}</span></td>
-    <td>{{ r.username or '' }}</td>
+    <td>{{ r.username or '' }}<br><span class="muted">QQ：{{ r.qq_number or '未填写（旧账号）' }}</span></td>
     <td class="muted" style="white-space:nowrap">貌{{ r.appearance }} 才{{ r.talent }} 计{{ r.scheme }}<br>德{{ r.virtue }} 体{{ r.health }} 侍寝{{ r.bedded_count }}</td>
     <td class="muted">{{ SECRETS[r.secret].name }}{{ '（已揭）' if r.secret_revealed }}</td>
     <td>
@@ -99,9 +108,7 @@
 <ul>{% for it in pend %}<li>{{ dn(get_consort(it.attacker_id)) }} → {{ dn(get_consort(it.target_id)) }}：{{ INTRIGUES[it.method].name }}</li>{% endfor %}</ul>
 {% else %}<p class="muted">没有。</p>{% endif %}
 
-<h3>维护模式</h3>
-<p class="muted">{% if gs.maintenance %}<b style="color:var(--zhu)">维护中</b>：不会自动结算，玩家页面顶部会看到提示条。适合你手动改数据库、临时调整数值的时候用。{% else %}没在维护。{% endif %}</p>
-<form method="post" action="{{ url_for('admin_emperor') }}"><button name="act" value="{{ 'maintenance_off' if gs.maintenance else 'maintenance_on' }}">{{ '关闭维护模式' if gs.maintenance else '开启维护模式' }}</button></form>
+
 
 <h3>活动计时</h3>
 {% if not gs.event_started %}
@@ -160,7 +167,7 @@
         <input type="hidden" name="act" value="edit">
         <label style="margin:0">名望 <input type="number" name="prestige" value="{{ f.prestige }}" min="0" style="width:70px"></label>
         <label style="margin:0">家底 <input type="number" name="estate" value="{{ f.estate }}" min="0" style="width:80px"></label>
-        <label style="margin:0">官职 <select name="office">{% for t in OFFICE_TITLES %}<option value="{{ loop.index0 }}" {{ 'selected' if loop.index0 == f.head_office }}>{{ t }}</option>{% endfor %}</select></label>
+        <label style="margin:0">官职 <select name="office">{% for t in OFFICE_TITLES %}<option value="{{ loop.index0 }}" {{ 'selected' if loop.index0 == f.head_office }}>{{ family_career_title(f,loop.index0) }}</option>{% endfor %}</select></label>
         <label style="margin:0">家主年龄 <input type="number" name="age" value="{{ f.head_age_months // 12 }}" min="15" max="100" style="width:60px"></label>
         <button class="plain">保存</button>
       </form>

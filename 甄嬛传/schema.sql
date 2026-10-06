@@ -4,7 +4,13 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT NOT NULL UNIQUE,
+    stat_roll_reign INTEGER NOT NULL DEFAULT 0,
+    stat_roll TEXT NOT NULL DEFAULT '',
+    east_palace_reign INTEGER NOT NULL DEFAULT 0,
+    east_palace_old INTEGER NOT NULL DEFAULT 0,
     password_hash TEXT NOT NULL,
+    qq_number TEXT NOT NULL DEFAULT '',
+    drug_ready_day INTEGER NOT NULL DEFAULT 0,
     lethal_ready_day INTEGER NOT NULL DEFAULT 0,
     nameless_ready_day INTEGER NOT NULL DEFAULT 0,  -- 「无名」冷却，死后重建也不重置
     created_ts    INTEGER NOT NULL
@@ -15,6 +21,12 @@ CREATE TABLE IF NOT EXISTS consorts (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id          INTEGER UNIQUE,
     npc_key          TEXT UNIQUE,
+    entry_origin     TEXT NOT NULL DEFAULT 'new',
+    bed_daily_day INTEGER NOT NULL DEFAULT 0,
+    bed_daily_count INTEGER NOT NULL DEFAULT 0,
+    influence        INTEGER NOT NULL DEFAULT 0,
+    unfavored_days   INTEGER NOT NULL DEFAULT 0,
+    ill_care         TEXT NOT NULL DEFAULT 'normal',
     surname          TEXT NOT NULL,
     given            TEXT NOT NULL,
     title            TEXT NOT NULL DEFAULT '',      -- 封号，单字
@@ -32,11 +44,12 @@ CREATE TABLE IF NOT EXISTS consorts (
 
     favor            INTEGER NOT NULL DEFAULT 0,    -- 圣宠
     silver           INTEGER NOT NULL DEFAULT 0,
-    energy           INTEGER NOT NULL DEFAULT 5,
+    energy           INTEGER NOT NULL DEFAULT 8,
 
     status           TEXT NOT NULL DEFAULT 'xiunv', -- xiunv / normal / confined(禁足) / cold(冷宫) / dead(已故)
     status_until_day INTEGER NOT NULL DEFAULT 0,
     rank_before_cold INTEGER NOT NULL DEFAULT 0,
+    pregnancy_started_ts REAL NOT NULL DEFAULT 0,
     pregnant_since   INTEGER NOT NULL DEFAULT 0,    -- 0=未有孕，否则为有孕那天
 
     arts             TEXT NOT NULL DEFAULT '{}',    -- {"琴": 3, ...} 各才艺修习次数
@@ -48,6 +61,7 @@ CREATE TABLE IF NOT EXISTS consorts (
     missed_greet     INTEGER NOT NULL DEFAULT 0,
     entered_day      INTEGER NOT NULL DEFAULT 0,    -- 殿选中选那天
     bedded_count     INTEGER NOT NULL DEFAULT 0,
+    pregnancy_misses INTEGER NOT NULL DEFAULT 0,
     dianxuan_score   INTEGER NOT NULL DEFAULT 0,
 
     age_months       INTEGER NOT NULL DEFAULT 240,
@@ -69,6 +83,7 @@ CREATE TABLE IF NOT EXISTS consorts (
     maid_event       TEXT NOT NULL DEFAULT '',      -- 今天宫人来找的小事 JSON，结算时清空
     punish_ready_day INTEGER NOT NULL DEFAULT 0,    -- 发落宫人冷却：到这天才能再发落
     maid_punished_day INTEGER NOT NULL DEFAULT 0,   -- 自己宫里上次有宫人被发落是哪天
+    drugged_until_day INTEGER NOT NULL DEFAULT 0,
     drugged_day      INTEGER NOT NULL DEFAULT 0,    -- 上次被下药得手是哪天（之后 2 天不能再被下药）
     drug_ledger      INTEGER NOT NULL DEFAULT 0,    -- 在暗柜买药时被内务府记了几笔（查案搜宫时用）
     hall             TEXT NOT NULL DEFAULT '',      -- 住在 palace 的哪一间：main 正殿 / east 东配殿 / west 西配殿 / back 后殿；空=没有住处（冷宫、已故）
@@ -90,17 +105,23 @@ CREATE TABLE IF NOT EXISTS consorts (
 );
 
 CREATE TABLE IF NOT EXISTS game_state (
+    drug_balance_version INTEGER NOT NULL DEFAULT 0,
+    drug_rules_version INTEGER NOT NULL DEFAULT 0,
     id               INTEGER PRIMARY KEY CHECK (id = 1),
     day              INTEGER NOT NULL DEFAULT 1,
+    last_bed_round_key TEXT NOT NULL DEFAULT '',
     last_settle_date TEXT NOT NULL DEFAULT '',
+    last_midday_promotion_date TEXT NOT NULL DEFAULT '',
     emperor_mood     TEXT NOT NULL DEFAULT '平和',
     emperor_pref     TEXT NOT NULL DEFAULT '琴',
     last_bed_id      INTEGER NOT NULL DEFAULT 0,
     last_bed_day     INTEGER NOT NULL DEFAULT 0,
+    last_energy_key  TEXT NOT NULL DEFAULT '',            -- 最近一次按时回精力的时点
+    last_bed_ids     TEXT NOT NULL DEFAULT '[]',     -- 最近一轮被翻牌的全部人（可能不止一位）
     last_bed_pool    TEXT NOT NULL DEFAULT '[]',    -- 当晚递上去的绿头牌，「昨夜宫中」回放用
     reign_no         INTEGER NOT NULL DEFAULT 1,     -- 第几届（一位皇上一届）
     reign_start_day  INTEGER NOT NULL DEFAULT 1,
-    emperor_start_age INTEGER NOT NULL DEFAULT 45,   -- 这一届开始时皇上几岁，之后每晚长半岁
+    emperor_start_age INTEGER NOT NULL DEFAULT 20,   -- 这一届开始时皇上几岁，之后每晚长两岁
     emperor_death_day INTEGER NOT NULL DEFAULT 0,    -- 已定下的驾崩日（病重从它前两天算起，共 3 天）；0 = 还没病
     mourning         INTEGER NOT NULL DEFAULT 0,     -- 国丧：驾崩后停一天，下一次结算时开下一届选秀
     era_name         TEXT NOT NULL DEFAULT '',       -- 年号（第一届为空）
@@ -143,6 +164,7 @@ CREATE TABLE IF NOT EXISTS reign_letters (
 CREATE INDEX IF NOT EXISTS idx_reign_letters_user ON reign_letters(user_id, reign_no);
 
 CREATE TABLE IF NOT EXISTS intrigues (
+    resolved_ts REAL NOT NULL DEFAULT 0,
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     day          INTEGER NOT NULL,
     attacker_id  INTEGER NOT NULL,
@@ -214,6 +236,9 @@ CREATE TABLE IF NOT EXISTS heirs (
     riding      INTEGER NOT NULL DEFAULT 20,         -- 骑射
     virtue      INTEGER NOT NULL DEFAULT 20,         -- 品行
     health      INTEGER NOT NULL DEFAULT 60,         -- 体质
+    gift_study  INTEGER NOT NULL DEFAULT 100,        -- 资质（百分数，100=中人）：教养时学问涨幅按它缩放
+    gift_riding INTEGER NOT NULL DEFAULT 100,
+    gift_virtue INTEGER NOT NULL DEFAULT 100,
     favor       INTEGER NOT NULL DEFAULT 0,          -- 圣眷，教养/小事件/考校累加，夺嫡阶段另按公式重算
     mother_affinity    INTEGER NOT NULL DEFAULT 50,  -- 跟生母的情分
     caretaker_affinity INTEGER NOT NULL DEFAULT 50,  -- 跟现在抚养人的情分；自己养时两个数一起动
@@ -293,6 +318,11 @@ CREATE TABLE IF NOT EXISTS bribes (
 
 -- 药效：发作有先后（惊梦香等被翻牌才发作、青丝引每晚扣体质、春信丹临盆才露馅）
 CREATE TABLE IF NOT EXISTS afflictions (
+    expires_ts REAL NOT NULL DEFAULT 0,
+    restore_stat TEXT NOT NULL DEFAULT '',
+    restore_delta INTEGER NOT NULL DEFAULT 0,
+    ticks INTEGER NOT NULL DEFAULT 0,
+    last_tick_day INTEGER NOT NULL DEFAULT -1,
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     consort_id    INTEGER NOT NULL,
     drug          TEXT NOT NULL,
@@ -306,6 +336,7 @@ CREATE INDEX IF NOT EXISTS idx_afflictions ON afflictions(consort_id, status);
 
 -- 案子：药性发作被发现时开案，下一次结算定案。v1.4 的慎刑司查案会在这张表上加嫌疑人
 CREATE TABLE IF NOT EXISTS cases (
+    victim_trust_loss INTEGER NOT NULL DEFAULT 15,
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     day           INTEGER NOT NULL,                  -- 开案那天
     victim_id     INTEGER NOT NULL,
@@ -424,6 +455,8 @@ CREATE TABLE IF NOT EXISTS displays (
 
 -- ── 家族（九点九节）：一个账号就是一个家族，跨届一直在 ─────────────────────────────
 CREATE TABLE IF NOT EXISTS families (
+    career_path TEXT NOT NULL DEFAULT '',
+    background TEXT NOT NULL DEFAULT '',
     user_id      INTEGER PRIMARY KEY,
     surname      TEXT NOT NULL,                      -- 全家族共用，注册时定下，不能改
     tier         TEXT NOT NULL,                      -- 门第（FAMILIES 的 key），不能改
@@ -534,3 +567,73 @@ CREATE TABLE IF NOT EXISTS knife_debts (
     created_ts  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_knife_debts_owner ON knife_debts(consort_id, status);
+
+-- 玩家双方争夺皇嗣抚养权；养育所领回不触发争夺。
+CREATE TABLE IF NOT EXISTS custody_battles (
+    heir_id INTEGER PRIMARY KEY,
+    challenger_id INTEGER NOT NULL,
+    defender_id INTEGER NOT NULL,
+    challenger_progress INTEGER NOT NULL DEFAULT 0,
+    defender_progress INTEGER NOT NULL DEFAULT 0,
+    started_day INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    winner_id INTEGER NOT NULL DEFAULT 0
+);
+
+
+-- 菜园：每人最多 6 块地，种下去按真实时间长成（ready_ts 是成熟的时间戳），浇水一次缩短 25%
+CREATE TABLE IF NOT EXISTS garden_plots (
+    consort_id  INTEGER NOT NULL,
+    slot        INTEGER NOT NULL,
+    crop        TEXT NOT NULL,
+    planted_ts  INTEGER NOT NULL,
+    ready_ts    INTEGER NOT NULL,
+    watered     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (consort_id, slot)
+);
+-- 收下来还没卖、没送的菜
+CREATE TABLE IF NOT EXISTS garden_stock (
+    consort_id  INTEGER NOT NULL,
+    crop        TEXT NOT NULL,
+    qty         INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (consort_id, crop)
+);
+-- 新年宴会：每晚 22 点开，banquet_date 是哪一晚的宴会（报名截止 22 点，之后算下一晚）
+CREATE TABLE IF NOT EXISTS banquet_entries (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    banquet_date  TEXT NOT NULL,
+    consort_id    INTEGER NOT NULL,
+    art           TEXT NOT NULL,
+    piece         TEXT NOT NULL DEFAULT '',     -- 节目名
+    rehearsed     INTEGER NOT NULL DEFAULT 0,   -- 排练了几次，最多 2
+    partner_id    INTEGER NOT NULL DEFAULT 0,   -- 合奏搭档的 consort_id，互相指着对方才算数
+    tier          INTEGER NOT NULL DEFAULT 1,   -- 节目档次 1~3
+    buff          INTEGER NOT NULL DEFAULT 0,   -- 吃了宴前小食的加分
+    note          TEXT NOT NULL DEFAULT '',     -- 台上表现的一句评语
+    score         REAL,
+    place         INTEGER,                      -- 名次，开席后才有
+    UNIQUE (banquet_date, consort_id)
+);
+
+-- 合奏邀请：发起人必须已报节目，对方点头才结成一队
+CREATE TABLE IF NOT EXISTS banquet_invites (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    banquet_date  TEXT NOT NULL,
+    from_id       INTEGER NOT NULL,
+    to_id         INTEGER NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending'   -- pending / accepted / declined / void
+);
+-- 戏装铺买下的行头
+CREATE TABLE IF NOT EXISTS banquet_gear (
+    consort_id    INTEGER NOT NULL,
+    gear_key      TEXT NOT NULL,
+    PRIMARY KEY (consort_id, gear_key)
+);
+
+-- 成就：达成过的记一笔（成就内容在 app.py 的 ACHIEVEMENTS，现算进度）
+CREATE TABLE IF NOT EXISTS achievements (
+    consort_id  INTEGER NOT NULL,
+    key         TEXT NOT NULL,
+    ts          INTEGER NOT NULL,
+    PRIMARY KEY (consort_id, key)
+);

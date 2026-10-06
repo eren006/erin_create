@@ -1,0 +1,6 @@
+{% set _ep = request.endpoint or '' %}
+<nav class="subtabs" aria-label="暇趣分栏">
+  <a href="{{ url_for('hobby') }}" class="{{ 'on' if _ep.startswith('hobby') }}">暇趣</a>
+  <a href="{{ url_for('garden') }}" class="{{ 'on' if _ep.startswith('garden') }}">菜园</a>
+  <a href="{{ url_for('banquet') }}" class="{{ 'on' if _ep.startswith('banquet') }}">宴会</a>
+</nav>

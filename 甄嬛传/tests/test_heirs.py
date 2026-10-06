@@ -66,15 +66,11 @@ class HeirTests(unittest.TestCase):
         self.assertFalse(game.q('SELECT zhuazhou FROM heirs WHERE id=?', (hid,), one=True)['zhuazhou'], '错过那天就不再补触发')
 
     def test_low_rank_mother_loses_custody_at_zhuazhou(self):
-        game.run('UPDATE consorts SET rank=3 WHERE id=?', (self.atk,))   # 答应，位分不够
-        self.player('丙', rank=6)   # 得有个嫔以上的人在，才有得指
+        game.run('UPDATE consorts SET rank=3 WHERE id=?', (self.atk,))
+        self.player('丙', rank=6)
         hid = self.heir(self.atk, born=8)
         game.heir_growth_tick(8 + game.ZHUAZHOU_AGE_DAYS)
-        h = game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
-        self.assertNotEqual(h['caretaker_id'], self.atk)
-        foster = game.get_consort(h['caretaker_id'])
-        self.assertGreaterEqual(foster['rank'], 5)
-        self.assertTrue(any('被抱去' in m['text'] for m in game.q('SELECT text FROM messages WHERE consort_id=?', (self.atk,))))
+        self.assertEqual(game.q('SELECT caretaker_id FROM heirs WHERE id=?', (hid,), one=True)['caretaker_id'], 0)
 
     def test_high_rank_mother_keeps_custody_at_zhuazhou(self):
         # self.atk 是 setUp 里的嫔（rank 5），位分够
@@ -84,13 +80,10 @@ class HeirTests(unittest.TestCase):
 
     def test_zhuazhou_picks_foster_with_fewest_wards(self):
         game.run('UPDATE consorts SET rank=3 WHERE id=?', (self.atk,))
-        busy = self.player('丙', rank=6)
-        free = self.player('丁', rank=6)
-        self.heir(busy, caretaker=busy, born=1)   # 丙已经带了一个
+        self.player('丙', rank=6)
         hid = self.heir(self.atk, born=8)
         game.heir_growth_tick(8 + game.ZHUAZHOU_AGE_DAYS)
-        h = game.q('SELECT caretaker_id FROM heirs WHERE id=?', (hid,), one=True)
-        self.assertEqual(h['caretaker_id'], free, '优先指给带得少的人')
+        self.assertEqual(game.q('SELECT caretaker_id FROM heirs WHERE id=?', (hid,), one=True)['caretaker_id'], 0)
 
     # ── 教养 ─────────────────────────────────────────────────────────────────
 
@@ -101,6 +94,38 @@ class HeirTests(unittest.TestCase):
         h = game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
         self.assertEqual(h['study'], 23)
         self.assertEqual(game.get_consort(self.atk)['energy'], e0 - game.HEIR_RAISE_ENERGY)
+
+    def test_gifts_scale_raise_gain(self):
+        low = self.heir(self.atk, personality='', study=20, gift_study=70)
+        high = self.heir(self.atk, personality='', study=20, gift_study=140)
+        self.client.post(f'/heirs/raise/{low}', data=dict(opt='study'))
+        self.client.post(f'/heirs/raise/{high}', data=dict(opt='study'))
+        g1 = game.q('SELECT study FROM heirs WHERE id=?', (low,), one=True)['study'] - 20
+        g2 = game.q('SELECT study FROM heirs WHERE id=?', (high,), one=True)['study'] - 20
+        self.assertEqual((g1, g2), (2, 4), '资质 70% 涨 2、140% 涨 4，基础是 3')
+
+    def test_gift_words_and_roll_range_and_inheritance(self):
+        self.assertEqual([game.gift_word(v) for v in (60, 85, 105, 125, 150)], ['平庸', '中人之资', '聪颖', '出众', '天纵'])
+        smart = dict(talent=100, health=60, virtue=50)
+        dull = dict(talent=0, health=60, virtue=50)
+        with patch.object(game.random, 'randint', return_value=0):
+            self.assertGreater(game.roll_heir_gifts(smart, {})['study'], game.roll_heir_gifts(dull, {})['study'])
+            self.assertGreater(game.roll_heir_gifts(dull, {'study': 100})['study'], game.roll_heir_gifts(dull, {'study': 0})['study'])
+        for _ in range(200):
+            for v in game.roll_heir_gifts(smart, {'study': 100, 'riding': 100, 'virtue': 100}).values():
+                self.assertTrue(game.GIFT_MIN <= v <= game.GIFT_MAX)
+
+    def test_born_heirs_get_gifts_and_birth_note(self):
+        game.run('UPDATE consorts SET pregnant_since=? WHERE id=?', (game.cur_day() - game.PREGNANCY_DAYS, self.atk))
+        game.run("UPDATE consorts SET status='cold' WHERE npc_key IS NOT NULL")
+        with patch.object(game.random, 'random', return_value=0.99), patch.object(game, 'npc_schemes'):
+            game.settle_day()
+        h = game.q('SELECT * FROM heirs WHERE mother_id=?', (self.atk,), one=True)
+        for k in game.GIFT_STATS:
+            self.assertTrue(game.GIFT_MIN <= h['gift_' + k] <= game.GIFT_MAX)
+        self.assertTrue(any('根骨' in m['text'] for m in game.q('SELECT text FROM messages WHERE consort_id=?', (self.atk,))))
+        self.login(self.atk)
+        self.assertEqual(self.client.get('/heirs').status_code, 200)
 
     def test_personality_multiplier_on_study(self):
         clever = self.heir(self.atk, personality='clever', study=20)
@@ -207,7 +232,7 @@ class HeirTests(unittest.TestCase):
         with self.client.session_transaction() as sess: sess['admin'] = True
         self.client.post('/admin/reset', data={'confirm': '重开'})
         self.assertFalse(game.q("SELECT 1 FROM heirs WHERE npc_key=''"), '玩家的孩子清掉')
-        self.assertEqual(game.q('SELECT COUNT(*) n FROM heirs', one=True)['n'], 2, '开服自带的三阿哥、四阿哥重新播种')
+        self.assertEqual(game.q('SELECT COUNT(*) n FROM heirs', one=True)['n'], 0, '新开局没有预设皇嗣')
 
 
 class HeirExamHuntTests(unittest.TestCase):

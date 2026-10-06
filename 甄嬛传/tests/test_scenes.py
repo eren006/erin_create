@@ -37,7 +37,7 @@ class SceneContentTests(unittest.TestCase):
             self.assertGreater(p['opts'][2]['win'].get('trust', 0), 0, f'audience#{i}')
 
     def test_every_scene_is_reachable(self):
-        pools = set(game.EMPEROR_SCENES) | set(game.NPC_SCENES) | set(game.GREET_SCENES) | {'seek_angry', 'yangxin_emperor'}
+        pools = set(game.EMPEROR_SCENES) | set(game.NPC_SCENES) | set(game.GREET_SCENES) | set(game.ADVENTURE_GARDEN) | set(game.ADVENTURE_ROAD) | {'seek_angry', 'yangxin_emperor'}
         self.assertEqual(pools, set(game.SCENES))
 
     def test_no_canon_only_names(self):
@@ -78,6 +78,7 @@ class ScenePickTests(unittest.TestCase):
     player = test_lifecycle.LifecycleTests.player
     login = test_lifecycle.LifecycleTests.login
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_npc_scene_needs_npc_present(self):
         # setUp 把 NPC 全送进了冷宫：要 NPC 在场的一个都不出，只剩不挑人的
         for _ in range(30):
@@ -87,6 +88,7 @@ class ScenePickTests(unittest.TestCase):
         for _ in range(10):
             self.assertEqual(game.pick_scene(game.NPC_SCENES), 'yanqing_duanfei')
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_npc_affinity_effect(self):
         game.run("UPDATE consorts SET status='normal' WHERE npc_key='duanfei'")
         duan = game.q("SELECT * FROM consorts WHERE npc_key='duanfei'", one=True)
@@ -101,6 +103,7 @@ class ScenePickTests(unittest.TestCase):
     def test_scheme_effect_named(self):
         self.assertEqual(game.apply_effects(self.atk, dict(scheme=2)), '心计 +2')
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_greet_can_start_new_scenes(self):
         game.run("UPDATE consorts SET status='normal' WHERE npc_key='xinchangzai'")
         with patch.object(game.random, 'random', return_value=0.1), \

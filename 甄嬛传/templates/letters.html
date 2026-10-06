@@ -52,15 +52,17 @@
     <label for="silver" style="margin:0">附银子</label><input id="silver" type="number" name="silver" min="0" max="{{ c.silver }}" value="0" style="width:90px">
     <label for="item" style="margin:0">附东西</label>
     <select id="item" name="item"><option value="">不附</option>{% for i in inv if i.item_key in ITEMS %}<option value="{{ i.item_key }}">{{ ITEMS[i.item_key].name }} ×{{ i.qty }}</option>{% endfor %}</select>
-    {% if held %}
-    <label for="hobby_item_id" style="margin:0">附自己做的雅趣</label>
-    <select id="hobby_item_id" name="hobby_item_id"><option value="">不附</option>
-      {% for i in held %}<option value="{{ i.id }}" {{ 'selected' if i.id == hobby_item }}>{{ HOBBIES[i.kind].name }}·{{ i.style }}（{{ i.quality }}）</option>{% endfor %}
-    </select>
-    {% endif %}
   </div>
   {% elif c.status != 'cold' %}
-  <p class="muted">入宫不满 {{ LETTER_ATTACH_SHIELD }} 天，信里还带不了银子和东西。</p>
+  <p class="muted">入宫不满 {{ LETTER_ATTACH_SHIELD }} 天，暂不能附银子、普通道具或转赠他人作品；自己制作的雅趣作品可立即相赠。</p>
+  {% endif %}
+  {% if c.status != 'cold' and held %}
+  <div class="row">
+    <label for="hobby_item_id" style="margin:0">附雅趣作品（送出后转入对方收藏）</label>
+    <select id="hobby_item_id" name="hobby_item_id"><option value="">不附</option>
+      {% for i in held if can_attach or i.maker_id == c.id %}<option value="{{ i.id }}" {{ 'selected' if i.id == hobby_item }}>{{ HOBBIES[i.kind].name }}·{{ i.style }}（{{ i.quality }}）</option>{% endfor %}
+    </select>
+  </div>
   {% endif %}
   <div class="row"><button {{ 'disabled' if left <= 0 or not others }}>送出去</button>
     <span class="muted">今天还能送 {{ left }} 封。每天给同一个人的第一封信好感 +2，附玉如意再 +15，附自己做的雅趣作品再 +10。</span></div>
@@ -79,7 +81,7 @@
     第 {{ l.day }} 天
     {% if mine_role == 'from' %}{{ '，她已读' if l.is_read else '，还没读' }}{% endif %}
     {% if l.silver %}，附银子 {{ l.silver }} 两{% endif %}{% if l.item_key %}，附{{ ITEMS[l.item_key].name if l.item_key in ITEMS else l.item_key }}{% endif %}
-    {% if l.hobby_item_id %}{% set hi = get_hobby_item(l.hobby_item_id) %}{% if hi %}，附{{ HOBBIES[hi.kind].name }}·{{ hi.style }}（{{ hi.quality }}）{% endif %}{% endif %}
+    {% if l.hobby_item_id %}<span class="muted">（作品已送达，当前收藏可在暇趣查看）</span>{% set hi = get_hobby_item(l.hobby_item_id) %}{% if hi %}，附{{ HOBBIES[hi.kind].name }}·{{ hi.style }}（{{ hi.quality }}）{% endif %}{% endif %}
     {% if other %}　<a href="{{ url_for('letters', with=other.id) }}" class="muted">只看她</a>{% endif %}
     {% if mine_role == 'to' and l.from_id != 0 and other.status not in ('dead',) %}　<a href="{{ url_for('letters', to=other.id) }}">回信</a>{% endif %}
     {% if mine_role == 'to' %}　<a href="{{ url_for('report', letter=l.id) }}" class="muted">举报</a>{% endif %}

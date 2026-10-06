@@ -1,0 +1,6 @@
+{% set _ep = request.endpoint or '' %}
+<nav class="subtabs" aria-label="事务分栏">
+  <a href="{{ url_for('quests') }}" class="{{ 'on' if _ep.startswith('quests') }}">差事</a>
+  <a href="{{ url_for('achievements') }}" class="{{ 'on' if _ep.startswith('achievements') }}">成就</a>
+  <a href="{{ url_for('rankings') }}" class="{{ 'on' if _ep == 'rankings' }}">榜单</a>
+</nav>

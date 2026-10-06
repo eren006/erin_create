@@ -83,14 +83,21 @@ class HobbyTests(unittest.TestCase):
         self.client.post('/hobby/start', data=dict(kind='flower', style=0))
         self.assertEqual(game.get_consort(self.me)['energy'], e0, '失宠时雅趣不占精力')
 
-    def test_cannot_start_second_project_or_act_twice_same_day(self):
+    def test_cannot_start_second_project(self):
         self.client.post('/hobby/start', data=dict(kind='flower', style=0))
         self.client.post('/hobby/start', data=dict(kind='painting', style=0))
         self.assertEqual(game.current_hobby_project(self.me)['kind'], 'flower')
+
+    def test_can_act_several_times_a_day_up_to_daily_max(self):
+        from unittest.mock import patch
+        with patch.object(game, 'HOBBY_DAILY_MAX', 1):
+            self.client.post('/hobby/start', data=dict(kind='flower', style=0))
+            self.client.post('/hobby/act')
+            stage = game.current_hobby_project(self.me)['stage']
+            self.client.post('/hobby/act')
+            self.assertEqual(game.current_hobby_project(self.me)['stage'], stage, '到了每日上限不能再打理')
         self.client.post('/hobby/act')
-        stage = game.current_hobby_project(self.me)['stage']
-        self.client.post('/hobby/act')
-        self.assertEqual(game.current_hobby_project(self.me)['stage'], stage, '同一天不能再打理')
+        self.assertIsNone(game.current_hobby_project(self.me), '放宽后同一天能接着打理，第二步就做成了')
 
     def test_no_stat_or_favor_reward_from_hobby(self):
         before = game.get_consort(self.me)

@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% block title %}菜园{% endblock %}
+{% block head %}
+<style>
+.plots{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:14px;margin:12px 0}
+.plot{background:var(--paper);border:1px solid var(--line);padding:14px;border-top:3px solid var(--jin)}
+.plot.empty{border-top-style:dashed}
+.plot .nm{font-family:var(--kai);font-size:18px}
+.bar{height:6px;background:var(--line);border-radius:3px;margin:8px 0;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--jin)}
+.plot select,.plot button{margin-top:6px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+</style>
+{% endblock %}
+{% block body %}
+{% include '_tabs_leisure.html' %}
+<h2>菜园</h2>
+<p class="muted">本宫后头开了几块地。种下去按真实时辰长，不用等结算；浇一次水，剩下的工夫少四分之一。收了菜可以卖给内务府、送给姐妹，也可以每天进献一回给皇上。你手里有 {{ c.silver }} 两。</p>
+
+<div class="plots">
+{% for p in plots %}
+  {% if p.crop %}
+  <div class="plot">
+    <div class="nm">{{ p.cfg.name }}</div>
+    {% if p.ready %}
+      <p>熟了！</p>
+      <form method="post" action="{{ url_for('garden_harvest') }}"><input type="hidden" name="slot" value="{{ p.slot }}"><button>收获</button></form>
+    {% else %}
+      <div class="bar"><i style="width:{{ p.pct }}%"></i></div>
+      <p class="muted">还要 {{ p.left_min // 60 }} 小时 {{ p.left_min % 60 }} 分钟</p>
+      <form method="post" action="{{ url_for('garden_water') }}"><input type="hidden" name="slot" value="{{ p.slot }}">
+        <button class="plain" {{ 'disabled' if p.watered }}>{{ '已浇过水' if p.watered else '浇水' }}</button></form>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="plot empty">
+    <div class="nm muted">空地</div>
+    <form method="post" action="{{ url_for('garden_plant') }}">
+      <input type="hidden" name="slot" value="{{ p.slot }}">
+      <select name="crop" aria-label="种什么">
+        {% for k, cfg in CROPS.items() %}<option value="{{ k }}">{{ cfg.name }}（种子 {{ cfg.seed }} 两·{{ cfg.hours }} 时辰·产 {{ cfg.yield_ }}）</option>{% endfor %}
+      </select>
+      <button>播种</button>
+    </form>
+  </div>
+  {% endif %}
+{% endfor %}
+</div>
+<div class="row">
+  {% if plots|selectattr('ready')|list %}<form method="post" action="{{ url_for('garden_harvest') }}"><input type="hidden" name="slot" value="all"><button>全部收获</button></form>{% endif %}
+  {% if next_plot %}<form method="post" action="{{ url_for('garden_expand') }}"><button class="plain" {{ 'disabled' if c.silver < plot_price }}>再辟一块地（{{ plot_price }} 两）</button></form>{% endif %}
+</div>
+
+<h3>厨房</h3>
+<p class="muted">用收下来的菜做成吃食：能自己吃（补精力、体质，或给今晚的宴会加分）、送人好感更多、进献皇上圣宠更高，卖得也贵。每天最多做 {{ COOK_DAILY_MAX }} 道（今天做了 {{ cooked_today }}），最多吃 {{ EAT_DAILY_MAX }} 回（今天吃了 {{ eaten_today }}）。</p>
+<div class="scroll"><table>
+  <tr><th>菜式</th><th>食材</th><th>用处</th><th></th></tr>
+  {% for k, d in DISHES.items() %}
+  {% set can = namespace(v=true) %}
+  <tr>
+    <td style="font-family:var(--kai);font-size:17px;white-space:nowrap">{{ d.name }}</td>
+    <td>{% for ck, n in d.needs.items() %}{% if stock.get(ck, 0) < n %}{% set can.v = false %}{% endif %}<span style="{{ 'color:var(--zhu-deep)' if stock.get(ck, 0) < n }}">{{ CROPS[ck].name }}×{{ n }}（有 {{ stock.get(ck, 0) }}）</span>{{ '　' if not loop.last }}{% endfor %}</td>
+    <td>{{ d.desc }}<br><span class="muted">送人好感 +{{ d.gift }}　进献圣宠 {{ d.tribute[0] }}~{{ d.tribute[1] }}　卖 {{ d.sell }} 两</span></td>
+    <td><form method="post" action="{{ url_for('garden_cook') }}"><input type="hidden" name="dish" value="{{ k }}"><button {{ 'disabled' if not can.v or cooked_today >= COOK_DAILY_MAX }}>做</button></form></td>
+  </tr>
+  {% endfor %}
+</table></div>
+
+<h3>库里的东西</h3>
+{% if stock %}
+<div class="scroll"><table>
+  <tr><th>东西</th><th>数量</th><th>卖价</th><th></th></tr>
+  {% for k, n in stock.items() %}{% set pc = produce_cfg(k) %}
+  <tr>
+    <td style="font-family:var(--kai);font-size:17px">{{ pc.name }}{% if pc.dish %}<span class="muted">（吃食）</span>{% endif %}</td><td>{{ n }}</td><td>{{ pc.sell }} 两</td>
+    <td style="white-space:nowrap">
+      {% if pc.dish and DISHES[k[2:]].eat %}<form method="post" action="{{ url_for('garden_eat') }}" style="display:inline"><input type="hidden" name="dish" value="{{ k[2:] }}"><button class="plain" {{ 'disabled' if eaten_today >= EAT_DAILY_MAX }}>吃</button></form>{% endif %}
+      <form method="post" action="{{ url_for('garden_sell') }}" style="display:inline"><input type="hidden" name="crop" value="{{ k }}"><button class="plain">全卖</button></form>
+      <form method="post" action="{{ url_for('garden_tribute') }}" style="display:inline"><input type="hidden" name="crop" value="{{ k }}"><button class="plain" {{ 'disabled' if tributed }}>{{ '今日已进献' if tributed else '进献皇上' }}</button></form>
+    </td>
+  </tr>
+  {% endfor %}
+</table></div>
+<p class="muted">进献皇上每天只能一回，同一样东西 {{ TRIBUTE_SAME_ITEM_DAYS }} 天内不能重复进献；最近连着几天都进献，圣宠收益会一天比一天少（你现在是原来的 {{ (tribute_now * 100)|round|int }}%）。</p>
+<div class="row">
+  <form method="post" action="{{ url_for('garden_sell') }}"><input type="hidden" name="crop" value="all"><button>把生菜全卖给内务府</button></form>
+</div>
+
+<h3>送姐妹</h3>
+<p class="muted">每天最多送 {{ GARDEN_GIFT_DAILY_MAX }} 回（今天还能送 {{ gifts_left }} 回）。生菜好感 +{{ GARDEN_GIFT_AFFINITY }}，亲手做的吃食更多。</p>
+{% if others and gifts_left > 0 %}
+<form method="post" action="{{ url_for('garden_gift') }}" class="row">
+  <select name="crop" aria-label="送什么">{% for k, n in stock.items() %}<option value="{{ k }}">{{ produce_cfg(k).name }}（{{ n }}）</option>{% endfor %}</select>
+  <select name="target_id" aria-label="送给谁">{% for o in others %}<option value="{{ o.id }}">{{ dn(o) }}</option>{% endfor %}</select>
+  <button>送出去</button>
+</form>
+{% endif %}
+{% else %}
+<p class="muted">库里还空着，先种点什么吧。</p>
+{% endif %}
+
+<h3>种子行情</h3>
+<div class="scroll"><table>
+  <tr><th>菜</th><th>种子</th><th>时辰</th><th>一茬产</th><th>卖价</th><th>说明</th></tr>
+  {% for k, cfg in CROPS.items() %}
+  <tr><td style="font-family:var(--kai)">{{ cfg.name }}</td><td>{{ cfg.seed }} 两</td><td>{{ cfg.hours }}</td><td>{{ cfg.yield_ }}</td><td>{{ cfg.sell }} 两</td><td>{{ cfg.desc }}</td></tr>
+  {% endfor %}
+</table></div>
+{% endblock %}

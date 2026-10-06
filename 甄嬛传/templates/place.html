@@ -68,7 +68,10 @@
 {% if c.pregnant_since %}
 <div class="sheet" style="margin:14px 0">
   <h3 style="margin-top:0">有喜</h3>
-  <p class="muted">{{ PREGNANCY_DAYS }} 天后临盆。这几天可以安胎、胎教，每天一样，1 精力。安胎静养能降低难产的风险，其余三样让孩子出世时的学问、骑射、品行多一点底子（每样最多 +6）。</p>
+  {% set pregnancy = pregnancy_progress(c) %}
+  <p><b>{{ pregnancy.stage }}</b>{% if not pregnancy.legacy %}　孕期进度 {{ pregnancy.percent }}%　距临盆约 {{ pregnancy.hours }}小时{{ pregnancy.minutes }}分钟{% endif %}</p>
+  {% if not pregnancy.legacy %}<progress value="{{ pregnancy.percent }}" max="100" style="width:100%" aria-label="孕期进度">{{ pregnancy.percent }}%</progress>{% endif %}
+  <p class="muted">{{ pregnancy_due_text(c) }}。孕中可以安胎、胎教，每天一样，1 精力。安胎静养能降低难产的风险，其余三样让孩子出世时的学问、骑射、品行多一点底子（每样最多 +6）。</p>
   <form method="post" action="{{ url_for('prenatal') }}" class="row">
     {% for k, pn in PRENATAL.items() %}<button name="kind" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'prenatal') }}>{{ pn.name }}</button>{% endfor %}
   </form>
@@ -144,6 +147,8 @@
       <input type="hidden" name="back" value="{{ request.view_args.key }}">
       {% if key == 'study' %}
         <select name="art" aria-label="才艺">{% for art in ARTS %}<option value="{{ art }}" {{ 'selected' if art==gs.emperor_pref }}>{{ art }}（{{ arts.get(art, 0) }}{% if arts.get(art,0) >= ART_MASTERY %}，精通{% endif %}）</option>{% endfor %}</select>
+      {% elif key == 'aid' %}
+        {% if aid_targets %}<select name="target_id" aria-label="帮助谁">{% for p in aid_targets %}<option value="{{ p.id }}">{{ dn(p) }}</option>{% endfor %}</select>{% else %}{% set blocked = true %}<span class="muted">眼下没有可帮助的姐妹</span>{% endif %}
       {% elif key == 'plead' %}
         {% if plead_targets %}
         <select name="target_id" aria-label="替谁求情">{% for p in plead_targets %}<option value="{{ p.id }}">{{ dn(p) }}（{{ '冷宫' if p.status == 'cold' else '禁足' }}）</option>{% endfor %}</select>

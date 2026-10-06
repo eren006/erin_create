@@ -99,7 +99,7 @@ class FosteringTests(unittest.TestCase):
         game.heir_growth_tick(8 + game.ZHUAZHOU_AGE_DAYS)
         h = self.heir_row(hid)
         self.assertEqual(h['foster_request_to'], 0)
-        self.assertNotEqual(h['caretaker_id'], mother, '没等到点头，照旧按祖制指走')
+        self.assertEqual(h['caretaker_id'], 0, '未同意托付时进入养育所')
 
     # ── 探视 ─────────────────────────────────────────────────────────────────
 
@@ -158,26 +158,26 @@ class FosteringTests(unittest.TestCase):
     def test_reclaim_success_returns_child(self):
         boss = self.player('丙', rank=6)
         hid = self.heir(self.atk, caretaker=boss, mother_affinity=70, caretaker_affinity=40, visit_banned=1)
-        with patch.object(game.random, 'random', return_value=0.0):
-            self.client.post(f'/heirs/reclaim/{hid}')
-        h = self.heir_row(hid)
-        self.assertEqual(h['caretaker_id'], self.atk)
-        self.assertEqual(h['caretaker_affinity'], 70, '回到生母身边，情分跟着生母那一份走')
-        self.assertEqual(h['visit_banned'], 0)
+        self.client.post(f'/heirs/reclaim/{hid}')
+        self.assertEqual(self.heir_row(hid)['caretaker_id'], boss)
+        game.run('UPDATE custody_battles SET challenger_progress=90 WHERE heir_id=?',(hid,))
+        self.client.post(f'/heirs/custody/{hid}',data={'action':'bond'})
+        h=self.heir_row(hid)
+        self.assertEqual(h['caretaker_id'],self.atk)
+        self.assertEqual(h['caretaker_affinity'],70)
+        self.assertEqual(h['visit_banned'],0)
 
     def test_reclaim_failure_sets_cooldown(self):
         boss = self.player('丙', rank=6)
         hid = self.heir(self.atk, caretaker=boss)
-        with patch.object(game.random, 'random', return_value=0.99):
-            self.client.post(f'/heirs/reclaim/{hid}')
-        h = self.heir_row(hid)
-        self.assertEqual(h['caretaker_id'], boss)
-        self.assertEqual(h['reclaim_after_day'], game.cur_day() + game.HEIR_RECLAIM_COOLDOWN)
-        e = game.get_consort(self.atk)['energy']
-        with patch.object(game.random, 'random', return_value=0.0):
-            self.client.post(f'/heirs/reclaim/{hid}')   # 冷却期里再求，不该成
-        self.assertEqual(self.heir_row(hid)['caretaker_id'], boss)
-        self.assertEqual(game.get_consort(self.atk)['energy'], e, '被冷却拦下不该扣精力')
+        self.client.post(f'/heirs/reclaim/{hid}')
+        self.client.post(f'/heirs/custody/{hid}',data={'action':'yield'})
+        h=self.heir_row(hid)
+        self.assertEqual(h['caretaker_id'],boss)
+        self.assertEqual(h['reclaim_after_day'],game.cur_day()+game.HEIR_RECLAIM_COOLDOWN)
+        e=game.get_consort(self.atk)['energy']
+        self.client.post(f'/heirs/reclaim/{hid}')
+        self.assertEqual(game.get_consort(self.atk)['energy'],e)
 
     def test_reclaim_needs_pin_rank(self):
         mother = self.low_mother()
@@ -195,7 +195,7 @@ class FosteringTests(unittest.TestCase):
         game.run("UPDATE consorts SET status='cold' WHERE id=?", (self.atk,))
         game.heir_rehome_tick(game.cur_day())
         h = self.heir_row(hid)
-        self.assertEqual(h['caretaker_id'], boss)
+        self.assertEqual(h['caretaker_id'], 0)
         self.assertEqual(h['caretaker_affinity'], 50)
 
     def test_mother_dead_child_goes_to_someone_else(self):
@@ -203,7 +203,7 @@ class FosteringTests(unittest.TestCase):
         hid = self.heir(self.atk)
         game.die(self.atk, '病重不治', memorial_reason='病逝')
         game.heir_rehome_tick(game.cur_day())
-        self.assertEqual(self.heir_row(hid)['caretaker_id'], boss)
+        self.assertEqual(self.heir_row(hid)['caretaker_id'], 0)
 
     def test_foster_cold_child_returns_to_pin_mother(self):
         boss = self.player('丙', rank=6)
@@ -222,13 +222,13 @@ class FosteringTests(unittest.TestCase):
         game.run("UPDATE consorts SET status='cold' WHERE id=?", (self.atk,))   # 甲也是嫔，先让她靠边，免得抢了名额
         game.run("UPDATE consorts SET status='dead' WHERE id=?", (boss,))
         game.heir_rehome_tick(game.cur_day())
-        self.assertEqual(self.heir_row(hid)['caretaker_id'], newer, '生母位分不够，不能领回，只能另指')
+        self.assertEqual(self.heir_row(hid)['caretaker_id'], 0, '低位生母的孩子回养育所')
 
     def test_no_candidate_leaves_child_for_tomorrow(self):
         hid = self.heir(self.atk)
         game.run("UPDATE consorts SET status='cold' WHERE id=?", (self.atk,))
         game.heir_rehome_tick(game.cur_day())   # 没有别的嫔以上，不该报错
-        self.assertEqual(self.heir_row(hid)['caretaker_id'], self.atk)
+        self.assertEqual(self.heir_row(hid)['caretaker_id'], 0)
 
     def test_heirs_page_renders_actions(self):
         mother = self.low_mother()

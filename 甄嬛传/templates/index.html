@@ -53,9 +53,11 @@
 </style>
 {% endblock %}
 {% block body %}
+{% if c %}<p>势力：{{ c.influence }}{% if promo %} · 晋为{{ promo.rank }}需 {{ promo.influence }}{% endif %}</p>{% endif %}
+{% if c and c.status not in ('xiunv','dead') %}<p class="muted">当前{{ FAVOR_CARE[favor_care_tier(c)].name }}待遇 · 每晚月例与赏银 {{ favor_stipend(c) }} 两{% if c.ill_day %} · 已患病，{{ '已获治疗' if c.ill_treatment else '请及时请太医（可由姐妹代付）' }}{% endif %}</p>{% endif %}
 {% if guide %}
 <section class="sheet" style="margin:0 0 16px" aria-label="教引嬷嬷">
-  <p style="font-family:var(--kai);font-size:17px">许嬷嬷：{{ guide.open_line }}</p>
+  <p style="font-family:var(--kai);font-size:17px">{{ guide.name }}：{{ guide.open_line }}</p>
   <ul style="margin:8px 0 4px;padding-left:1.2em">
     {% for label, done in guide.checklist %}<li style="{{ 'color:var(--muted);text-decoration:line-through' if done }}">{{ label }}{% if done %}　✓{% endif %}</li>{% endfor %}
   </ul>
@@ -70,19 +72,20 @@
   <div class="pai big {{ 'cold' if c.status=='cold' }}">{{ dn(c) }}</div>
   <div class="facts">
     <div class="rank">{{ dn(c) }}</div>
-    <div class="muted">{{ full_name(c) }}　{{ FAMILIES[c.family].name }}　{{ PERSONALITIES[c.personality].name }}{% if c.lineage %}　{{ c.lineage }}{% endif %}</div>
+    <div class="muted">{{ full_name(c) }}　{{ '东宫旧人' if c.entry_origin == 'east_palace' else '新选入宫' }}　{{ FAMILIES[c.family].name }} · {{ family_background(c) }}　{{ PERSONALITIES[c.personality].name }}{% if c.lineage %}　{{ c.lineage }}{% endif %}</div>
     <dl>
-      <dt>年龄</dt><dd>{{ age_text(c.age_months) }}　<span class="muted">宫中一天是半年</span></dd>
+      <dt>年龄</dt><dd>{{ age_text(c.age_months) }}　<span class="muted">宫中一天是 {{ AGE_YEARS_PER_DAY }} 年</span></dd>
       <dt>圣宠</dt><dd>{{ c.favor }}　<span class="muted">{{ favor_word(c.favor) }}</span>
         {% if promo %}<div class="bar"><i style="width:{{ [100, (c.favor * 100 / promo.favor)|int]|min }}%"></i></div>
-        <div class="muted">晋{{ promo.rank }}：圣宠 {{ promo.favor }}，德行 {{ promo.virtue }}
+        <div class="muted">晋{{ promo.rank }}：圣宠 {{ promo.favor }}，德行 {{ promo.virtue }}，势力 {{ c.influence }}/{{ promo.influence }}
           {%- if not promo.days_ok %}，还需在本位分多待些日子{% endif %}
-          {%- if not promo.slot %}，但{{ promo.rank }}名额已满{% endif %}</div>{% endif %}</dd>
+          {%- if not promo.slot %}，但{{ promo.rank }}名额已满{% endif %} · 每天12:00、23:00检查晋升（北京时间）</div>{% endif %}</dd>
       <dt>信任</dt><dd>{{ c.trust }}　<span class="muted">皇上对你{{ trust_word(c.trust) }}。求情、告发成不成，被人陷害时皇上信不信，都看这个</span></dd>
-      <dt>精力</dt><dd><span class="pips" aria-label="精力 {{ c.energy }}">{{ '●' * c.energy }}{{ '○' * (5 - c.energy if c.energy < 5 else 0) }}</span></dd>
+      <dt>翻牌</dt><dd>{{ bed_chance_text(c) }}</dd>
+      <dt>精力</dt><dd><span class="pips" aria-label="精力 {{ c.energy }}">{{ '●' * c.energy }}{{ '○' * (ENERGY_MAX - c.energy if c.energy < ENERGY_MAX else 0) }}</span></dd>
       <dt>容貌</dt><dd>{{ c.appearance }}　<span class="muted">才艺</span> {{ c.talent }}　<span class="muted">心计</span> {{ c.scheme }}　<span class="muted">德行</span> {{ c.virtue }}</dd>
       <dt>体质</dt><dd>{{ c.health }}{% if sick %}　<span style="color:var(--bad)">卧病在床</span>{% endif %}</dd>
-      {% if c.pregnant_since %}<dt>喜脉</dt><dd>{% set left = PREGNANCY_DAYS - (day - c.pregnant_since) + 1 %}已有喜脉，{{ '今晚' if left <= 1 else ('明晚' if left == 2 else left ~ ' 次结算后') }}临盆　<span class="muted">当心入口的东西</span></dd>{% endif %}
+      {% if c.pregnant_since %}<dt>喜脉</dt><dd>已有喜脉，{{ pregnancy_due_text(c) }}　<span class="muted">当心入口的东西</span></dd>{% endif %}
       {% if eyes %}<dt>眼线</dt><dd>在，到第 {{ c.eyes_until_day }} 天</dd>{% endif %}
       {% if heirs %}<dt>子嗣</dt><dd>{% for h in heirs %}{{ heir_label(h) }}{{ '、' if not loop.last }}{% endfor %}</dd>{% endif %}
     </dl>
@@ -127,9 +130,7 @@
 {% if c.secret != 'none' and not c.secret_revealed %}
 <h3>心事</h3>
 <p>你{{ secret.name }}。这件事若被人探去告发，便是{{ secret.penalty }}。</p>
-<form method="post" action="{{ url_for('confess') }}" onsubmit="return confirm('确定向皇上坦白吗？会受罚：{{ secret.confess }}');">
-  <button class="plain">主动向皇上坦白（从轻：{{ secret.confess }}，信任 +5）</button>
-</form>
+
 {% endif %}
 
 <h3>宫人来报</h3>

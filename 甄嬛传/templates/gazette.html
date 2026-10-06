@@ -26,11 +26,21 @@
 {% block body %}
 <h2>邸报</h2>
 
+<h3>待产</h3>
+{% if expecting %}
+<div class="scroll"><table>
+  <tr><th>有喜的人</th><th>阶段</th><th>还有多久</th></tr>
+  {% for e in expecting %}
+  <tr><td style="font-family:var(--kai);font-size:17px">{{ dn(e.c) }}</td><td>{{ e.stage }}</td>
+    <td>{% if e.legacy %}按旧规矩结算临盆{% elif e.hours == 0 and e.minutes == 0 %}就在这一两分钟{% else %}{{ e.hours }} 小时 {{ e.minutes }} 分钟（{{ e.due }}）{% endif %}</td></tr>
+  {% endfor %}
+</table></div>
+{% else %}<p class="muted">眼下宫里没有人有喜。</p>{% endif %}
 <h3>六宫位分</h3>
-{% if last_bed %}
+{% if last_beds %}
 <div class="lastbed">
-  <div class="pai flip {{ 'npc' if last_bed.npc_key }}">{{ dn(last_bed) }}</div>
-  <div><div class="muted">第 {{ gs.last_bed_day }} 日夜，敬事房</div><div class="t">皇上翻了{{ dn(last_bed) }}的牌子。</div></div>
+  {% for lb in last_beds %}<div class="pai flip {{ 'npc' if lb.npc_key }}">{{ dn(lb) }}</div>{% endfor %}
+  <div><div class="muted">第 {{ gs.last_bed_day }} 日夜，敬事房</div><div class="t">皇上翻了{% for lb in last_beds %}{{ dn(lb) }}{{ '、' if not loop.last }}{% endfor %}的牌子。</div></div>
 </div>
 {% endif %}
 <p class="muted">灰色的是宫里原有的妃嫔；虚线空位表示还有名额。贵人以上有定员，满了就得等别人倒下。</p>
@@ -39,7 +49,7 @@
   <div class="rn">{{ grp.name }}{% if grp.cap %}<small>定员 {{ grp.cap }}</small>{% endif %}</div>
   <div class="rack">
     {% for m in grp.members %}
-      <div class="pai {{ 'npc' if m.npc_key }} {{ 'me' if m.id == me.id }}" title="{{ full_name(m) }}{{ '：' ~ m.intro if m.intro }}">{{ dn(m) }}<span class="note">{{ favor_word(m.favor) }}</span></div>
+      <div class="pai {{ 'npc' if m.npc_key }} {{ 'me' if m.id == me.id }}" title="{{ full_name(m) }}{{ '【' ~ badge_name(m) ~ '】' if badge_name(m) }}{{ '：' ~ m.intro if m.intro }}">{{ dn(m) }}<span class="note">{{ favor_word(m.favor) }}</span></div>
     {% endfor %}
     {% if grp.cap %}{% for _ in range(grp.cap - grp.members|length) %}<div class="empty" aria-label="空缺"></div>{% endfor %}{% endif %}
   </div>

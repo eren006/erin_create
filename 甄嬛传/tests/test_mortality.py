@@ -120,23 +120,23 @@ class IllnessOnsetTests(unittest.TestCase):
         game.run('UPDATE game_state SET day=11')   # 避开 day % EPIDEMIC_INTERVAL == 0 的巧合
         day = game.cur_day()
         game.run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day, self.atk))
-        with patch.object(game.random, 'random', return_value=0.0):
+        with patch.object(game.random, 'random', return_value=0.0), patch.object(game,'ordinary_illness_chance',return_value=0):
             game.illness_onset_tick(day)
         self.assertTrue(game.get_consort(self.atk)['ill_day'])
 
         other = self.player('丙')
         game.run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day - 1, other))   # 窗口已过
-        with patch.object(game.random, 'random', return_value=0.0):
+        with patch.object(game.random, 'random', return_value=0.0), patch.object(game,'ordinary_illness_chance',return_value=0):
             game.illness_onset_tick(day)
         self.assertFalse(game.get_consort(other)['ill_day'])
 
     def test_epidemic_only_on_interval_days_and_skips_already_sick(self):
         game.run('UPDATE game_state SET day=?', (game.EPIDEMIC_INTERVAL - 1,))
-        with patch.object(game.random, 'random', return_value=0.0):
+        with patch.object(game.random, 'random', return_value=0.0), patch.object(game,'ordinary_illness_chance',return_value=0):
             game.illness_onset_tick(game.cur_day())
         self.assertFalse(game.get_consort(self.atk)['ill_day'], '不到间隔天数，不该发时疫')
         game.run('UPDATE game_state SET day=?', (game.EPIDEMIC_INTERVAL,))
-        with patch.object(game.random, 'random', return_value=0.0):
+        with patch.object(game.random, 'random', return_value=0.0), patch.object(game,'ordinary_illness_chance',return_value=0):
             game.illness_onset_tick(game.cur_day())
         self.assertTrue(game.get_consort(self.atk)['ill_day'])
 
@@ -253,6 +253,7 @@ class NpcIllnessTests(unittest.TestCase):
     player = fixtures.LifecycleTests.player
     login = fixtures.LifecycleTests.login
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_npc_illness_is_treated_from_the_start(self):
         npc = game.q("SELECT id FROM consorts WHERE npc_key='huanghou'", one=True)['id']
         game.fall_ill(npc, 10, '染上了时疫')

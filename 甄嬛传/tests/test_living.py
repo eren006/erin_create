@@ -35,9 +35,9 @@ class LivingTests(unittest.TestCase):
 
     def test_pregnancy_chance_by_health_and_age(self):
         base = dict(age_months=240, health=60)
-        self.assertAlmostEqual(game.pregnancy_chance(base), 0.24 + 60 * 0.002)
-        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=240, health=100)), 0.44)
-        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=35 * 12, health=60)), (0.24 + 0.12) * 0.6)
+        self.assertAlmostEqual(game.pregnancy_chance(base), 0.06 + 60 * 0.0005)
+        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=240, health=100)), 0.11)
+        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=35 * 12, health=60)), (0.06 + 0.03) * 0.6)
         self.assertEqual(game.pregnancy_chance(dict(age_months=45 * 12, health=100)), 0)
         self.assertLessEqual(game.pregnancy_chance(dict(age_months=240, health=9999)), game.PREGNANCY_MAX)
 
@@ -45,15 +45,15 @@ class LivingTests(unittest.TestCase):
         plain = dict(age_months=240, health=60, blessing=0)
         blessed = dict(age_months=240, health=60, blessing=50)
         full = dict(age_months=240, health=60, blessing=100)
-        self.assertAlmostEqual(game.pregnancy_chance(blessed) - game.pregnancy_chance(plain), 0.10)
-        self.assertAlmostEqual(game.pregnancy_chance(full) - game.pregnancy_chance(plain), 0.20)
+        self.assertAlmostEqual(game.pregnancy_chance(blessed) - game.pregnancy_chance(plain), 0.025)
+        self.assertAlmostEqual(game.pregnancy_chance(full) - game.pregnancy_chance(plain), 0.05)
         old = dict(age_months=45 * 12, health=60, blessing=100)
         self.assertEqual(game.pregnancy_chance(old), 0, '福报也救不了年纪')
         old_mother = dict(age_months=36 * 12, health=60, blessing=100)
-        self.assertAlmostEqual(game.pregnancy_chance(old_mother), (0.24 + 0.12 + 0.20) * 0.6)
+        self.assertAlmostEqual(game.pregnancy_chance(old_mother), (0.06 + 0.03 + 0.05) * 0.6)
 
     def test_blessed_player_conceives_where_a_plain_one_would_not(self):
-        with patch.object(game.random, 'random', return_value=0.45):   # 体质 60 时 36% 怀不上；福报 50 时 46% 该怀上
+        with patch.object(game.random, 'random', return_value=0.10):   # 无福报时未孕，福报 50 时有孕
             game.do_bedding(self.c(), game.cur_day(), True, [])
             self.assertEqual(self.c()['pregnant_since'], 0)
             game.run('UPDATE consorts SET blessing=50 WHERE id=?', (self.atk,))
@@ -61,7 +61,7 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(self.c()['pregnant_since'], game.cur_day())
 
     def test_a_bedding_can_start_a_pregnancy(self):
-        with patch.object(game.random, 'random', return_value=0.30):   # 体质 60 时怀孕率 36%，0.30 该怀上
+        with patch.object(game.random, 'random', return_value=0.08):   # 体质 60 时怀孕率 9%
             game.do_bedding(self.c(), game.cur_day(), True, [])
         self.assertEqual(self.c()['pregnant_since'], game.cur_day())
         self.assertTrue(any('喜脉' in m for m in self.msgs()))
@@ -177,6 +177,7 @@ class LivingTests(unittest.TestCase):
         # 体质 40 的人难产概率 30%，静养 3 次后归零
         for rests, roll, hard in ((0, 0.25, True), (2, 0.25, False), (3, 0.05, False), (1, 0.15, True), (1, 0.25, False)):
             game.run('DELETE FROM heirs'); game.run('DELETE FROM gazette')
+            game.run("UPDATE consorts SET ill_day=0,ill_treatment=0,ill_care='normal',favor=80 WHERE id=?",(self.atk,))
             self.deliver(rest=rests)
             game.run('UPDATE consorts SET health=40 WHERE id=?', (self.atk,))
             with patch.object(game.random, 'random', return_value=roll), patch.object(game, 'npc_schemes'):
@@ -189,7 +190,7 @@ class LivingTests(unittest.TestCase):
         self.assertNotIn('安胎静养', self.client.get('/place/home').get_data(as_text=True))
         self.pregnant()
         page = self.client.get('/place/home').get_data(as_text=True)
-        self.assertIn(f'{game.PREGNANCY_DAYS} 天后临盆', page)   # 试玩里这里漏过数字
+        self.assertTrue('按原孕期结算临盆（旧存档）' in page)
         for t in ('有喜', '安胎静养', '诵读诗书', '礼佛积德'):
             self.assertIn(t, page)
 
@@ -277,6 +278,7 @@ class LivingTests(unittest.TestCase):
         game.run("UPDATE consorts SET diet_eff='lavish' WHERE id=?", (self.atk,))
         self.assertEqual(game.bed_weight(self.c(), 10), base + game.LAVISH_BED_BONUS)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_diet_skips_cold_npcs_and_unplaced(self):
         game.run("UPDATE consorts SET status='cold', silver=100 WHERE id=?", (self.atk,))
         game.diet_tick(3)

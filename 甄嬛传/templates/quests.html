@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}每日差事{% endblock %}
+{% block head %}
+<style>
+.q{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px 0;border-bottom:1px solid var(--line)}
+.q .tx{font-family:var(--kai);font-size:18px}
+.q.claimed .tx{color:var(--muted);text-decoration:line-through}
+</style>
+{% endblock %}
+{% block body %}
+{% include '_tabs_affairs.html' %}
+<h2>每日差事</h2>
+<p class="muted">内务府每天给你派四件小差事，办完来领赏；四件都领完，还有一份额外的赏。第二天（晚上结算后）重新派。</p>
+{% for x in quests %}
+<div class="q {{ 'claimed' if x.claimed }}">
+  <div><div class="tx">{{ x.text }}</div><div class="muted">进度 {{ x.progress }}/{{ x.goal }}　赏 {{ x.silver }} 两</div></div>
+  <form method="post" action="{{ url_for('quests_claim') }}"><input type="hidden" name="key" value="{{ x.key }}">
+    <button {{ 'disabled' if not x.done or x.claimed }}>{{ '已领赏' if x.claimed else ('领赏' if x.done else '还没办完') }}</button></form>
+</div>
+{% endfor %}
+<div class="q">
+  <div><div class="tx">全部办妥的额外赏</div><div class="muted">银子 {{ QUEST_ALL_BONUS.silver }} 两，精力 +{{ QUEST_ALL_BONUS.energy }}</div></div>
+  <form method="post" action="{{ url_for('quests_claim') }}"><input type="hidden" name="key" value="all">
+    <button {{ 'disabled' if not all_done or bonus_claimed }}>{{ '已领赏' if bonus_claimed else '领赏' }}</button></form>
+</div>
+<p class="muted" style="margin-top:12px">去 <a href="{{ url_for('garden') }}">菜园</a> 种菜，去 <a href="{{ url_for('banquet') }}">宴会</a> 报节目，都能算进差事。</p>
+{% endblock %}

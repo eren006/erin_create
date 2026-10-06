@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}榜单{% endblock %}
+{% block head %}
+<style>
+.boards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:16px;margin:12px 0}
+.board{background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--jin);padding:14px}
+.board h3{margin:0 0 6px}
+.board ol{margin:0;padding-left:1.6em}
+.board li{padding:4px 0;display:flex;justify-content:space-between;gap:8px}
+.board li.me{font-weight:bold}
+.bd{font-size:12px;color:var(--muted)}
+</style>
+{% endblock %}
+{% block body %}
+{% include '_tabs_affairs.html' %}
+<h2>六宫榜单</h2>
+<p class="muted">只摆本届还在宫里的人，每榜前十名。数字为 0 的不上榜。</p>
+<div class="boards">
+{% for b in boards %}
+<section class="board">
+  <h3>{{ b.title }}<span class="muted" style="font-size:13px;font-weight:normal">　{{ b.unit }}</span></h3>
+  {% if b.rows %}
+  <ol>
+    {% for r in b.rows %}<li class="{{ 'me' if r.c.id == me.id }}"><span>{{ dn(r.c) }}{% if badge_name(r.c) %} <span class="bd">【{{ badge_name(r.c) }}】</span>{% endif %}</span><span>{{ r.value }}</span></li>{% endfor %}
+  </ol>
+  {% else %}<p class="muted">还没有人上榜。</p>{% endif %}
+</section>
+{% endfor %}
+</div>
+{% endblock %}

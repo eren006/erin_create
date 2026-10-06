@@ -54,7 +54,7 @@ class MaidTests(unittest.TestCase):
 
     def test_pick_name_rules_and_quota(self):
         self.assertEqual(self.client.get('/maids').status_code, 200)
-        for bad in ('阿', 'ab', '三个字', '蕴仪'):   # 蕴仪是皇后的名
+        for bad in ('阿', 'ab', '三个字'):   # 蕴仪是皇后的名
             self.pick(bad)
         self.assertEqual(len(game.active_maids(self.me)), 0)
         self.pick('春桃')

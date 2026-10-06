@@ -10,6 +10,7 @@ game = test_lifecycle.game
 
 
 class BondContentTests(unittest.TestCase):
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_every_npc_has_full_profile(self):
         self.assertEqual(set(game.NPC_BOND), game.NPC_KEYS)
         for key, cfg in game.NPC_BOND.items():
@@ -57,6 +58,7 @@ class BondTests(unittest.TestCase):
         with patch.object(game.random, 'randint', return_value=roll):
             return self.client.post('/npc/visit', data={'npc': key, 'opt': opt})
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_visit_success_costs_energy_and_once_a_day(self):
         self.wake('jingpin')
         game.run('UPDATE consorts SET virtue=60, energy=5 WHERE id=?', (self.atk,))
@@ -67,6 +69,7 @@ class BondTests(unittest.TestCase):
         self.assertEqual(game.bond(self.atk, 'jingpin'), 7)
         self.assertEqual(self.client.get('/social').status_code, 200)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_snub_and_gift(self):
         self.wake('duanfei')
         game.run('UPDATE consorts SET scheme=10 WHERE id=?', (self.atk,))
@@ -78,6 +81,7 @@ class BondTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['silver'], before - 20)
         self.assertEqual(game.bond(self.atk, 'duanfei'), game.BOND_SNUB + 7)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_huanghou_huafei_are_rivals_and_lipin_talks(self):
         self.wake('huanghou', 'huafei', 'lipin')
         game.change_bond(self.atk, 'huafei', 10)
@@ -92,11 +96,13 @@ class BondTests(unittest.TestCase):
         game.change_bond(self.atk, 'huafei', 10)
         self.assertEqual(game.bond(self.atk, 'huafei'), before + 15)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_scene_effect_goes_through_change_bond(self):
         self.wake('huanghou', 'huafei')
         game.apply_effects(self.atk, dict(huafei=10))
         self.assertEqual(game.bond(self.atk, 'huanghou'), -5)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_guards_on_intrigue_success(self):
         self.wake('huanghou', 'huafei', 'caoguiren')
         atk, tgt = game.get_consort(self.tgt), game.get_consort(self.atk)
@@ -110,6 +116,7 @@ class BondTests(unittest.TestCase):
         self.assertAlmostEqual(game.intrigue_success_p(atk, tgt, cfg),
                                base - game.BOND_HUANGHOU_GUARD - game.BOND_HUAFEI_GUARD + game.BOND_CAO_BOOST)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_huafei_close_spares_you(self):
         self.wake('huafei')
         game.run('UPDATE consorts SET favor=200 WHERE id=?', (self.atk,))
@@ -117,6 +124,7 @@ class BondTests(unittest.TestCase):
         self.setb('huafei', 30)
         self.assertIsNone(game.huafei_likely_target(exclude_id=self.tgt))
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_huanghou_intimate_cuts_promotion_need(self):
         self.wake('huanghou')
         c = game.get_consort(self.atk)
@@ -124,6 +132,7 @@ class BondTests(unittest.TestCase):
         self.setb('huanghou', 60)
         self.assertEqual(game.promote_favor_need(c, 6), round(game.PROMOTE_FAVOR[6] * 0.9))
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_intimate_decays_at_night(self):
         self.wake('jingpin')
         self.setb('jingpin', 65)
@@ -132,6 +141,7 @@ class BondTests(unittest.TestCase):
         self.assertEqual(game.bond(self.atk, 'jingpin'), 63)
         self.assertEqual(game.bond(self.tgt, 'jingpin'), 20)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_qifei_pleads_once_per_interval(self):
         self.wake('qifei')
         self.setb('qifei', 30)
@@ -141,12 +151,14 @@ class BondTests(unittest.TestCase):
             game.npc_bond_tick(11)
         self.assertEqual(game.get_consort(self.atk)['status_until_day'], 12)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_caught_angers_huanghou(self):
         self.wake('huanghou')
         self.setb('huanghou', 40)
         game.bond_caught_huanghou(self.atk)
         self.assertEqual(game.bond(self.atk, 'huanghou'), 10)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_duanfei_intimate_names_three_suspects(self):
         self.wake('duanfei')
         self.setb('duanfei', 60)
@@ -168,6 +180,7 @@ class BondTests(unittest.TestCase):
         self.assertIn('1 拨', line)
         self.assertNotIn(game.display_name(game.get_consort(self.tgt)), line)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_jingpin_intimate_visit_is_free(self):
         import test_heirs
         self.wake('jingpin')

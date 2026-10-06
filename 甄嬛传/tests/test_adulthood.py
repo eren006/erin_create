@@ -24,7 +24,7 @@ class AdulthoodTests(unittest.TestCase):
         return game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
 
     def grown(self, mother, **kw):
-        """出生刚好 32 天，今晚满 16 岁"""
+        """出生满七次结算，今晚满十四岁"""
         kw.setdefault('born', game.cur_day() - game.HEIR_ADULT_AGE_DAYS)
         return self.heir(mother, **kw)
 
@@ -241,6 +241,7 @@ class AdulthoodTests(unittest.TestCase):
         self.client.post(f'/heirs/errand/{hid}', data=dict(approach='steady'))
         self.assertEqual(game.json.loads(self.row(hid)['errand'])['approach'], 'grab', '别人替他选不了')
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_npc_caretaker_princes_choose_for_themselves(self):
         npc = game.q("SELECT id FROM consorts WHERE npc_key IS NOT NULL LIMIT 1", one=True)['id']
         hid = self.adult_prince(npc)

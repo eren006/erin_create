@@ -57,36 +57,30 @@ class ReignTests(unittest.TestCase):
 
     def test_default_reign_state(self):
         st = self.st()
-        self.assertEqual((st['reign_no'], st['emperor_start_age'], st['emperor_death_day'], st['mourning']), (1, 45, 0, 0))
+        self.assertEqual((st['reign_no'], st['emperor_start_age'], st['emperor_death_day'], st['mourning']), (1, 20, 0, 0))
         self.set_day(11)
-        self.assertEqual(game.emperor_age_years(), 50)   # 每晚半岁
+        self.assertEqual(game.emperor_age_years(), 40)   # 每晚半岁
 
-    def test_no_death_risk_before_the_threshold_age(self):
-        d = 2 * game.HAZARD_AFTER_YEARS   # 开局年龄 + HAZARD_AFTER_YEARS 岁整，还没有风险
-        self.set_day(d)
-        with patch.object(game.random, 'random', return_value=0.0):
-            self.assertFalse(game.emperor_tick(d))
-        self.assertEqual(self.st()['emperor_death_day'], 0)
+    def test_no_random_early_death(self):
+        for day in range(1, 12):
+            self.set_day(day)
+            with patch.object(game.random, 'random', return_value=0.0):
+                self.assertFalse(game.emperor_tick(day))
+            self.assertEqual(self.st()['emperor_death_day'], 0)
 
-    def test_hazard_grows_with_age_past_the_threshold(self):
-        years_over = 5
-        d = 2 * (game.HAZARD_AFTER_YEARS + years_over) + 1   # reign_start_day 默认是 1，age = start + (day-1)/2
-        p = years_over * game.HAZARD_PER_YEAR
-        self.set_day(d)
-        with patch.object(game.random, 'random', return_value=p - 0.001):
-            game.emperor_tick(d)
-        self.assertEqual(self.st()['emperor_death_day'], d + 3, '掷中后 3 天驾崩')
-        game.run('UPDATE game_state SET emperor_death_day=0')
-        with patch.object(game.random, 'random', return_value=p + 0.001):
-            game.emperor_tick(d)
-        self.assertEqual(self.st()['emperor_death_day'], 0)
+    def test_fixed_reign_warns_three_nights_before_day_fifteen(self):
+        self.set_day(12)
+        game.emperor_tick(12)
+        self.assertEqual(self.st()['emperor_death_day'], 15)
+        self.assertFalse(game.emperor_ill(day=12))
+        self.assertTrue(game.emperor_ill(day=13))
 
     def test_forced_before_max_reign_days(self):
-        d = 1 + game.MAX_REIGN_DAYS - game.ILL_DAYS   # 第 67 天
+        d = game.MAX_REIGN_DAYS - game.ILL_DAYS   # 第 67 天
         self.set_day(d)
         with patch.object(game.random, 'random', return_value=0.999):
             game.emperor_tick(d)
-        self.assertEqual(self.st()['emperor_death_day'], 1 + game.MAX_REIGN_DAYS)
+        self.assertEqual(self.st()['emperor_death_day'], game.MAX_REIGN_DAYS)
 
     def test_ill_window_is_three_days_ending_on_death_day(self):
         game.run('UPDATE game_state SET emperor_death_day=20')
@@ -363,13 +357,16 @@ class ReignTests(unittest.TestCase):
         self.assertEqual([m['body'] for m in mine], ['姐姐安好'])
         self.assertEqual(mine[0]['from_name'], '甲妃', '存档时用的是当时的称呼')
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_end_reign_installs_next_reign(self):
         self.scene()
         day = game.cur_day()
+        successor, _ = game.succession_favorite(day)
+        expected_age = game.heir_age_years(successor, day)
         game.end_reign(day)
         st = self.st()
         self.assertEqual((st['reign_no'], st['day'], st['reign_start_day'], st['emperor_start_age'], st['mourning'], st['emperor_death_day']),
-                         (2, day + 1, day + 2, 40, 1, 0))
+                         (2, day + 1, day + 2, expected_age, 1, 0))
         self.assertEqual(st['emperor_name'], '承稷')
         self.assertTrue(st['era_name'])
         traits = json.loads(st['emperor_traits'])
@@ -379,15 +376,16 @@ class ReignTests(unittest.TestCase):
         self.assertEqual(game.q('SELECT COUNT(*) n FROM consorts WHERE npc_key IS NOT NULL', one=True)['n'], 8)
         heirs = {h['npc_key']: h for h in game.q('SELECT * FROM heirs')}
         self.assertEqual(set(heirs), {'third', 'fourth', 'princess'})
-        self.assertEqual(game.heir_age_years(heirs['third'], day + 2), 12)
-        self.assertEqual(game.heir_age_years(heirs['fourth'], day + 2), 8)
-        self.assertEqual(game.heir_age_years(heirs['princess'], day + 2), 10)
+        self.assertEqual(game.heir_age_years(heirs['third'], day + 2), min(12, max(0, expected_age - 18)))
+        self.assertEqual(game.heir_age_years(heirs['fourth'], day + 2), min(8, max(0, expected_age - 18)))
+        self.assertEqual(game.heir_age_years(heirs['princess'], day + 2), min(10, max(0, expected_age - 18)))
         self.assertEqual(heirs['fourth']['caretaker_id'], 0)
         self.assertEqual(heirs['fourth']['orphan_deadline_day'], day + 2 + game.NPC_ORPHAN_DEADLINE_DAYS)
         self.assertEqual(game.get_consort(heirs['third']['mother_id'])['npc_key'], 'qifei')
         self.assertEqual(game.get_consort(heirs['princess']['mother_id'])['npc_key'], 'caoguiren')
         self.assertTrue(all(h['name'] for h in heirs.values()))
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_third_reign_uses_the_other_persona_set(self):
         self.assertEqual([n['surname'] for n in game.npcs_for_reign(1)][:1], ['西林觉罗'])
         self.assertEqual(game.npcs_for_reign(2)[0]['surname'], '富察')
@@ -398,6 +396,7 @@ class ReignTests(unittest.TestCase):
                 base = next(b for b in game.NPCS if b['npc_key'] == n['npc_key'])
                 self.assertEqual((n['title'], n['rank'], n['palace'], n['hall']), (base['title'], base['rank'], base['palace'], base['hall']))
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_init_db_restart_does_not_duplicate_new_reign_npcs(self):
         self.scene()
         game.end_reign(game.cur_day())
@@ -591,6 +590,7 @@ class ReignTests(unittest.TestCase):
         self.assertIn('立即驾崩', page)
         self.assertIn('龙体安康', page)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_admin_reset_goes_back_to_first_reign_and_takes_start_age(self):
         self.scene()
         game.end_reign(game.cur_day())
@@ -668,7 +668,7 @@ class EventPauseTests(unittest.TestCase):
         st = game.state()
         self.assertEqual((st['event_started'], st['day'], st['reign_no'], st['reign_start_day'], st['emperor_start_age'],
                           st['emperor_death_day'], st['mourning'], st['era_name'], st['emperor_name']),
-                         (1, 1, 1, 1, 45, 0, 0, '', ''))
+                         (1, 1, 1, 1, 20, 0, 0, '', ''))
 
     def test_admin_page_shows_the_toggle(self):
         self.admin()

@@ -4,8 +4,9 @@
 <h2>家里</h2>
 <p class="muted">{{ fam.surname }}氏，{{ prestige_label }}，名望 {{ fam.prestige }}；家底 {{ fam.estate }} 两。<a href="{{ url_for('clan') }}">族谱</a>　<a href="{{ url_for('clans') }}">各家</a></p>
 <div class="sheet" style="margin:10px 0">
+  {% if fam.tier == 'merchant' and fam.career_path != 'civil' %}<p class="muted">家主沿商势路线发展。商会理事及以上、名望20可另行入仕；入仕后从文官录事起步。</p><form method="post" action="{{ url_for('family_enter_civil') }}"><button {{ 'disabled' if fam.head_office < 4 or fam.prestige < 20 or c.silver < 200 or c.energy < 1 }}>申请家主入仕（200两、1精力）</button></form>{% endif %}
   <b>家主</b>：{{ head }}{% if fam.head_ill_day %}<span style="color:var(--bad)">　病着</span>{% endif %}
-  <p class="muted" style="margin:6px 0 0">家主会一年年老去，也会升迁、降职；他官越高，家里越发达：每 5 天会托人给你送体己，夺嫡时也是你家阿哥的助力。家主没了，由兄长、侄子接着来，官职比上一任低。
+  <p class="muted" style="margin:6px 0 0">家主会一年年老去，也会升迁、降职；他的家业或身份发展越高，家里越发达：每 5 天会托人给你送体己，夺嫡时也是你家阿哥的助力。家主没了，由兄长、侄子接着来，官职比上一任低。
   {% set gift = 0 %}</p>
 </div>
 
@@ -57,7 +58,7 @@
 </div>
 
 <h3>家里的生意</h3>
-<p class="muted">本金投进去，几天后结账，有赚也有亏，最险的还会招来御史。这是宫里俸禄之外最快的进项——也最容易连累家里。</p>
+<p class="muted">本金投进去，隔天晚上结账，有赚也有亏，最险的还会招来御史。这是宫里俸禄之外最快的进项——也最容易连累家里。</p>
 <div class="sheet">
   {% if ventures %}
     {% for v in ventures %}<p>{{ VENTURES[v.kind].name }}：本金 {{ v.principal }} 两，第 {{ v.mature_day }} 天结账。</p>{% endfor %}

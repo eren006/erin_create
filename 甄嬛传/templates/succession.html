@@ -11,7 +11,7 @@
   <tr>
     <td style="font-family:var(--kai);font-size:17px">{{ heir_label(h) }}{% if h.title %}<span class="muted" style="font-family:var(--song)">（{{ h.title }}）</span>{% endif %}{% if h.status == 'crown' %} <b>太子</b>{% endif %}</td>
     <td>{{ heir_age_years(h) }} 岁</td>
-    <td>{{ dn(r.cared_by) if r.cared_by else '无人抚养' }}</td>
+    <td>{{ dn(r.cared_by) if r.cared_by else '皇嗣养育所' }}</td>
     <td>{{ r.standing }}</td>
     <td>{{ r.faction }}</td>
     <td>{% if not r.mine %}
@@ -62,13 +62,13 @@
 {% endif %}
 
 {% if orphans %}
-<h3>没人抚养的阿哥</h3>
+<h3>皇嗣养育所</h3>
 {% for h in orphans %}
 <div class="sheet" style="margin:8px 0">
   <b style="font-family:var(--kai)">{{ heir_label(h) }}</b>　{{ heir_age_years(h) }} 岁　学问 {{ h.study }}　骑射 {{ h.riding }}　品行 {{ h.virtue }}
-  <span class="muted">生母早逝，一直养在园子里。{% if h.orphan_deadline_day %}第 {{ h.orphan_deadline_day }} 天前没人求到，皇后就抱走了。{% endif %}</span>
+  <span class="muted">由乳母和师傅照料，嫔位以上可申请领养；无申请时继续留所。</span>
   {% if h.id in my_claims %}<span class="muted">你已求过，等今晚皇上定夺。</span>
-  {% elif c.rank >= 5 %}<form method="post" action="{{ url_for('succession_claim', hid=h.id) }}" style="display:inline"><button class="plain">求皇上把他交给我（1 精力）</button></form>
+  {% elif c.rank >= 5 %}<form method="post" action="{{ url_for('succession_claim', hid=h.id) }}" style="display:inline"><button class="plain">申请领养（1 精力）</button></form>
   {% else %}<span class="muted">嫔位以上才能求。</span>{% endif %}
 </div>
 {% endfor %}

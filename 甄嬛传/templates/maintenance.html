@@ -1,0 +1,3 @@
+{% extends 'base.html' %}
+{% block title %}维护暂停{% endblock %}
+{% block body %}<h2>系统维护中</h2><p>游戏已暂停，当前操作未执行。天数与自动结算已冻结，请等管理员恢复后再操作。</p><p>可以继续查看页面。</p><a class="btn" href="{{ url_for('index') }}">返回宫城</a>{% endblock %}

@@ -20,6 +20,8 @@ class LifecycleTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         game.DB_PATH = str(Path(self.temp.name) / 'test.db')
         game.app.config['TESTING'] = True
+        game.ADVENTURE_ROAD_CHANCE = 0       # 奇遇是随机的，别让它打断别的测试
+        game.ADVENTURE_GARDEN_WEIGHT = 0
         game.init_db()
         self.ctx = game.app.app_context()
         self.ctx.push()
@@ -41,9 +43,11 @@ class LifecycleTests(unittest.TestCase):
 
     def player(self, name, rank=4):
         uid = game.run('INSERT INTO users(username,password_hash,created_ts) VALUES(?,?,0)', (name, 'test')).lastrowid
-        return game.run('''INSERT INTO consorts(user_id,surname,given,rank,status,entered_day,rank_since_day,
+        cid = game.run('''INSERT INTO consorts(user_id,surname,given,rank,status,entered_day,rank_since_day,
                            family,personality,silver,age_months,recap_seen_day) VALUES(?,?,?,?,'normal',1,1,?,?,2000,240,9)''',
                         (uid, name, '测试', rank, next(iter(game.FAMILIES)), next(iter(game.PERSONALITIES)))).lastrowid
+        game.run('UPDATE consorts SET influence=200 WHERE id=?',(cid,))
+        return cid
 
     def login(self, cid):
         with self.client.session_transaction() as sess:
@@ -135,7 +139,7 @@ class LifecycleTests(unittest.TestCase):
             game.settle_day()   # 第三晚临盆
         self.assertEqual(len(game.q('SELECT * FROM heirs')), 1)
         self.assertEqual(game.get_consort(self.tgt)['pregnant_since'], 0)
-        self.assertEqual(game.get_consort(self.tgt)['age_months'], 258)
+        self.assertEqual(game.get_consort(self.tgt)['age_months'], 240 + 3 * game.AGE_MONTHS_PER_DAY)
         self.assertEqual(game.get_consort(self.tgt)['health'], 70)   # 年龄不再扣体质
         self.assertEqual(game.age_text(258), '21岁半')
 
@@ -150,7 +154,7 @@ class LifecycleTests(unittest.TestCase):
 
     def test_atomic_settlement_rolls_back(self):
         before = [tuple(c) for c in game.q('SELECT * FROM consorts ORDER BY id')]
-        with patch.object(game, 'npc_schemes', side_effect=RuntimeError('interrupted')):
+        with patch.object(game, 'heir_growth_tick', side_effect=RuntimeError('interrupted')):
             with self.assertRaises(RuntimeError):
                 game.settle_day()
         self.assertEqual(game.cur_day(), 10)
@@ -161,14 +165,14 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(before, [tuple(c) for c in game.q('SELECT * FROM consorts ORDER BY id')])
         self.assertEqual(len(game.q('SELECT * FROM gazette')), 0)
 
-    def test_cooldown_survives_cancel(self):
+    def test_cancel_does_not_trigger_cooldown(self):
         it = self.plan_poison()
         self.client.post(f'/intrigue/cancel/{it["id"]}')
         self.assertEqual(game.get_consort(self.atk)['silver'], 1500)   # 撤回退药，不退购药钱
         self.assertEqual(game.inv_qty(self.atk, 'lihun'), 1)
         game.run('UPDATE game_state SET day=11')
         self.client.post('/intrigue/submit', data={'method': 'drug', 'drug': 'lihun', 'target_id': self.tgt})
-        self.assertEqual(len(game.q("SELECT * FROM intrigues WHERE method='drug' AND drug='lihun'")), 1)   # 冷却没重置
+        self.assertEqual(len(game.q("SELECT * FROM intrigues WHERE method='drug' AND drug='lihun'")), 2)   # 未执行撤回不触发冷却
 
     def test_failed_poison_punishment_and_ally_rescue(self):
         it = self.plan_poison()
@@ -298,7 +302,7 @@ class EmperorTests(unittest.TestCase):
         with patch.object(game.random, 'random', return_value=0.99):
             game.settle_day()   # 第 10 天夜里，入宫满十个半年 = 五年
         e = game.q("SELECT text FROM messages WHERE consort_id=? AND kind='edict'", (self.atk,), one=True)
-        self.assertIn('你入宫五年了', e['text'])
+        self.assertIn('你入宫二十年了', e['text'])
         self.assertIn('素净是女子本分', e['text'])
 
     def test_trust_halves_rumor_and_shapes_expose(self):
@@ -385,7 +389,7 @@ class MigrationTests(unittest.TestCase):
             game.init_db()
             with sqlite3.connect(game.DB_PATH) as db:
                 self.assertEqual(db.execute('SELECT COUNT(*) FROM consorts').fetchone()[0], len(game.NPCS))
-                self.assertEqual(db.execute('SELECT age_months FROM consorts LIMIT 1').fetchone()[0], 240)
+                self.assertIsNone(db.execute('SELECT age_months FROM consorts LIMIT 1').fetchone())
 
 
 if __name__ == '__main__': unittest.main()
@@ -400,7 +404,7 @@ class GuirenSlotTests(unittest.TestCase):
 
     def test_guiren_cap_blocks_promotion(self):
         game.run("UPDATE consorts SET status='normal' WHERE npc_key='caoguiren'")   # 曹贵人占一个
-        for i in range(6):
+        for i in range(7):
             self.player(f'贵{i}', rank=4)      # 加上 setUp 里的乙（贵人），共 8 个
         self.assertFalse(game.slot_free(4))
         hopeful = self.player('丁', rank=3)

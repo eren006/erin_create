@@ -62,24 +62,25 @@ class DrugTests(unittest.TestCase):
         self.assertEqual(game.inv_qty(self.atk,'wuming'),1)
         game.run('UPDATE game_state SET day=11')
         self.client.post('/intrigue/submit',data=dict(method='drug',drug='wuming',effect='yanzhi',target_id=self.tgt))
-        self.assertEqual(len(game.q('SELECT * FROM intrigues')),1)
-        self.assertEqual(game.q('SELECT nameless_ready_day FROM users WHERE id=?',(game.get_consort(self.atk)['user_id'],),one=True)[0],10+game.NAMELESS_COOLDOWN)
+        self.assertEqual(len(game.q('SELECT * FROM intrigues')),2)
+        self.assertEqual(game.q('SELECT nameless_ready_day FROM users WHERE id=?',(game.get_consort(self.atk)['user_id'],),one=True)[0],0)
 
     def test_newcomer_and_success_protection_at_settlement(self):
-        game.run('UPDATE consorts SET entered_day=6 WHERE id=?',(self.tgt,))
+        game.run('UPDATE consorts SET entered_day=10 WHERE id=?',(self.tgt,))
         self.assertIsNone(self.plan('yanzhi'))
         game.run('UPDATE consorts SET entered_day=1 WHERE id=?',(self.tgt,))
         it=self.plan('yanzhi')
-        game.run('UPDATE consorts SET drugged_day=9 WHERE id=?',(self.tgt,))
+        game.run('UPDATE consorts SET drugged_day=10 WHERE id=?',(self.tgt,))
         self.assertEqual(game.resolve_intrigue(it)[0],'void')
         self.assertEqual(game.get_consort(self.tgt)['appearance'],40)
 
     def test_immediate_rash_and_case_page_anonymity(self):
         it,result=self.apply('yanzhi')
         self.assertEqual(result,'success')
-        self.assertEqual(game.get_consort(self.tgt)['appearance'],30)
-        self.assertIsNotNone(game.affliction(self.tgt,'yanzhi',12))
-        self.assertIsNone(game.affliction(self.tgt,'yanzhi',13))
+        self.assertEqual(game.get_consort(self.tgt)['appearance'],35)
+        a=game.affliction(self.tgt,'yanzhi')
+        with patch.object(game.time,'time',return_value=a['expires_ts']-1):self.assertIsNotNone(game.affliction(self.tgt,'yanzhi'))
+        with patch.object(game.time,'time',return_value=a['expires_ts']):self.assertIsNone(game.affliction(self.tgt,'yanzhi'))
         self.assertEqual(len(game.q('SELECT * FROM cases')),1)
         for route in ('/cases','/intrigue','/shop','/letters','/agents'):
             resp=self.client.get(route)
@@ -87,13 +88,13 @@ class DrugTests(unittest.TestCase):
         self.assertNotIn('culprit_id',self.client.get('/cases').get_data(as_text=True))
         # Re-read the done record: effects cannot be applied a second time.
         game.resolve_drug(it)
-        self.assertEqual(game.get_consort(self.tgt)['appearance'],30)
+        self.assertEqual(game.get_consort(self.tgt)['appearance'],35)
 
     def test_nameless_delayed_diagnosis_never_opens_case(self):
         self.apply('wuming','qingsi')
         self.assertEqual(len(game.q('SELECT * FROM cases')),0)
         game.tick_drugs(10)
-        self.assertEqual(game.get_consort(self.tgt)['health'],64)
+        self.assertEqual(game.get_consort(self.tgt)['health'],66)
         self.login(self.tgt)
         with patch.object(game.random,'random',return_value=0):
             self.client.post('/diagnose')
@@ -107,8 +108,8 @@ class DrugTests(unittest.TestCase):
         game.run('UPDATE consorts SET health=6 WHERE id=?',(self.tgt,))
         game.tick_drugs(10)
         c=game.get_consort(self.tgt)
-        self.assertEqual(c['health'],1)
-        self.assertEqual(c['poisoned_day'],10)
+        self.assertEqual(c['health'],2)
+        self.assertEqual(c['poisoned_day'],0)
         self.assertIsNone(game.affliction(self.tgt,'qingsi'))
         self.assertEqual(len(game.q('SELECT * FROM cases')),1)
         game.resolve_poison_crises(10)
@@ -151,20 +152,19 @@ class DrugTests(unittest.TestCase):
         game.inv_add(self.tgt,'antai')
         self.apply('hanshui')
         c=game.get_consort(self.tgt)
-        self.assertEqual(c['health'],45)
+        self.assertEqual(c['health'],60)
         self.assertEqual(c['pregnant_since'],9)
         self.assertEqual(game.inv_qty(self.tgt,'antai'),0)
-        self.assertIsNotNone(game.affliction(self.tgt,'hanshui',19))
-        self.assertIsNone(game.affliction(self.tgt,'hanshui',20))
+        a=game.affliction(self.tgt,'hanshui')
+        with patch.object(game.time,'time',return_value=a['expires_ts']-1):self.assertIsNotNone(game.affliction(self.tgt,'hanshui'))
+        with patch.object(game.time,'time',return_value=a['expires_ts']):self.assertIsNone(game.affliction(self.tgt,'hanshui'))
 
     def test_fake_pregnancy_opens_case_at_due_and_no_heir(self):
         self.apply('chunxin')
         self.assertEqual(len(game.q('SELECT * FROM cases')),0)
         self.assertEqual(game.get_consort(self.tgt)['pregnant_since'],10)
-        with patch.object(game,'npc_schemes'),patch.object(game.random,'random',return_value=.99):
-            game.settle_day()
-            game.settle_day()
-            game.settle_day()
+        due=game.affliction(self.tgt,'chunxin')['expires_ts']
+        with patch.object(game.time,'time',return_value=due):game.resolve_births(10,False)
         self.assertEqual(len(game.q('SELECT * FROM heirs WHERE mother_id=?',(self.tgt,))),0)
         self.assertEqual(game.get_consort(self.tgt)['pregnant_since'],0)
         self.assertEqual(game.get_consort(self.tgt)['status'],'confined')
@@ -188,8 +188,8 @@ class DrugTests(unittest.TestCase):
             game.settle_day()
         c=game.get_consort(self.tgt)
         self.assertEqual(c['bedded_count'],1)
-        self.assertLessEqual(c['favor'],70)
-        self.assertEqual(c['trust'],45)
+        self.assertLessEqual(c['favor'],85)
+        self.assertEqual(c['trust'],47)
         self.assertEqual(len(game.q('SELECT * FROM cases')),1)
 
     def test_cases_wait_full_day_auto_plead_and_no_double_penalty(self):
@@ -255,13 +255,15 @@ class DrugTests(unittest.TestCase):
         self.assertEqual(game.inv_qty(self.atk,'yanzhi'),1)
         self.assertEqual(len(game.q('SELECT * FROM intrigues')),1)
 
-    def test_rash_blocks_bed_for_three_nights(self):
+    def test_rash_blocks_bed_until_24_hours(self):
+        game.run('UPDATE game_state SET reign_start_day=day')
         self.apply('yanzhi')
         game.run("UPDATE consorts SET status='cold',status_until_day=99 WHERE id=?",(self.atk,))
+        due=game.affliction(self.tgt,'yanzhi')['expires_ts']
         with patch.object(game,'npc_schemes'),patch.object(game.random,'random',return_value=.99):
-            for _ in range(3): game.settle_day()
+            with patch.object(game.time,'time',return_value=due-1):game.settle_day()
             self.assertEqual(game.get_consort(self.tgt)['bedded_count'],0)
-            game.settle_day()
+            with patch.object(game.time,'time',return_value=due):game.settle_day()
         self.assertEqual(game.get_consort(self.tgt)['bedded_count'],1)
 
     def test_hanshui_prevents_new_pregnancy(self):
@@ -276,8 +278,9 @@ class DrugTests(unittest.TestCase):
         self.apply('chunxin')
         game.run('UPDATE consorts SET trust=40 WHERE id=?',(self.tgt,))
         game.run('UPDATE game_state SET day=12')
-        game.tick_drugs(12)
-        self.assertEqual(game.get_consort(self.tgt)['trust'],25)
+        due=game.affliction(self.tgt,'chunxin')['expires_ts']
+        with patch.object(game.time,'time',return_value=due):game.tick_drugs(12)
+        self.assertEqual(game.get_consort(self.tgt)['trust'],35)
         game.run('UPDATE case_suspects SET suspicion=90 WHERE consort_id=?',(self.atk,))
         game.resolve_drug_cases(12)
         self.assertEqual(game.get_consort(self.tgt)['trust'],40)
@@ -308,6 +311,7 @@ class NpcDrugSettlementTests(unittest.TestCase):
     player = fixtures.LifecycleTests.player
     login = fixtures.LifecycleTests.login
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_empress_queues_drug_and_night_settles(self):
         game.run("UPDATE consorts SET status='normal' WHERE npc_key IS NOT NULL")
         game.run("UPDATE consorts SET aggression=0 WHERE npc_key!='huanghou'")

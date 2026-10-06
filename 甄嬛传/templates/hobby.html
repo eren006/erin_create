@@ -13,10 +13,11 @@
 </style>
 {% endblock %}
 {% block body %}
+{% include '_tabs_leisure.html' %}
 <p class="back"><a href="{{ url_for('place', key='home') }}">回本宫</a></p>
 <h2>暇趣</h2>
 <p class="muted">争宠、使计之外，也总要有一件自己的事。雅趣不给属性、不给圣宠，只留下故事和人情。
-{% if free %}你近来{{ favor_word(c.favor) }}，雅趣今天不花精力。{% else %}打理一次占精力 {{ HOBBY_ENERGY }} 点。{% endif %}</p>
+雅趣不花精力，每天最多推进 {{ HOBBY_DAILY_MAX }} 次。</p>
 
 {% if proj %}
 <h3>手里正做着</h3>
@@ -24,7 +25,7 @@
   <p style="font-family:var(--kai);font-size:18px">{{ HOBBIES[proj.kind].name }}·{{ proj.style }}</p>
   <p class="stage">已经<b>{{ ['起意', '打磨'][proj.stage] if proj.stage < 2 else '成了' }}</b>，还差 {{ 2 - proj.stage }} 步</p>
   <form method="post" action="{{ url_for('hobby_act') }}">
-    <button {{ 'disabled' if done_today }}>{{ '今天已经打理过了' if done_today else '打理一下' }}</button>
+    <button {{ 'disabled' if done_today }}>{{ '今天打理够了' if done_today else '打理一下' }}</button>
   </form>
 </div>
 {% elif can_pick_first or unlocked %}

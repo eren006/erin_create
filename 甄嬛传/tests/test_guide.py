@@ -28,7 +28,29 @@ class GuideStepTests(unittest.TestCase):
             self.client.post('/dianxuan', data={q['key']: 0 for q in qs})
         c = game.get_consort(cid)
         self.assertEqual(c['guide_step'], 0)
-        self.assertTrue(any('小主头一日进宫' in m['text'] for m in game.q('SELECT text FROM messages WHERE consort_id=?', (cid,))))
+        m = game.mama_of(c)
+        self.assertIn(c['guide_mama'], game.MAMAS)
+        self.assertTrue(any(m['name'] in x['text'] and m['steps'][0][0] in x['text'] for x in game.q('SELECT text FROM messages WHERE consort_id=?', (cid,))))
+
+    def test_every_mama_has_full_lines_and_distinct_names(self):
+        self.assertEqual(len({m['name'] for m in game.MAMAS.values()}), len(game.MAMAS))
+        for k, m in game.MAMAS.items():
+            self.assertEqual(len(m['steps']), len(game.GUIDE_STEPS), k)
+            for key in ('arrive', 'finale', 'skip', 'old', 'name'): self.assertTrue(m[key], (k, key))
+
+    def test_legacy_consort_without_mama_is_xu_and_view_uses_assigned_mama(self):
+        game.run("UPDATE consorts SET guide_step=0, guide_mama='' WHERE id=?", (self.atk,))
+        self.assertEqual(game.guide_view(game.get_consort(self.atk))['name'], '许嬷嬷')
+        game.run("UPDATE consorts SET guide_mama='mo' WHERE id=?", (self.atk,))
+        v = game.guide_view(game.get_consort(self.atk))
+        self.assertEqual((v['name'], v['open_line']), ('莫嬷嬷', game.MAMAS['mo']['steps'][0][0]))
+
+    def test_step_clear_message_uses_the_assigned_mama(self):
+        game.run("UPDATE consorts SET guide_step=0, guide_mama='hu' WHERE id=?", (self.atk,))
+        game.guide_mark(self.atk, 'maid')
+        txt = [x['text'] for x in game.q('SELECT text FROM messages WHERE consort_id=? ORDER BY id DESC', (self.atk,))][0]
+        self.assertTrue(txt.startswith('胡嬷嬷'))
+        self.assertIn(game.MAMAS['hu']['steps'][1][0], txt)
 
     def test_step_zero_completes_on_picking_maid(self):
         game.run('UPDATE consorts SET guide_step=0 WHERE id=?', (self.atk,))

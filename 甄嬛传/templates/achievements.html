@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}成就{% endblock %}
+{% block head %}
+<style>
+.ach{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}
+.ach .nm{font-family:var(--kai);font-size:18px}
+.ach.locked .nm{color:var(--muted)}
+.bar{height:6px;background:var(--line);border-radius:3px;margin-top:6px;width:200px;max-width:100%;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--jin)}
+</style>
+{% endblock %}
+{% block body %}
+{% include '_tabs_affairs.html' %}
+<h2>成就</h2>
+<p class="muted">已得 {{ done_n }}/{{ prog|length }} 件。达成时赏银子，每件的称号可以佩戴，在六宫页、邸报的名牌上和榜单里显示。{% if badge %}现在佩戴的是「{{ badge_name(c) }}」。{% endif %}</p>
+{% if badge %}<form method="post" action="{{ url_for('achievements_badge') }}"><input type="hidden" name="key" value=""><button class="plain">摘下称号</button></form>{% endif %}
+{% for a in prog %}
+<div class="ach {{ '' if a.owned else 'locked' }}">
+  <div>
+    <div class="nm">{{ a.name }}{% if a.owned %} <span class="muted" style="font-size:13px">✓ 已得</span>{% endif %}</div>
+    <div class="muted">{{ a.desc }}　赏 {{ a.silver }} 两</div>
+    {% if not a.owned %}<div class="bar"><i style="width:{{ (100 * a.cur / a.goal)|int }}%"></i></div><div class="muted" style="font-size:12px">{{ a.cur }}/{{ a.goal }}</div>{% endif %}
+  </div>
+  {% if a.owned %}<form method="post" action="{{ url_for('achievements_badge') }}"><input type="hidden" name="key" value="{{ a.key }}">
+    <button class="plain" {{ 'disabled' if badge == a.key }}>{{ '佩戴中' if badge == a.key else '佩戴' }}</button></form>{% endif %}
+</div>
+{% endfor %}
+{% endblock %}

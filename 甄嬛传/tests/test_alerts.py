@@ -98,8 +98,8 @@ class AlertTests(fixtures.unittest.TestCase):
     def test_overdue_minutes(self):
         st = dict(last_settle_date='2026-09-24')
         self.assertEqual(game.settle_overdue_minutes(self.now(20, 59), st), 0, '还没到点')
-        self.assertEqual(game.settle_overdue_minutes(self.now(21, 0), st), 0)
-        self.assertEqual(game.settle_overdue_minutes(self.now(21, 45), st), 45)
+        self.assertEqual(game.settle_overdue_minutes(self.now(23, 0), st), 0)
+        self.assertEqual(game.settle_overdue_minutes(self.now(23, 45), st), 45)
         self.assertEqual(game.settle_overdue_minutes(self.now(23, 59), dict(last_settle_date='2026-09-25')), 0, '今天已结算')
 
     def test_cycle_records_a_settle_exception_and_does_not_raise(self):
@@ -139,7 +139,7 @@ class AlertTests(fixtures.unittest.TestCase):
     def test_a_real_settle_error_rolls_back_and_is_recorded(self):
         game.run("UPDATE game_state SET last_settle_date='2000-01-01'")
         day = game.cur_day()
-        with patch.object(game, 'past_settle_time', return_value=True), patch.object(game, 'npc_schemes', side_effect=RuntimeError('npc 炸了')):
+        with patch.object(game, 'past_settle_time', return_value=True), patch.object(game, 'heir_growth_tick', side_effect=RuntimeError('npc 炸了')):
             game.run_settle_cycle()
         self.assertEqual(game.cur_day(), day, '结算出错整个回滚，天数不变')
         self.assertEqual(self.rows()[0]['key'], 'settle-exception')

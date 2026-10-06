@@ -57,11 +57,13 @@ class KnifeTests(unittest.TestCase):
         game.knife_hits_tick(10)
         return self.debt()
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_needs_intimate(self):
         self.befriend(50)
         self.borrow()
         self.assertIsNone(self.debt())
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_borrow_costs_and_queues_intrigue(self):
         hf = self.befriend()
         before = game.get_consort(self.atk)['silver']
@@ -76,6 +78,7 @@ class KnifeTests(unittest.TestCase):
         self.assertEqual(game.daily_count(self.atk, 'npc_visit'), 1)
         self.assertTrue(game.knife_block_reason(game.get_consort(self.atk)))   # 当天不能再借
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_refuse_keeps_silver(self):
         self.befriend()
         before = game.get_consort(self.atk)['silver']
@@ -84,6 +87,7 @@ class KnifeTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['silver'], before)
         self.assertEqual(game.daily_count(self.atk, 'npc_visit'), 1)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_success_creates_debt_and_silver_payment(self):
         self.befriend()
         self.borrow()
@@ -96,6 +100,7 @@ class KnifeTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['silver'], before - 80)
         self.assertEqual(game.bond(self.atk, 'huafei'), game.KNIFE_AFTER_BOND)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_overdue_breaks_and_huafei_turns(self):
         self.befriend()
         self.borrow()
@@ -109,6 +114,7 @@ class KnifeTests(unittest.TestCase):
         game.run('UPDATE consorts SET favor=0 WHERE id=?', (self.atk,))
         self.assertEqual(game.huafei_likely_target(exclude_id=self.tgt)['id'], self.atk)   # 记恨上了
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_nogreet_debt(self):
         self.befriend()
         self.borrow()
@@ -118,6 +124,7 @@ class KnifeTests(unittest.TestCase):
         game.knife_debts_tick(11)
         self.assertEqual(self.debt()['status'], 'broken')
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_rumor_and_seek_debts_auto_complete(self):
         c3 = self.player('丙', rank=3)
         self.befriend()
@@ -136,6 +143,7 @@ class KnifeTests(unittest.TestCase):
             self.assertNotEqual(game.KNIFE_DEBTS[key]['kind'], 'maid')
             self.assertNotEqual(game.KNIFE_DEBTS[key]['kind'], 'hobby')
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_caught_cover_or_betray(self):
         self.befriend()
         self.borrow()
@@ -154,12 +162,14 @@ class KnifeTests(unittest.TestCase):
         msg = game.q("SELECT text FROM messages WHERE consort_id=? ORDER BY id DESC", (self.tgt,), one=True)['text']
         self.assertIn(game.display_name(game.get_consort(self.atk)), msg)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_fizzle_no_debt(self):
         self.befriend()
         self.borrow()
         self.assertEqual(self.resolve('fizzle')['status'], 'void')
         self.assertFalse(game.knife_open_debt(self.atk))
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_full_night_and_pages(self):
         self.befriend()
         self.assertEqual(self.client.get('/social').status_code, 200)
@@ -168,6 +178,7 @@ class KnifeTests(unittest.TestCase):
         self.assertIn(self.debt()['status'], ('owed', 'void', 'covered', 'exposed'))
         self.assertEqual(self.client.get('/social').status_code, 200)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_every_debt_renders(self):
         self.befriend()
         game.run("INSERT INTO hobby_items (kind, style, maker_id, holder_id, created_day) VALUES ('painting','山水',?,?,5)", (self.atk, self.atk))
@@ -179,6 +190,7 @@ class KnifeTests(unittest.TestCase):
             self.assertEqual(r.status_code, 200, key)
             self.assertIn('欠华妃的人情', r.get_data(as_text=True), key)
 
+    @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_huanghou_warns_huafei_friends(self):
         self.befriend(35)
         game.run('UPDATE consorts SET scheme=90 WHERE id=?', (self.atk,))

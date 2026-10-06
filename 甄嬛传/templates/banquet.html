@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block title %}新年宴会{% endblock %}
+{% block head %}
+<style>
+.sheet2{background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--jin);padding:16px;margin:12px 0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.pl{font-family:var(--kai);font-size:18px}
+</style>
+{% endblock %}
+{% block body %}
+{% include '_tabs_leisure.html' %}
+<h2>新年宴会</h2>
+<p class="muted">每晚 {{ BANQUET_HOUR }} 点开席，皇上与六宫同乐。报个节目上去：熟练度越高、排练得越多、正合皇上今日的喜好，越容易夺魁。名次前三有圣宠和赏银，献艺本身还能涨一点熟练度。</p>
+
+<div class="sheet2"><b>节目分布</b><p class="muted">按开席时实际参与人数统一计算：同类1人＋5%，2人不调整，3～4人－5%，5人及以上－10%。合奏在完整队伍得分上应用双方类别调整的平均值。</p>
+<p>{% for art,n in category_counts.items() %}{{ art }}：{{ n }}人{% if n %}（{{ '%+d'|format(((category_factor(n)-1)*100)|round|int) }}%）{% endif %}　{% endfor %}</p></div>
+<h3>{{ '今晚' if tonight else '明晚' }}的宴席（{{ date }}）</h3>
+<div class="sheet2">
+{% if mine %}
+  <p class="pl">你报的是：{{ mine.art }}·{{ mine.piece }}</p>
+  <p class="muted">{{ ['', '易', '中', '难'][mine.tier] }}档节目（要熟练度 {{ BANQUET_TIER_MIN[mine.tier] }}）。已排练 {{ mine.rehearsed }}/{{ BANQUET_REHEARSE_MAX }} 次。你的{{ mine.art }}：{{ art_level(arts.get(mine.art, 0)) }}（熟练度 {{ arts.get(mine.art, 0) }}，排练后相当于 {{ arts.get(mine.art, 0) + mine.rehearsed * BANQUET_REHEARSE_EFFECT }}）。{% if mine.buff %}吃了宴前小食，得分 +{{ mine.buff }}。{% endif %}</p>
+  <details><summary>开席前更换节目</summary>
+  <form method="post" action="{{ url_for('banquet_change') }}">
+    <select name="piece" aria-label="更换节目">{% for a in ARTS %}<optgroup label="{{ a }} · 当前{{ category_counts[a] }}人">{% for name,tier in BANQUET_PIECES[a] %}<option value="{{ a }}|{{ loop.index0 }}" {{ 'selected' if a==mine.art and name==mine.piece }}>{{ name }}（{{ ['', '易', '中', '难'][tier] }}）</option>{% endfor %}</optgroup>{% endfor %}</select>
+    <input name="title" maxlength="{{ BANQUET_TITLE_MAX }}" placeholder="自拟节目名（可不填）">
+    <button>更换节目</button><p class="muted">更换不再收报名精力；新节目会清空已有排练次数，已花的排练精力不退。宴前小食和合奏关系保留。</p>
+  </form></details>
+  <form method="post" action="{{ url_for('banquet_rehearse') }}">
+    <button {{ 'disabled' if mine.rehearsed >= BANQUET_REHEARSE_MAX or c.energy < 1 }}>排练一次（精力 1，熟练度 +1）</button>
+  </form>
+{% else %}
+  <p>还没有报节目。报名花 {{ BANQUET_ENERGY }} 点精力。</p>
+  <form method="post" action="{{ url_for('banquet_enter') }}">
+    <div class="row">
+      <select name="piece" aria-label="选节目">
+        {% for a in ARTS %}<optgroup label="{{ a }}（{{ art_level(arts.get(a, 0)) }}·{{ arts.get(a, 0) }}）{{ '　皇上今日喜欢' if a == st.emperor_pref }}">
+          {% for name, tier in BANQUET_PIECES[a] %}<option value="{{ a }}|{{ loop.index0 }}">{{ name }}　{{ ['', '易', '中', '难'][tier] }}档{{ '（要熟练度 ' ~ BANQUET_TIER_MIN[tier] ~ '）' if tier > 1 }}</option>{% endfor %}
+        </optgroup>{% endfor %}
+      </select>
+    </div>
+    <div class="row"><input name="title" maxlength="{{ BANQUET_TITLE_MAX }}" placeholder="自拟节目名（可不填，最多 {{ BANQUET_TITLE_MAX }} 字）" style="min-width:240px"></div>
+    <div class="row"><button {{ 'disabled' if c.energy < BANQUET_ENERGY or c.status != 'normal' }}>报节目</button></div>
+  </form>
+  <p class="muted">档次越难，节目够格时加分越多（易 +{{ BANQUET_TIER_BONUS[1] }} / 中 +{{ BANQUET_TIER_BONUS[2] }} / 难 +{{ BANQUET_TIER_BONUS[3] }}），熟练度不够就会在台上出岔子被扣分。排练一次相当于熟练度 +{{ BANQUET_REHEARSE_EFFECT }}，临阵磨枪也算数。熟练度靠平日在本宫修习才艺来练。</p>
+{% endif %}
+</div>
+
+<h3>合奏</h3>
+<p class="muted">两个人上台算一队：得分取两人的平均，再加默契分（献不同才艺「珠联璧合」+{{ DUET_SYNERGY_DIFF }}，同一门「琴瑟和鸣」+{{ DUET_SYNERGY_SAME }}，两人好感越高越多，最多再 +8）。名次共用，各领各的赏，合奏完好感还会涨。</p>
+{% if partner %}
+<div class="sheet2"><p class="pl">你与{{ dn(partner) }}合奏中</p>
+  <form method="post" action="{{ url_for('banquet_solo') }}"><button class="plain">退出合奏，独自献艺</button></form></div>
+{% else %}
+  {% if mine and others %}
+  <form method="post" action="{{ url_for('banquet_invite') }}" class="row">
+    <select name="target_id" aria-label="邀请谁">{% for o in others %}<option value="{{ o.id }}">{{ dn(o) }}</option>{% endfor %}</select>
+    <button>递邀请</button>
+  </form>
+  {% elif not mine %}<p class="muted">先给自己报个节目，才能邀人合奏。</p>{% endif %}
+{% endif %}
+{% for i in invites %}
+<div class="sheet2">
+  <p>{{ i.surname }}{{ i.given }}邀你今晚合奏。</p>
+  <form method="post" action="{{ url_for('banquet_accept', iid=i.id) }}">
+    {% if not mine %}
+    <div class="row"><select name="piece" aria-label="你献什么">
+      {% for a in ARTS %}<optgroup label="{{ a }}（{{ art_level(arts.get(a, 0)) }}·{{ arts.get(a, 0) }}）">
+        {% for name, tier in BANQUET_PIECES[a] %}<option value="{{ a }}|{{ loop.index0 }}">{{ name }}　{{ ['', '易', '中', '难'][tier] }}档</option>{% endfor %}
+      </optgroup>{% endfor %}</select></div>
+    <p class="muted">答应合奏要同时报一个你的节目，花 {{ BANQUET_ENERGY }} 点精力。</p>
+    {% endif %}
+    <div class="row"><button>答应</button></div>
+  </form>
+  <form method="post" action="{{ url_for('banquet_decline', iid=i.id) }}"><button class="plain">婉拒</button></form>
+</div>
+{% endfor %}
+
+<h3>戏装铺</h3>
+<p class="muted">买下的行头永远是自己的。开席时宴服、头面各取最好的一件，道具取与你献艺相配的最好一件，一并加进得分。你手里有 {{ c.silver }} 两。{% if mine %}今晚献{{ mine.art }}，行头加分共 +{{ gear_bonus(c.id, mine.art) }}。{% endif %}</p>
+<div class="scroll"><table>
+  <tr><th>类别</th><th>行头</th><th>加分</th><th>价钱</th><th></th></tr>
+  {% for k, it in BANQUET_GEAR.items() %}
+  <tr>
+    <td>{{ GEAR_SLOT_NAMES[it.slot] }}{% if it.art %}·{{ it.art }}{% endif %}</td>
+    <td style="font-family:var(--kai);font-size:17px">{{ it.name }}</td><td>+{{ it.bonus }}</td><td>{{ it.price }} 两</td>
+    <td>{% if k in owned %}<span class="muted">已有</span>{% else %}<form method="post" action="{{ url_for('banquet_buy') }}"><input type="hidden" name="gear" value="{{ k }}"><button class="plain" {{ 'disabled' if c.silver < it.price }}>买</button></form>{% endif %}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+
+<h4>已报名（{{ rows|length }} 人）</h4>
+{% if rows %}<p>{% for r in rows %}{{ r.surname }}{{ r.given }}·{{ r.art }}{{ '　' if not loop.last }}{% endfor %}</p>{% else %}<p class="muted">还没有人报名。</p>{% endif %}
+
+{% if hist and hist.n %}<p class="muted">你的节目单：共献艺 {{ hist.n }} 场，夺魁 {{ hist.w or 0 }} 次，最好名次第 {{ hist.best }}。</p>{% endif %}
+<h3>上一场（{{ last_date or '—' }}）</h3>
+{% if results %}
+<div class="scroll"><table>
+  <tr><th>名次</th><th>献艺的人</th><th>节目</th><th>得分</th><th>台上</th></tr>
+  {% for r in results %}<tr><td>{{ r.place }}</td><td>{{ r.surname }}{{ r.given }}</td><td>{{ r.art }}·{{ r.piece }}</td><td>{{ r.score }}</td><td>{{ r.note }}</td></tr>{% endfor %}
+</table></div>
+{% else %}<p class="muted">还没开过席。</p>{% endif %}
+{% endblock %}

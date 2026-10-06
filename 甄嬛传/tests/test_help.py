@@ -107,8 +107,8 @@ class PacingRescaleHelpTests(unittest.TestCase):
 
     def test_help_page_reign_and_interval_numbers_are_live(self):
         page = game.app.test_client().get('/help').get_data(as_text=True)
-        self.assertIn(f"开局年龄 + {game.HAZARD_AFTER_YEARS} 岁", page)
-        self.assertIn(f"最晚第 {game.MAX_REIGN_DAYS} 天必驾崩", page)
+        self.assertIn("皇帝、妃子、孩子同步增长", page)
+        self.assertIn(f"一届固定 {game.MAX_REIGN_DAYS} 天", page)
         self.assertIn(f"每 {game.CROWN_INTERVAL} 天一次", page)
         self.assertIn(f"万寿节</b>每 {game.BIRTHDAY_INTERVAL} 天", page)
         self.assertIn(f"每 {game.HEIR_EXAM_INTERVAL} 天考校", page)

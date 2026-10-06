@@ -11,7 +11,7 @@
 {% endblock %}
 {% block body %}
 <h2>体元殿·殿选</h2>
-<p>「{{ FAMILIES[c.family].name }}{{ full_name(c) }}，年{{ cn_ordinal(c.age_months // 12) }}。」太监唱名，你上前行礼。</p>
+<p>「{{ family_background(c) }}之女{{ full_name(c) }}，年{{ cn_ordinal(c.age_months // 12) }}。」太监唱名，你上前行礼。</p>
 <p class="muted">你的容貌 {{ c.appearance }}，才艺 {{ c.talent }}，心计 {{ c.scheme }}，德行 {{ c.virtue }}。回答时借自己擅长的一面，得分更高。</p>
 <form method="post">
   {% for qu in qs %}
