@@ -5614,6 +5614,45 @@ HEIR_PERSONALITIES = {
     'stubborn': dict(name='倔强', desc='被罚时情分掉得多，骑射涨得更快'),
 }
 
+# ── 皇嗣性格的「细分」（2026-10-07）：大类（决定玩法效果）不变，每个孩子在大类里再带一个细分标签 + 两条小习惯 ──
+# 按孩子 id 固定随机，不存库；细分和习惯都只写同一大类里不矛盾的样子。文中的「他」按性别换成「她」
+HEIR_PERSONA = {
+    'clever': dict(
+        tags=[('早慧', '开蒙比旁人早，字认得快'), ('过目不忘', '一页书看过就能背下来'), ('好问', '什么都要问个为什么'), ('机灵', '脑子转得快，一点就透')],
+        habits=['听先生讲课，常能抢在前头说出下一句。', '爱翻大人的书，翻不懂就拿去问。', '下棋总比同龄人多看两步。', '谁说过什么，隔了几天还能一字不差复述。',
+                '做事爱先琢磨门道，再动手。', '偶尔自作聪明，被乳母点破了会红着脸笑。', '对着一幅画能看上半个时辰。', '数数、算账比谁都快。']),
+    'honest': dict(
+        tags=[('老实', '说一不二，吩咐什么就做什么'), ('实心眼', '心思单纯，不会拐弯'), ('厚道', '待人真心，吃了亏也不计较'), ('稳当', '凡事慢一拍，却从不出错')],
+        habits=['读书慢，可一遍遍地念，念熟了就不忘。', '犯了错，规矩一立就乖乖改了。', '分到好吃的，头一个想着分给身边的人。', '别人逗他，常要过一会儿才反应过来笑。',
+                '干活不偷懒，让搬就搬、让扫就扫。', '被夸一句，能高兴上大半天。', '不爱与人争，吵起来先退一步。', '对乳母言听计从。']),
+    'naughty': dict(
+        tags=[('皮实', '摔了跤拍拍土就爬起来'), ('淘气', '满院子跑，一刻也坐不住'), ('鬼点子多', '总能想出新的玩法'), ('爱闹', '到哪儿哪儿热闹')],
+        habits=['爱爬树掏鸟窝，把乳母急得直跺脚。', '书拿在手里坐不过一炷香，就惦记着往外跑。', '最爱缠着人陪他玩，玩起来什么都忘了。', '藏起先生的戒尺，还一脸无辜。',
+                '捉了只蛐蛐儿，揣在怀里到处给人看。', '一高兴就大笑，笑声满院子都听得见。', '衣裳总沾着泥，换了干净的不出半日又脏了。', '跟谁都能玩到一块儿去。']),
+    'timid': dict(
+        tags=[('认生', '见了生人就躲到乳母身后'), ('胆小', '打雷都要钻进被窝'), ('心细', '敏感，别人一个眼神都要多想'), ('黏人', '离不开亲近的人')],
+        habits=['夜里不敢一个人睡，非要有人在旁边守着。', '被先生点了名，吓得声音都发颤。', '谁对他好，都记在心里。', '一见生人就低下头，半天不吱声。',
+                '受了委屈只会偷偷抹眼泪，不肯说。', '总爱牵着亲近之人的衣角。', '听到大声说话就缩一下肩膀。', '得了点心舍不得吃，先留着给身边人。']),
+    'stubborn': dict(
+        tags=[('犟脾气', '认准的事九头牛拉不回'), ('要强', '凡事不肯输给别人'), ('硬骨头', '挨了罚也不肯认错'), ('有主见', '自己的主意拿得稳')],
+        habits=['摔倒了不许人扶，自己咬着牙爬起来。', '练骑射练到手掌磨出泡，也不肯歇。', '被罚站，站得笔直，一声不吭。', '说好的事谁劝也不改，非要自己试过才死心。',
+                '输了就红着眼睛，非要再比一次。', '不爱撒娇，心里再委屈也绷着脸。', '不喜欢被人摆布，让他往东偏要往西。', '一旦认了谁，便格外护着谁。']),
+}
+
+def heir_persona(h):
+    """孩子的性格展示：大类名 + 细分标签 + 一段描述（按孩子 id 固定，不变）。没有性格的返回 None"""
+    pers = HEIR_PERSONALITIES.get(h['personality']) if h['personality'] else None
+    spec = HEIR_PERSONA.get(h['personality'])
+    if not pers or not spec: return None
+    rng = random.Random(h['id'] * 100003 + 17)
+    tag, lead = rng.choice(spec['tags'])
+    habits = rng.sample(spec['habits'], 2)
+    text = f"{lead}。" + ''.join(habits)
+    if h['gender'] != '皇子': text = text.replace('他', '她')
+    return dict(name=pers['name'], tag=tag, text=text, effect=pers['desc'])
+
+app.jinja_env.globals['heir_persona'] = heir_persona
+
 HEIR_DAYS_PER_YEAR = 1 / AGE_YEARS_PER_DAY  # 所有角色统一时间尺度
 ZHUAZHOU_ITEMS = [
     dict(key='book', name='书卷', stat='study', line='一把抓住了那卷书，攥得紧紧的'),
@@ -5842,9 +5881,19 @@ def heir_looks_grow(day):
     for h in q("SELECT * FROM heirs WHERE adult_day=0 AND appearance<100 AND temper_tier>=0"):
         if random.random() < HEIR_LOOKS_GROW_CHANCE: raise_looks(h, 1)
 
+HEIR_AUTO_NAME_AGE = 2      # 孩子到这个岁数还没人起名，系统自动从备选字里挑一个
+
 def heir_growth_tick(day):
     """抓周时低位生母的孩子进入养育所；已经主动托付的维持现有抚养。"""
     heir_looks_grow(day)
+    for h in q("SELECT * FROM heirs WHERE name=''"):      # 到 2 岁还没人起名，系统从备选字里随机挑一个
+        if heir_age_years(h, day) < HEIR_AUTO_NAME_AGE: continue
+        ensure_name_choices(h['id'])
+        hh = get_heir(h['id'])
+        if not hh['name_choices']: continue
+        name = hh['gen_word'] + random.choice(hh['name_choices'])
+        run("UPDATE heirs SET name=?, name_choices='' WHERE id=?", (name, h['id']))
+        for par in heir_parents(h): notify(par['id'], f"{heir_label(h)}已满 {HEIR_AUTO_NAME_AGE} 岁，一直没起名，宫里按祖制替孩子定了名字：{name}。", 'info')
     for h in q("SELECT * FROM heirs WHERE zhuazhou='' AND ?-born_day=?", (day, ZHUAZHOU_AGE_DAYS)):
         item = random.choice(ZHUAZHOU_ITEMS)
         run(f"UPDATE heirs SET zhuazhou=?, foster_request_to=0, {item['stat']}={item['stat']}+? WHERE id=?",
