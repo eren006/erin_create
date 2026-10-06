@@ -51,8 +51,7 @@ class PromotionPaceTests(unittest.TestCase):
 
     def test_front_rank_wait_and_thresholds(self):
         self.assertEqual(game.PROMOTE_FAVOR,{2:30,3:65,4:110,5:180,6:280,7:420,8:600,9:850})
-        for rank in (1,2,3):self.assertEqual(game.promotion_wait_days({'rank':rank}),1)
-        for rank in (4,5,6,7,8):self.assertEqual(game.promotion_wait_days({'rank':rank}),2)
+        self.assertFalse(hasattr(game,'promotion_wait_days'),'不再要求在位分上待满几天')
 
     def test_new_actions_visible_in_places(self):
         for route,labels in (('/place/yangxin',('御前展示才艺',)),('/place/jingren',('协办宫务','帮助姐妹'))):

@@ -17,7 +17,7 @@ class Settle23Tests(unittest.TestCase):
         self.assertTrue(game.past_settle_time(datetime(2026,10,6,23,0,tzinfo=game.TZ)))
 
     def test_banquet_reward_precedes_daily_settlement_on_late_restart(self):
-        game.run('UPDATE game_state SET event_started=1,maintenance=0')
+        game.run("UPDATE game_state SET event_started=1,maintenance=0,last_settle_date=''")   # 初始化时按真实钟点定，过了 23 点会写成今天，这里显式清掉
         calls=[]
         now=datetime(2026,10,6,23,5,tzinfo=game.TZ)
         def banquet(_):

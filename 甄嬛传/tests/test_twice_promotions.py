@@ -19,24 +19,36 @@ class TwicePromotionTests(unittest.TestCase):
             clock.now.return_value=datetime(2026,10,7,hour,0,tzinfo=game.TZ)
             game.maybe_settle()
 
-    def test_noon_runs_once_and_does_not_advance_day_or_pay(self):
+    def test_every_four_hours_checks_once_and_does_not_advance_day_or_pay(self):
         self.eligible()
         game.run('UPDATE game_state SET event_started=1,maintenance=0')
         before=game.get_consort(self.atk)
-        self.tick(11)
-        self.assertEqual(game.get_consort(self.atk)['rank'],1)
-        self.tick(12)
-        self.tick(13)
+        self.tick(5)                      # 05:00 就检查，不再只有中午
         after=game.get_consort(self.atk)
         self.assertEqual(after['rank'],2)
         self.assertEqual(game.cur_day(),10)
         self.assertEqual(after['silver'],before['silver'])
         self.assertEqual(after['age_months'],before['age_months'])
         with patch.object(game,'resolve_promotions',wraps=game.resolve_promotions) as promote:
-            self.tick(23)
+            self.tick(5)                  # 同一个时点只查一次
+            promote.assert_not_called()
+            self.tick(9)                  # 下一个时点再查，一次最多晋一级
             promote.assert_called_once_with(10)
+        self.assertEqual(game.get_consort(self.atk)['rank'],3)
+
+    def test_settle_hour_slot_is_left_to_the_nightly_settlement(self):
+        self.eligible()
+        game.run('UPDATE game_state SET event_started=1,maintenance=0')
+        with patch.object(game,'resolve_promotions',wraps=game.resolve_promotions) as promote:
+            self.tick(21)
+            promote.assert_not_called()
+        self.assertEqual(game.get_consort(self.atk)['rank'],1)
+
+    def test_no_wait_in_rank_required(self):
+        self.eligible()
+        game.run('UPDATE consorts SET rank_since_day=10 WHERE id=?',(self.atk,))   # 刚刚才晋的这一级
+        self.assertEqual(len(game.resolve_promotions(10)),1)
         self.assertEqual(game.get_consort(self.atk)['rank'],2)
-        self.assertEqual(game.cur_day(),11)
 
     def test_rank_can_gain_title_and_existing_title_is_kept(self):
         self.eligible()
@@ -58,7 +70,7 @@ class TwicePromotionTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['rank'],5)
         self.assertTrue(game.get_consort(self.atk)['title'])
 
-    def test_settled_today_and_maintenance_block_extra_noon(self):
+    def test_settle_slot_and_maintenance_block_extra_checks(self):
         self.eligible()
         game.run("UPDATE game_state SET event_started=1,maintenance=0,last_settle_date='2026-10-07'")
         self.tick(21)
@@ -67,10 +79,9 @@ class TwicePromotionTests(unittest.TestCase):
         self.tick(12)
         self.assertEqual(game.get_consort(self.atk)['rank'],1)
 
-    def test_mourning_and_rank_wait_remain(self):
+    def test_mourning_blocks_promotion(self):
         self.eligible()
         game.run('UPDATE game_state SET mourning=1')
         self.assertEqual(game.resolve_promotions(10),[])
         game.run('UPDATE game_state SET mourning=0')
-        game.run('UPDATE consorts SET rank_since_day=10 WHERE id=?',(self.atk,))
-        self.assertEqual(game.resolve_promotions(10),[])
+        self.assertEqual(len(game.resolve_promotions(10)),1)

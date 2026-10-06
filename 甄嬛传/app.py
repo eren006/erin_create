@@ -106,7 +106,6 @@ RANK_NAMES = ['秀女', '官女子', '答应', '常在', '贵人', '嫔', '妃',
 PROMOTE_FAVOR  = {2: 30, 3: 65, 4: 110, 5: 180, 6: 280, 7: 420, 8: 600, 9: 850}   # 晋到该位分所需圣宠
 PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 60, 8: 70, 9: 75}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
 RANK_SLOTS     = {4: 8, 5: 6, 6: 4, 7: 2, 8: 1, 9: 1}                     # 贵人以上有名额，含 NPC
-MIN_DAYS_AT_RANK = 2
 STIPEND = {1: 5, 2: 10, 3: 15, 4: 25, 5: 40, 6: 60, 7: 90, 8: 130, 9: 200}  # 每日月例银
 PLAYER_MAX_RANK = 9   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[9]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
 
@@ -1428,7 +1427,7 @@ def init_db():
                     'sender_label': "TEXT NOT NULL DEFAULT ''"},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
-        'game_state': {'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
+        'game_state': {'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
                        'reign_no': 'INTEGER NOT NULL DEFAULT 1',
                        'reign_start_day': 'INTEGER NOT NULL DEFAULT 1',
                        'emperor_start_age': 'INTEGER NOT NULL DEFAULT 20',
@@ -2919,7 +2918,7 @@ def index():
     promo = None
     if c['status'] not in ('cold',) and nxt <= PLAYER_MAX_RANK:
         promo = dict(influence=PROMOTE_INFLUENCE[nxt], rank=RANK_NAMES[nxt], favor=promote_favor_need(c, nxt), virtue=promote_virtue_need(nxt),
-                     slot=slot_free(nxt, c['id']), days_ok=(day - c['rank_since_day']) >= promotion_wait_days(c))
+                     slot=slot_free(nxt, c['id']))
     heirs = q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id", (c['id'],))
     maid_gap = 0 if c['status'] == 'cold' else maid_quota(c['rank']) - len(active_maids(c['id']))
     unnamed_heirs = [h for h in heirs if not h['name']]
@@ -3044,9 +3043,6 @@ def do_study(c, cfg):
         add_favor(c['id'], 3)
         msg += "皇上近来正喜欢这个，有人把你练习的事传到了养心殿。圣宠 +3。"
     return msg, 'good'
-
-def promotion_wait_days(c):
-    return 1 if c['rank'] < 4 else MIN_DAYS_AT_RANK
 
 
 def do_perform(c, cfg):
@@ -7348,8 +7344,6 @@ def resolve_promotions(day):
         nxt = c['rank'] + 1
         if c['status'] != 'normal': continue
         if c['favor'] < promote_favor_need(c, nxt) or c['virtue'] < promote_virtue_need(nxt) or c['influence'] < PROMOTE_INFLUENCE[nxt]: continue
-        need_days = promotion_wait_days(c)
-        if day - c['rank_since_day'] < need_days: continue
         if not slot_free(nxt, c['id']):
             if daily_count(c['id'], 'slot_full_notice') == 0:
                 notify(c['id'], f"论圣宠你已够得上{RANK_NAMES[nxt]}，可{RANK_NAMES[nxt]}的位子都满了。")
@@ -7737,6 +7731,16 @@ def health_decay_tick():
 
 
 @atomic
+def promotion_tick(key):
+    """晋封每 4 小时检查一次（和翻牌轮同时点）；21 点那一轮由日结算自己查，免得同一分钟晋两级"""
+    st = state()
+    if st['last_promo_key'] == key or key.endswith(':21'): return
+    run("UPDATE game_state SET last_promo_key=? WHERE id=1", (key,))
+    if resolve_promotions(st['day']):
+        for r in _player_rows(): check_achievements(r['id'])
+
+
+@atomic
 def maybe_settle():
     """翻牌每4小时、22点宴会、23点日结算；补执行时也先发宴会奖励。"""
     now=datetime.now(TZ)
@@ -7749,10 +7753,7 @@ def maybe_settle():
     maybe_banquet(now)
     today = now.date().isoformat()
     st = state()
-    if 12 <= now.hour < SETTLE_HOUR and st['last_midday_promotion_date'] != today and st['last_settle_date'] != today:
-        resolve_promotions(st['day'])
-        run("UPDATE game_state SET last_midday_promotion_date=? WHERE id=1", (today,))
-        for r in _player_rows(): check_achievements(r['id'])
+    promotion_tick(key)
     if past_settle_time(now) and state()['last_settle_date']!=now.date().isoformat():
         settle_day(bed_key=key)
         for r in _player_rows():check_achievements(r['id'])

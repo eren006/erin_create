@@ -78,8 +78,7 @@
       <dt>圣宠</dt><dd>{{ c.favor }}　<span class="muted">{{ favor_word(c.favor) }}</span>
         {% if promo %}<div class="bar"><i style="width:{{ [100, (c.favor * 100 / promo.favor)|int]|min }}%"></i></div>
         <div class="muted">晋{{ promo.rank }}：圣宠 {{ promo.favor }}，德行 {{ promo.virtue }}，势力 {{ c.influence }}/{{ promo.influence }}
-          {%- if not promo.days_ok %}，还需在本位分多待些日子{% endif %}
-          {%- if not promo.slot %}，但{{ promo.rank }}名额已满{% endif %} · 每天12:00、23:00检查晋升（北京时间）</div>{% endif %}</dd>
+          {%- if not promo.slot %}，但{{ promo.rank }}名额已满{% endif %} · 每 4 小时检查一次晋升（北京时间）</div>{% endif %}</dd>
       <dt>信任</dt><dd>{{ c.trust }}　<span class="muted">皇上对你{{ trust_word(c.trust) }}。求情、告发成不成，被人陷害时皇上信不信，都看这个</span></dd>
       <dt>翻牌</dt><dd>{{ bed_chance_text(c) }}</dd>
       <dt>精力</dt><dd><span class="pips" aria-label="精力 {{ c.energy }}">{{ '●' * c.energy }}{{ '○' * (ENERGY_MAX - c.energy if c.energy < ENERGY_MAX else 0) }}</span></dd>
