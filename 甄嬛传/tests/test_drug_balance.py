@@ -38,11 +38,12 @@ class DrugBalanceTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.tgt)['trust'],15)
         self.assertEqual(game.get_consort(self.tgt)['status_until_day'],11)
 
-    def test_slow_poison_only_three_daily_ticks(self):
+    def test_slow_poison_first_hit_then_daily_until_cured(self):
         before=game.get_consort(self.tgt)['health']
         self.assertEqual(self.apply('qingsi')[1],'success')
-        for day in (10,10,11,11,12,13):game.tick_drugs(day)
-        self.assertEqual(game.get_consort(self.tgt)['health'],before-12)
+        for day in (10,10,11,11,12,13):game.tick_drugs(day)      # 同一天只扣一次：10、11、12、13 共四天
+        self.assertEqual(game.get_consort(self.tgt)['health'],before-game.SLOW_POISON_FIRST-3*game.SLOW_POISON_TICK)
+        self.assertIsNotNone(game.affliction(self.tgt,'qingsi'),'没解毒就不会自己停')
 
     def test_dream_only_triggers_once(self):
         self.assertEqual(self.apply('jingmeng')[1],'success')

@@ -94,7 +94,7 @@ class DrugTests(unittest.TestCase):
         self.apply('wuming','qingsi')
         self.assertEqual(len(game.q('SELECT * FROM cases')),0)
         game.tick_drugs(10)
-        self.assertEqual(game.get_consort(self.tgt)['health'],66)
+        self.assertEqual(game.get_consort(self.tgt)['health'],70-game.SLOW_POISON_FIRST)      # 第一次发作 -10
         self.login(self.tgt)
         with patch.object(game.random,'random',return_value=0):
             self.client.post('/diagnose')
@@ -103,12 +103,43 @@ class DrugTests(unittest.TestCase):
         self.assertIsNone(game.affliction(self.tgt,'qingsi'))
         self.assertEqual(len(game.q('SELECT * FROM cases')),0)
 
+    def test_slow_poison_first_hit_10_then_4_each_day_until_cured(self):
+        self.apply('qingsi')
+        start=game.get_consort(self.tgt)['health']
+        game.tick_drugs(10)
+        self.assertEqual(game.get_consort(self.tgt)['health'],start-game.SLOW_POISON_FIRST)
+        game.tick_drugs(10)                 # 同一天不重复扣
+        self.assertEqual(game.get_consort(self.tgt)['health'],start-game.SLOW_POISON_FIRST)
+        for day in range(11,17):            # 超过 3 次也不会自己停
+            game.tick_drugs(day)
+        expect=start-game.SLOW_POISON_FIRST-6*game.SLOW_POISON_TICK
+        self.assertEqual(game.get_consort(self.tgt)['health'],max(1,expect) if expect>=25 else game.get_consort(self.tgt)['health'])
+        a=game.affliction(self.tgt,'qingsi')
+        if expect>=25: self.assertIsNotNone(a,'没解毒就一直扣')
+
+    def test_slow_poison_keeps_going_past_three_ticks_when_health_is_high(self):
+        self.apply('qingsi')
+        game.run('UPDATE consorts SET health=100 WHERE id=?',(self.tgt,))
+        for day in range(10,15): game.tick_drugs(day)
+        self.assertEqual(game.get_consort(self.tgt)['health'],100-game.SLOW_POISON_FIRST-4*game.SLOW_POISON_TICK)
+        self.assertIsNotNone(game.affliction(self.tgt,'qingsi'))
+        self.login(self.tgt)
+        with patch.object(game.random,'random',return_value=0): self.client.post('/diagnose')   # 诊脉解毒后不再扣
+        self.assertIsNone(game.affliction(self.tgt,'qingsi'))
+        before=game.get_consort(self.tgt)['health']
+        game.tick_drugs(15)
+        self.assertEqual(game.get_consort(self.tgt)['health'],before)
+
+    def test_qingsi_description_matches_new_rule(self):
+        self.assertIn('-10',game.DRUGS['qingsi']['desc'])
+        self.assertIn('直到解毒',game.DRUGS['qingsi']['desc'])
+
     def test_slow_poison_auto_diagnosis_and_lethal_threshold(self):
         self.apply('qingsi')
         game.run('UPDATE consorts SET health=6 WHERE id=?',(self.tgt,))
         game.tick_drugs(10)
         c=game.get_consort(self.tgt)
-        self.assertEqual(c['health'],2)
+        self.assertEqual(c['health'],1)       # 6 - 10 触底留 1
         self.assertEqual(c['poisoned_day'],0)
         self.assertIsNone(game.affliction(self.tgt,'qingsi'))
         self.assertEqual(len(game.q('SELECT * FROM cases')),1)

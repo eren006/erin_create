@@ -383,7 +383,7 @@ DRUGS = {
  'jingmeng':dict(name='惊梦香',rank=2,price=100,case='bed',eat=False,days=1,hours=24,desc='最多持续24小时；下一次侍寝不涨圣宠、圣宠扣15%、信任-3，触发一次即失效'),
  'yachan':dict(name='哑蝉汤',rank=3,price=120,case='now',eat=True,days=1,hours=24,desc='才艺暂降5，24小时内召见与侍寝只能选体谅；药效结束恢复被扣才艺'),
  'hanshui':dict(name='寒水散',rank=3,price=200,case='now',eat=True,days=2,hours=48,desc='体质-10、阻孕48小时；有孕时50%概率小产，安胎药可挡一次'),
- 'qingsi':dict(name='青丝引',rank=4,price=250,case='diag',eat=True,days=3,hours=0,desc='慢毒：最多3次日结算，每次体质-4；诊脉可提前解毒'),
+ 'qingsi':dict(name='青丝引',rank=4,price=250,case='diag',eat=True,days=3,hours=0,desc='慢毒：第一次发作体质-10，之后每次日结算体质-4，直到解毒；诊脉可解毒'),
  'chunxin':dict(name='春信丹',rank=4,price=300,case='due',eat=True,days=0,hours=24,desc='假孕24小时后揭穿，不会生出孩子；信任不足50时禁足半天、信任-5'),
  'lihun':dict(name='离魂草',rank=5,price=500,case='now',eat=True,days=0,hours=0,desc='致死毒：下次结算判断生死，需及时请太医；存活率受得宠待遇、治疗及福报影响，成功后账号冷却2天'),
  'wuming':dict(name='无名',rank=6,price=800,case='none',eat=False,days=0,hours=0,desc='可配其他药（离魂草除外），24小时后线索浮现，仍可调查；成功后账号冷却1天'),
@@ -401,7 +401,7 @@ TASTER_LOYALTY = 80           # 忠心到这里的宫人会替主子试毒
 TASTER_CHANCE = 0.20
 GIFT_DRUG_CHANCE = 0.05       # 手巧、忠心 ≥80 的宫人每晚献药
 DIAGNOSE_CHANCE = 0.70
-SLOW_POISON_TICK = 4
+SLOW_POISON_FIRST, SLOW_POISON_TICK = 10, 4   # 青丝引：第一次发作体质 -10，之后每次日结算 -4，直到被诊出（2026-10-07 改，原为 3 次、每次 -4）
 
 # ── 雅趣 ───────────────────────────────────────────────────────────────────────
 # 每件作品三步：0 起意（选定就有的那句）→ act 一次 1 打磨 → act 两次 2 成了，进 hobby_items。
@@ -9136,14 +9136,13 @@ def tick_drugs(day):
     for a in q("SELECT * FROM afflictions WHERE status='active' AND expires_ts=0 AND until_day>0 AND until_day<?",(day,)):finish_affliction(a)
     for a in q("SELECT * FROM afflictions WHERE status='active' AND drug='qingsi'"):
         c=get_consort(a['consort_id'])
-        if c['status']=='dead' or a['ticks']>=3:finish_affliction(a);continue
+        if c['status']=='dead':finish_affliction(a);continue
         if a['last_tick_day']==day:continue
-        run('UPDATE consorts SET health=MAX(1,health-?) WHERE id=?',(SLOW_POISON_TICK,c['id']))
+        dmg=SLOW_POISON_FIRST if a['ticks']==0 else SLOW_POISON_TICK
+        run('UPDATE consorts SET health=MAX(1,health-?) WHERE id=?',(dmg,c['id']))
         run('UPDATE afflictions SET ticks=ticks+1,last_tick_day=? WHERE id=?',(day,a['id']))
-        notify(c['id'],'青丝引发作，体质-4。','bad')
-        if get_consort(c['id'])['health']<25:diagnose_slow(a)
-        elif a['ticks']+1>=3:
-            finish_affliction(a);notify(c['id'],'青丝引药效已过，不再继续损耗体质。','good')
+        notify(c['id'],f'青丝引发作，体质-{dmg}。','bad')
+        if get_consort(c['id'])['health']<25:diagnose_slow(a)      # 掉到 25 以下太医自会查出来
 
 
 def drug_gifts(day):
