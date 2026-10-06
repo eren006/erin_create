@@ -62,7 +62,7 @@
 <div class="scroll"><table><tr><th>账号</th><th>QQ 号</th></tr>{% for u in registrations %}<tr><td>{{ u.username }}</td><td>{{ u.qq_number or '未填写（旧账号）' }}</td></tr>{% endfor %}</table></div>
 <h3>妃嫔</h3>
 <div class="scroll"><table>
-  <tr><th>名号</th><th>账号 / QQ</th><th>属性</th><th>秘密</th><th>圣宠 / 银子 / 位分 / 状态</th></tr>
+  <tr><th>名号</th><th>账号 / QQ</th><th>属性</th><th>秘密</th><th>圣宠 / 银子 / 精力 / 位分 / 状态 / 属性</th></tr>
   {% for r in rows %}
   <tr>
     <td>{{ dn(r) }}<br><span class="muted">{{ full_name(r) }}{{ '（NPC）' if r.npc_key }}</span></td>
@@ -74,6 +74,7 @@
       <form method="post" action="{{ url_for('admin_edit', cid=r.id) }}" class="row" style="gap:4px">
         <input name="favor" type="number" value="{{ r.favor }}" style="width:72px" aria-label="圣宠">
         <input name="silver" type="number" value="{{ r.silver }}" style="width:72px" aria-label="银子">
+        <input name="energy" type="number" min="0" max="99" value="{{ r.energy }}" style="width:56px" aria-label="精力" title="精力">
         <select name="rank" aria-label="位分">{% for n in RANK_NAMES %}<option value="{{ loop.index0 }}" {{ 'selected' if loop.index0==r.rank }}>{{ n }}</option>{% endfor %}</select>
         <select name="status" aria-label="状态">{% for s, n in [('normal','正常'),('confined','禁足'),('cold','冷宫'),('xiunv','待殿选')] %}<option value="{{ s }}" {{ 'selected' if s==r.status }}>{{ n }}</option>{% endfor %}</select>
         {% for f, n in [('appearance','貌'),('talent','才'),('scheme','计'),('virtue','德'),('health','体')] %}<input name="{{ f }}" type="number" min="1" max="100" value="{{ r[f] }}" style="width:56px" aria-label="{{ n }}" title="{{ n }}">{% endfor %}

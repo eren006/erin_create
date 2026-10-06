@@ -8444,6 +8444,12 @@ def admin_edit(cid):
                 return redirect(url_for('admin'))
     run("UPDATE consorts SET favor=?, silver=?, rank=?, status=? WHERE id=?",
         (max(0, favor), max(0, silver), max(0, min(9, rank)), status, cid))
+    raw = (f.get('energy') or '').strip()                  # 精力：表单里有就改，空着不动；可以超过日常上限
+    if raw:
+        try: run("UPDATE consorts SET energy=? WHERE id=?", (max(0, min(99, int(raw))), cid))
+        except ValueError:
+            flash('精力数值有误。', 'bad')
+            return redirect(url_for('admin'))
     if status in ('confined', 'cold') and c['status'] != status:
         run("UPDATE consorts SET status_until_day=? WHERE id=?",
             (cur_day() + (1 if status == 'confined' else COLD_DAYS), cid))
