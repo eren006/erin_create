@@ -87,6 +87,89 @@ class HeirLooksTests(unittest.TestCase):
         self.assertIn('容貌', html)
         self.assertIn('气质：' + h['temperament'], html)
 
+    # ── 加容貌的办法：教养「梳洗仪容」、自己长开 ───────────────────────────────
+
+    def raised(self, mother_app=40, caretaker_app=50):
+        game.run("UPDATE consorts SET appearance=? WHERE id=?", (mother_app, self.atk))
+        game.run("DELETE FROM heirs")
+        h = self.deliver(self.atk)
+        game.run("UPDATE heirs SET caretaker_id=? WHERE id=?", (self.atk, h['id']))
+        game.run("UPDATE consorts SET appearance=?, energy=8, silver=500 WHERE id=?", (caretaker_app, self.atk))
+        return h['id']
+
+    def groom(self, hid):
+        return self.client.post(f'/heirs/raise/{hid}', data={'opt': 'grooming'})
+
+    def test_grooming_costs_and_gives_two_looks(self):
+        hid = self.raised()
+        game.set_heir_appearance(hid, 30)
+        self.groom(hid)
+        self.assertEqual(game.get_heir(hid)['appearance'], 32)
+        c = game.get_consort(self.atk)
+        self.assertEqual((c['silver'], c['energy']), (480, 7))
+
+    def test_a_beautiful_caretaker_teaches_better(self):
+        hid = self.raised(caretaker_app=game.HEIR_GROOM_BEAUTY_LINE)
+        game.set_heir_appearance(hid, 30)
+        self.groom(hid)
+        self.assertEqual(game.get_heir(hid)['appearance'], 33)
+
+    def test_grooming_once_a_day_needs_silver_and_stops_at_100(self):
+        hid = self.raised()
+        game.set_heir_appearance(hid, 30)
+        self.groom(hid); self.groom(hid)
+        self.assertEqual(game.get_heir(hid)['appearance'], 32, '一天一次')
+        game.run("DELETE FROM daily_counters"); game.run("UPDATE consorts SET silver=5 WHERE id=?", (self.atk,))
+        self.groom(hid)
+        self.assertEqual(game.get_heir(hid)['appearance'], 32, '银子不够')
+        game.run("UPDATE consorts SET silver=500 WHERE id=?", (self.atk,))
+        game.set_heir_appearance(hid, 100)
+        self.groom(hid)
+        self.assertEqual(game.get_heir(hid)['appearance'], 100)
+        self.assertEqual(game.get_consort(self.atk)['silver'], 500, '到顶了不扣钱')
+
+    def test_crossing_a_tier_rerolls_temperament_and_tells_the_mother(self):
+        hid = self.raised()
+        game.set_heir_appearance(hid, 39)
+        old = game.get_heir(hid)['temperament']
+        self.groom(hid)                      # 39 → 41，跨到第 3 档
+        h = game.get_heir(hid)
+        self.assertEqual(h['temper_tier'], 2)
+        self.assertIn(h['temperament'], {n for n, _ in game.TEMPER_TIERS[2]})
+        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE ? ", (self.atk, f"%长开了，气质由「{old}」变成了「{h['temperament']}」%"), one=True))
+
+    def test_children_grow_into_their_looks_over_time_and_cap_at_100(self):
+        hid = self.raised()
+        game.set_heir_appearance(hid, 50)
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.heir_looks_grow(10)
+        self.assertEqual(game.get_heir(hid)['appearance'], 51)
+        with patch.object(game.random, 'random', return_value=0.99):
+            game.heir_looks_grow(10)
+        self.assertEqual(game.get_heir(hid)['appearance'], 51, '没抽中就不变')
+        game.set_heir_appearance(hid, 100)
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.heir_looks_grow(10)
+        self.assertEqual(game.get_heir(hid)['appearance'], 100)
+
+    def test_adults_do_not_grow_and_settlement_runs_the_growth(self):
+        hid = self.raised()
+        game.set_heir_appearance(hid, 50)
+        game.run("UPDATE heirs SET adult_day=3 WHERE id=?", (hid,))
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.heir_looks_grow(10)
+        self.assertEqual(game.get_heir(hid)['appearance'], 50)
+        game.run("UPDATE heirs SET adult_day=0 WHERE id=?", (hid,))
+        with patch.object(game.random, 'random', return_value=0.0), patch.object(game, 'heir_adult_tick'):
+            game.heir_growth_tick(game.cur_day())
+        self.assertEqual(game.get_heir(hid)['appearance'], 51)
+
+    def test_home_page_offers_the_grooming_button_with_its_price(self):
+        hid = self.raised()
+        game.run("UPDATE consorts SET recap_seen_day=99 WHERE id=?", (self.atk,))
+        html = self.client.get('/place/home').get_data(as_text=True)
+        self.assertIn('梳洗仪容（20 两）', html)
+
 
 if __name__ == '__main__':
     unittest.main()

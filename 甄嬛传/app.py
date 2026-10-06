@@ -5614,7 +5614,10 @@ HEIR_RAISE = {
     'ride_girl':  dict(name='琴棋', gain=dict(study=2, virtue=1)),   # 公主版的「骑射」
     'discipline': dict(name='立规矩', gain=dict(virtue=3), affinity=-1),
     'play':       dict(name='陪他玩', affinity=5),
+    'grooming':   dict(name='梳洗仪容', silver=20, looks=2, looks_beauty=3),   # 2026-10-07：给孩子梳洗打扮、教仪容，容貌 +2；抚养人容貌 ≥70 时 +3
 }
+HEIR_GROOM_BEAUTY_LINE = 70       # 抚养人容貌到这条线，教出来的仪容更好
+HEIR_LOOKS_GROW_CHANCE = 0.5      # 孩子每过一天（宫中长两岁）有这么大概率自己长开一点，容貌 +1，最高 100
 
 HEIR_EVENT_CHANCE = 0.25
 HEIR_FOSTER_TALK_AGE_DAYS = 8 * HEIR_DAYS_PER_YEAR   # 抱养的孩子 8 岁起才会问「我的亲额娘是谁」
@@ -5802,8 +5805,28 @@ def pick_foster(exclude=()):
     return get_consort(rows[0]['id']) if rows else None
 
 
+def raise_looks(h, amt):
+    """给孩子加容貌（最高 100），跨档时气质在新档里重抽并告诉抚养人和生母。返回实际加了多少"""
+    before = get_heir(h['id'])
+    new = min(100, before['appearance'] + amt)
+    set_heir_appearance(h['id'], new)
+    after = get_heir(h['id'])
+    if after['temper_tier'] != before['temper_tier'] and before['temper_tier'] != -1:
+        label = heir_label(after)
+        for cid in {after['caretaker_id'], after['mother_id']} - {0}:
+            cc = get_consort(cid)
+            if cc and cc['user_id']:
+                notify(cid, f"{label}长开了，气质由「{before['temperament']}」变成了「{after['temperament']}」。", 'good')
+    return new - before['appearance']
+
+def heir_looks_grow(day):
+    """每天一次：没成年的孩子有一定概率自己长开一点（容貌 +1，最高 100）"""
+    for h in q("SELECT * FROM heirs WHERE adult_day=0 AND appearance<100 AND temper_tier>=0"):
+        if random.random() < HEIR_LOOKS_GROW_CHANCE: raise_looks(h, 1)
+
 def heir_growth_tick(day):
     """抓周时低位生母的孩子进入养育所；已经主动托付的维持现有抚养。"""
+    heir_looks_grow(day)
     for h in q("SELECT * FROM heirs WHERE zhuazhou='' AND ?-born_day=?", (day, ZHUAZHOU_AGE_DAYS)):
         item = random.choice(ZHUAZHOU_ITEMS)
         run(f"UPDATE heirs SET zhuazhou=?, foster_request_to=0, {item['stat']}={item['stat']}+? WHERE id=?",
@@ -6860,13 +6883,18 @@ def heir_raise(hid):
     elif h['adult_day']: err = '他已经长大成人，不用你再教养了。'
     elif not cfg: err = '选一样教养的法子。'
     elif c['energy'] < HEIR_RAISE_ENERGY: err = '精力不够了。'
+    elif c['silver'] < cfg.get('silver', 0): err = f"银子不够，需要 {cfg['silver']} 两。"
+    elif cfg.get('looks') and h['appearance'] >= 100: err = '孩子的容貌已经到头了，再梳洗也没有更多好处。'
     elif daily_count(c['id'], f'raise:{hid}'): err = '今天已经教养过他了。'
     if err:
         flash(err, 'bad')
         return redirect(url_for('place', key='home'))
-    run('UPDATE consorts SET energy=energy-? WHERE id=?', (HEIR_RAISE_ENERGY, c['id']))
+    run('UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?', (HEIR_RAISE_ENERGY, cfg.get('silver', 0), c['id']))
     daily_inc(c['id'], f'raise:{hid}')
     parts = []
+    if cfg.get('looks'):
+        amt = cfg['looks_beauty'] if c['appearance'] >= HEIR_GROOM_BEAUTY_LINE else cfg['looks']
+        parts.append(f"容貌 +{raise_looks(h, amt)}")
     for stat, amt in cfg.get('gain', {}).items():
         if h['personality'] == 'clever' and stat == 'study': amt = round(amt * 1.5)
         elif h['personality'] == 'honest' and stat == 'study': amt = round(amt * 0.7)
@@ -8798,7 +8826,7 @@ def place(key):
     return render_template('place.html', c=c, key=key, title=title, desc=desc, extra=extra, acts=acts,
                            counts=counts, sick=is_sick(c), arts=arts_of(c), ARTS=ARTS, ART_MASTERY=ART_MASTERY,
                            aid_targets=q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status IN ('normal','confined')", (c['id'],)), plead_targets=plead_targets, plead_p=int(plead_chance(c) * 100),
-                           maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, heir_todo=heir_todo, HEIR_RAISE=HEIR_RAISE, PRENATAL=PRENATAL,
+                           maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, heir_todo=heir_todo, HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, PRENATAL=PRENATAL,
                            DIETS=DIETS, PREGNANCY_DAYS=PREGNANCY_DAYS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS,
                            is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False, open_living=request.args.get('living') == '1',
                            household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
