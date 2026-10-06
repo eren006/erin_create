@@ -313,7 +313,7 @@ class EmperorTests(unittest.TestCase):
         it = dict(id=0, method='rumor', attacker_id=self.atk, target_id=self.tgt)
         with patch.object(game.random, 'random', return_value=0.0):
             game.resolve_intrigue(it)
-        self.assertEqual(game.get_consort(self.tgt)['favor'], 93)   # 信任 ≥50：只折 7.5%
+        self.assertEqual(game.get_consort(self.tgt)['favor'], 100 - game.FAVOR_LOSS['rumor_trusted'])   # 信任 ≥50：只扣一半
         a, t = game.get_consort(self.atk), game.get_consort(self.tgt)
         game.run('UPDATE consorts SET trust=20 WHERE id=?', (self.atk,))
         low = game.intrigue_success_p(game.get_consort(self.atk), t, game.INTRIGUES['expose'])

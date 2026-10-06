@@ -835,7 +835,7 @@ class FamilyTests(unittest.TestCase):
         f = self.frow(uid)
         self.assertEqual((f['prestige'], f['estate']), (25, 150))
         c = game.get_consort(self.atk)
-        self.assertEqual((c['trust'], c['favor']), (42, 180))
+        self.assertEqual((c['trust'], c['favor']), (42, 200 - game.FAVOR_LOSS['usury']))
 
     def test_safe_venture_never_scolded(self):
         uid = self.fam(self.atk, prestige=0)

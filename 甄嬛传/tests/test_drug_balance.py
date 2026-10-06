@@ -50,10 +50,10 @@ class DrugBalanceTests(unittest.TestCase):
         game.run('UPDATE consorts SET favor=100,trust=20 WHERE id=?',(self.tgt,))
         with patch.object(game.random,'random',return_value=.99):
             game.do_bedding(game.get_consort(self.tgt),10,False,[])
-            self.assertEqual(game.get_consort(self.tgt)['favor'],85)
+            self.assertEqual(game.get_consort(self.tgt)['favor'],100-game.FAVOR_LOSS['dream'])
             self.assertEqual(game.get_consort(self.tgt)['trust'],17)
             game.do_bedding(game.get_consort(self.tgt),10,False,[])
-        self.assertGreater(game.get_consort(self.tgt)['favor'],85)
+        self.assertGreater(game.get_consort(self.tgt)['favor'],100-game.FAVOR_LOSS['dream'])
 
     def test_hanshui_antidote_keeps_pregnancy_and_48h_limit(self):
         game.run('UPDATE consorts SET pregnant_since=10,pregnancy_started_ts=100000 WHERE id=?',(self.tgt,))

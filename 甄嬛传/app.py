@@ -341,13 +341,13 @@ def clamp(v, lo=0, hi=100):
 
 SECRETS = {
     'lover':     dict(name='入宫前曾有意中人', weight=28,
-                      penalty='圣宠折半，德行 -15', confess='圣宠 -20%'),
+                      penalty='圣宠 -60，德行 -15', confess='圣宠 -24'),
     'fake':      dict(name='冒认了出身', weight=22,
-                      penalty='降一级位分', confess='圣宠 -30%'),
+                      penalty='降一级位分', confess='圣宠 -36'),
     'book':      dict(name='私藏禁书', weight=18,
                       penalty='禁足半天', confess='禁足半天'),
     'scar':      dict(name='脸上旧伤一直用脂粉遮着', weight=22,
-                      penalty='容貌 -10，圣宠 -20%', confess='容貌 -5'),
+                      penalty='容貌 -10，圣宠 -24', confess='容貌 -5'),
     'physician': dict(name='与太医过从甚密', weight=10,
                       penalty='打入冷宫', confess='禁足半天'),
 }
@@ -379,7 +379,7 @@ ITEMS = {
 
 DRUGS = {
  'yanzhi':dict(name='胭脂霰',rank=2,price=80,case='now',eat=False,days=1,hours=24,desc='容貌暂降5、24小时内不能侍寝；药效结束恢复被扣容貌'),
- 'jingmeng':dict(name='惊梦香',rank=2,price=100,case='bed',eat=False,days=1,hours=24,desc='最多持续24小时；下一次侍寝不涨圣宠、圣宠扣15%、信任-3，触发一次即失效'),
+ 'jingmeng':dict(name='惊梦香',rank=2,price=100,case='bed',eat=False,days=1,hours=24,desc='最多持续24小时；下一次侍寝不涨圣宠、圣宠 -18、信任-3，触发一次即失效'),
  'yachan':dict(name='哑蝉汤',rank=3,price=120,case='now',eat=True,days=1,hours=24,desc='才艺暂降5，24小时内召见与侍寝只能选体谅；药效结束恢复被扣才艺'),
  'hanshui':dict(name='寒水散',rank=3,price=200,case='now',eat=True,days=2,hours=48,desc='体质-10、阻孕48小时；有孕时50%概率小产，安胎药可挡一次'),
  'qingsi':dict(name='青丝引',rank=4,price=250,case='diag',eat=True,days=3,hours=0,desc='慢毒：第一次发作体质-10，之后每次日结算体质-4，直到解毒；诊脉可解毒；体质耗尽就转成中毒，生死各凭天命'),
@@ -512,15 +512,15 @@ ACTIONS = {
 
 INTRIGUES = {
     'rumor':  dict(name='散布流言', silver=30, energy=0, min_rank=1, base=0.55, npc_ok=True,
-                   desc='成：对方圣宠 -15%，德行 -3。败露：自己德行 -5，圣宠 -10%'),
+                   desc='成：对方圣宠 -18（皇上信任她则 -9），德行 -3。败露：自己德行 -5，圣宠 -12'),
     'steal':  dict(name='截宠', silver=60, energy=0, min_rank=1, base=0.50, npc_ok=True,
-                   desc='若今晚翻的是对方的牌子，由你顶上。败露：圣宠 -15%，禁足半天'),
+                   desc='若今晚翻的是对方的牌子，由你顶上。败露：圣宠 -18，禁足半天'),
     'frame':  dict(name='栽赃陷害', silver=100, energy=0, min_rank=2, base=0.45, npc_ok=True,
-                   desc='成：对方禁足半天，圣宠 -20%。败露：自己禁足半天'),
+                   desc='成：对方禁足半天，圣宠 -24（皇上信任她则 -12）。败露：自己禁足半天，圣宠 -18'),
     'drug':   dict(name='下药', silver=0, energy=DRUG_ENERGY, min_rank=2, base=DRUG_BASE, npc_ok=False,
                    desc='用手里的药，交给对方宫里的内应去下，或者自己动手'),
     'expose': dict(name='告发秘密', silver=50, energy=0, min_rank=1, base=0.70, npc_ok=False,
-                   desc='需先探到对方的秘密。皇上信不信看你的信任。成：按秘密处罚对方，你信任 +5。不信：自己德行 -8，圣宠 -15%，信任 -10'),
+                   desc='需先探到对方的秘密。皇上信不信看你的信任。成：按秘密处罚对方，你信任 +5。不信：自己德行 -8，圣宠 -18，信任 -10'),
     'witch':  dict(name='构陷巫蛊', silver=300, energy=1, min_rank=4, base=0.35, npc_ok=True,
                    desc='成：对方打入冷宫。败露：打入冷宫的是你'),
     'punish': dict(name='发落宫人', silver=50, energy=1, min_rank=5, base=0.50, npc_ok=False,
@@ -1746,12 +1746,22 @@ def add_favor(cid, delta, gain_mult=True):
     run("UPDATE consorts SET favor=MAX(0, favor+?) WHERE id=?", (int(delta), cid))
     return int(delta)
 
-def cut_favor(cid, ratio, minimum=0):
-    """按比例扣圣宠，天真性格减半。返回实际扣掉的数"""
+# 2026-10-07：扣圣宠一律扣定额，不再按比例（圣宠越高、扣得越多，高位的人被一次流言就掉几十点，太狠）
+FAVOR_LOSS = dict(
+    rumor=18, rumor_trusted=9,              # 被散布流言（皇上信任你时减半）
+    frame=24, frame_trusted=12,             # 被栽赃陷害
+    caught_rumor=12, caught_frame=18, caught_steal=18, caught_expose=18, mood_extra=12,   # 使计败露的自罚；皇上震怒再加
+    dream=18,                               # 惊梦香发作
+    lavish=6, repair=2, usury=12,           # 逾制被参、屋子坏了没修、印子钱东窗事发
+    secret_lover=60, secret_lover_confess=24, secret_fake_confess=36, secret_scar=24,   # 秘密被揭 / 主动坦白
+    convicted=18, case_culprit=18,          # 定罪、旧案翻出真凶
+)
+
+def cut_favor(cid, amount):
+    """扣定额圣宠，天真性格减半，不会扣成负数。返回实际扣掉的数"""
     c = get_consort(cid)
-    if c['personality'] == 'naive': ratio /= 2
-    loss = max(minimum, int(c['favor'] * ratio))
-    loss = min(loss, c['favor'])
+    if c['personality'] == 'naive': amount = amount // 2
+    loss = min(int(amount), c['favor'])
     run("UPDATE consorts SET favor=favor-? WHERE id=?", (loss, cid))
     return loss
 
@@ -2367,7 +2377,7 @@ VENTURES = {
     'salt':  dict(name='漕运盐引', days=1, scold=0.12, outcomes=[(0.45, 1.0), (0.25, 0.0), (0.20, -0.5), (0.10, -1.0)],
                   desc='有赚头：近半赚一倍，两成亏一半，一成血本无归；一成二的可能被御史参一本（名望 −8，信任 −6）。'),
     'usury': dict(name='印子钱', days=1, scold=0.25, outcomes=[(0.42, 2.0), (0.16, 0.0), (0.42, -1.0)],
-                  desc='暴利也暴险：四成多翻三倍，四成多本金全赔；两成半的可能东窗事发（名望 −15，信任 −8，圣宠 −10%，家底抄没一半）。'),
+                  desc='暴利也暴险：四成多翻三倍，四成多本金全赔；两成半的可能东窗事发（名望 −15，信任 −8，圣宠 −12，家底抄没一半）。'),
 }
 FAMILY_LETTER_NEWS = [
     '父兄来信，说朝中近来风向有变，让你在宫里少说多看。',
@@ -2733,7 +2743,7 @@ def family_venture_tick(day):
             if alive:
                 add_trust(c['id'], -(6 if v['kind'] == 'salt' else 8))
                 if v['kind'] == 'usury':
-                    cut_favor(c['id'], 0.1)
+                    cut_favor(c['id'], FAVOR_LOSS['usury'])
             if v['kind'] == 'usury':
                 run("UPDATE families SET estate=estate/2 WHERE user_id=?", (fam['user_id'],))
                 text += '家底被抄没了一半。'
@@ -3418,8 +3428,8 @@ def diet_tick(day):
             for m in active_maids(c['id']): add_loyalty(m['id'], 1)
             if c['rank'] <= 4 and random.random() < LAVISH_ILL_FORM_CHANCE:
                 add_stat(c['id'], 'virtue', -2)
-                cut_favor(c['id'], 0.05)
-                notify(c['id'], '有人在皇后跟前说你吃穿用度逾了制。德行 −2，圣宠 −5%。', 'bad')
+                cut_favor(c['id'], FAVOR_LOSS['lavish'])
+                notify(c['id'], f"有人在皇后跟前说你吃穿用度逾了制。德行 −2，圣宠 −{FAVOR_LOSS['lavish']}。", 'bad')
 
 
 @app.route('/diet', methods=['POST'])
@@ -3464,7 +3474,7 @@ def repair_tick(day):
             if c['health'] > 20: add_stat(c['id'], 'health', -1)
             if sev >= 2:
                 for m in active_maids(c['id']): add_loyalty(m['id'], -1)
-            if sev >= 3: cut_favor(c['id'], 0.02)
+            if sev >= 3: cut_favor(c['id'], FAVOR_LOSS['repair'])
             st['days'] = st.get('days', 0) + 1
             run("UPDATE consorts SET repair=? WHERE id=?", (json.dumps(st), c['id']))
         elif random.random() < REPAIR_CHANCE:
@@ -3567,17 +3577,17 @@ def apply_secret_penalty(cid, confessed):
     s = c['secret']
     if not confessed: add_prestige(c, PRESTIGE_EXPOSED, f"{full_name(c)}的秘密被人告发")
     if s == 'lover':
-        if confessed: cut_favor(cid, 0.2)
+        if confessed: cut_favor(cid, FAVOR_LOSS['secret_lover_confess'])
         else:
-            cut_favor(cid, 0.5); add_stat(cid, 'virtue', -15)
+            cut_favor(cid, FAVOR_LOSS['secret_lover']); add_stat(cid, 'virtue', -15)
     elif s == 'fake':
-        if confessed: cut_favor(cid, 0.3)
+        if confessed: cut_favor(cid, FAVOR_LOSS['secret_fake_confess'])
         elif c['rank'] > 1: set_rank(cid, c['rank'] - 1)
     elif s == 'book':
         confine(cid, 1 if confessed else 3)
     elif s == 'scar':
         add_stat(cid, 'appearance', -5 if confessed else -10)
-        if not confessed: cut_favor(cid, 0.2)
+        if not confessed: cut_favor(cid, FAVOR_LOSS['secret_scar'])
     elif s == 'physician':
         if confessed: confine(cid, 3)
         else: send_to_cold(cid)
@@ -4218,9 +4228,9 @@ def knife_expose(c, it, names):
     """华妃把你供了出来：按你亲自出手败露论处"""
     m = it['method']
     if m == 'rumor':
-        add_stat(c['id'], 'virtue', -5); cut_favor(c['id'], 0.1); pen = '德行 -5，圣宠 -10%'
+        add_stat(c['id'], 'virtue', -5); cut_favor(c['id'], FAVOR_LOSS['caught_rumor']); pen = f"德行 -5，圣宠 -{FAVOR_LOSS['caught_rumor']}"
     elif m == 'frame':
-        confine(c['id']); cut_favor(c['id'], 0.15); pen = '禁足半天，圣宠 -15%'
+        confine(c['id']); cut_favor(c['id'], FAVOR_LOSS['caught_frame']); pen = f"禁足半天，圣宠 -{FAVOR_LOSS['caught_frame']}"
     else:
         add_stat(c['id'], 'virtue', -8); pen = '德行 -8'
     tloss = 10 if m == 'punish' else 15
@@ -7003,7 +7013,7 @@ def resolve_intrigue(it, bed_id=None):
             night_mark(tgt['id'], 'poisoned')
         elif m == 'rumor':
             trusted = tgt['trust'] >= TRUSTED_LINE
-            loss = cut_favor(tgt['id'], 0.075 if trusted else 0.15, 5 if trusted else 10)
+            loss = cut_favor(tgt['id'], FAVOR_LOSS['rumor_trusted'] if trusted else FAVOR_LOSS['rumor'])
             add_stat(tgt['id'], 'virtue', -3)
             night_mark(tgt['id'], 'victim', trusted=trusted)
             victim = f"宫里起了关于你的流言，是{who}在背后散播。圣宠 -{loss}，德行 -3。" + \
@@ -7011,7 +7021,7 @@ def resolve_intrigue(it, bed_id=None):
             gz = f"流言四起：{pick_rumor(tn)}"
         elif m == 'frame':
             trusted = tgt['trust'] >= TRUSTED_LINE
-            loss = cut_favor(tgt['id'], 0.1 if trusted else 0.2)
+            loss = cut_favor(tgt['id'], FAVOR_LOSS['frame_trusted'] if trusted else FAVOR_LOSS['frame'])
             confine(tgt['id'], CONFINE_DAYS)
             night_mark(tgt['id'], 'victim', trusted=trusted)
             victim = f"你宫里搜出了不该有的东西，{who}栽赃陷害了你。禁足半天，圣宠 -{loss}。" + \
@@ -7085,21 +7095,21 @@ def resolve_intrigue(it, bed_id=None):
                 send_to_cold(a['id'])
                 pen = '毒害败露，废位并打入冷宫'
             elif m == 'rumor':
-                add_stat(a['id'], 'virtue', -5); cut_favor(a['id'], 0.1)
-                pen = '德行 -5，圣宠 -10%'
+                add_stat(a['id'], 'virtue', -5); cut_favor(a['id'], FAVOR_LOSS['caught_rumor'])
+                pen = f"德行 -5，圣宠 -{FAVOR_LOSS['caught_rumor']}"
             elif m == 'frame':
-                confine(a['id']); cut_favor(a['id'], 0.15)
-                pen = '禁足半天，圣宠 -15%'
+                confine(a['id']); cut_favor(a['id'], FAVOR_LOSS['caught_frame'])
+                pen = f"禁足半天，圣宠 -{FAVOR_LOSS['caught_frame']}"
             elif m == 'poison':
                 if a['rank'] > 1: set_rank(a['id'], a['rank'] - 1)
                 confine(a['id'], 3)
                 pen = '降一级位分，禁足半天'
             elif m == 'steal':
-                cut_favor(a['id'], 0.15); confine(a['id'], 1)
-                pen = '圣宠 -15%，禁足半天'
+                cut_favor(a['id'], FAVOR_LOSS['caught_steal']); confine(a['id'], 1)
+                pen = f"圣宠 -{FAVOR_LOSS['caught_steal']}，禁足半天"
             elif m == 'expose':
-                add_stat(a['id'], 'virtue', -8); cut_favor(a['id'], 0.15)
-                pen = '德行 -8，圣宠 -15%'
+                add_stat(a['id'], 'virtue', -8); cut_favor(a['id'], FAVOR_LOSS['caught_expose'])
+                pen = f"德行 -8，圣宠 -{FAVOR_LOSS['caught_expose']}"
             elif m == 'punish':
                 add_stat(a['id'], 'virtue', -8)
                 pen = '德行 -8'
@@ -7107,7 +7117,7 @@ def resolve_intrigue(it, bed_id=None):
                 send_to_cold(a['id'])
                 pen = '打入冷宫'
             if mood_extra and m != 'witch':
-                cut_favor(a['id'], 0.1); pen += '（皇上正在气头上，圣宠再 -10%）'
+                cut_favor(a['id'], FAVOR_LOSS['mood_extra']); pen += f"（皇上正在气头上，圣宠再 -{FAVOR_LOSS['mood_extra']}）"
             if a['user_id']:
                 tloss = 10 if m in ('expose', 'punish') else 15
                 add_trust(a['id'], -tloss)
@@ -7575,12 +7585,12 @@ def do_bedding(bed, day, primary, tray):
     run('UPDATE consorts SET bed_daily_count=CASE WHEN bed_daily_day=? THEN bed_daily_count+1 ELSE 1 END,bed_daily_day=? WHERE id=?',(day,day,bed['id']))
     dream = affliction(bed['id'], 'jingmeng', day)
     if dream:
-        cut_favor(bed['id'], 0.15)
+        cut_favor(bed['id'], FAVOR_LOSS['dream'])
         add_trust(bed['id'], -3)
         finish_affliction(dream)
         gain = 0
         open_drug_case(q('SELECT * FROM intrigues WHERE id=?', (dream['intrigue_id'],), one=True))
-        notify(bed['id'], '惊梦香发作，惊扰圣驾，圣宠 -15%、信任 -3，惊梦香已失效。', 'bad')
+        notify(bed['id'], f"惊梦香发作，惊扰圣驾，圣宠 -{FAVOR_LOSS['dream']}、信任 -3，惊梦香已失效。", 'bad')
     else:
         gain = add_favor(bed['id'], 6 + bed['appearance'] * 0.04)
     run("UPDATE consorts SET bedded_count=bedded_count+1, last_audience_day=? WHERE id=?", (day, bed['id']))
@@ -9470,7 +9480,7 @@ def resolve_drug_cases(day):
                 elif case['drug']=='hanshui':
                     if c['rank']>1: set_rank(convicted,c['rank']-1)
                     confine(convicted,3)
-                else: confine(convicted,2); cut_favor(convicted,0.15)
+                else: confine(convicted,2); cut_favor(convicted,FAVOR_LOSS['convicted'])
                 add_trust(convicted,-15)
             gazette(f"慎刑司定案：{display_name(c)}获罪。")
             notify(convicted,'慎刑司将你定罪，信任 -15，并按案情受罚。','bad')
@@ -9534,9 +9544,9 @@ def case_appeal(case_id):
         if wrongful and case['culprit_id'] and case['culprit_id'] != convicted['id']:
             culprit = get_consort(case['culprit_id'])
             if culprit and culprit['status'] not in ('dead', 'cold'):
-                cut_favor(culprit['id'], 0.15)
+                cut_favor(culprit['id'], FAVOR_LOSS['case_culprit'])
                 add_trust(culprit['id'], -10)
-                notify(culprit['id'], f"{name}的旧案翻了出来，苗头渐渐指向你。圣宠 −15%，信任 −10。", 'bad')
+                notify(culprit['id'], f"{name}的旧案翻了出来，苗头渐渐指向你。圣宠 −{FAVOR_LOSS['case_culprit']}，信任 −10。", 'bad')
         flash('翻案成了，慎刑司当众更正了案情。', 'good')
     else:
         run('UPDATE cases SET appeal_ready_day=? WHERE id=?', (day + APPEAL_INTERVAL, case_id))

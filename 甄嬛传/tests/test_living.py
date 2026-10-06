@@ -266,7 +266,7 @@ class LivingTests(unittest.TestCase):
         with patch.object(game.random, 'random', return_value=0.0):
             game.diet_tick(1)
         c = self.c(low)
-        self.assertEqual((c['virtue'], c['favor']), (28, 95))
+        self.assertEqual((c['virtue'], c['favor']), (28, 100 - game.FAVOR_LOSS['lavish']))
         self.assertTrue(any('逾了制' in m for m in self.msgs(low)))
         game.run("UPDATE consorts SET rank=5, virtue=30, favor=100 WHERE id=?", (low,))
         with patch.object(game.random, 'random', return_value=0.0):
