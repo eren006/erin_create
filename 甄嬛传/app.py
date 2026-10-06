@@ -520,12 +520,12 @@ INTRIGUES = {
     'drug':   dict(name='下药', silver=0, energy=DRUG_ENERGY, min_rank=2, base=DRUG_BASE, npc_ok=False,
                    desc='用手里的药，交给对方宫里的内应去下，或者自己动手'),
     'expose': dict(name='告发秘密', silver=50, energy=0, min_rank=1, base=0.70, npc_ok=False,
-                   desc='需先探到对方的秘密。皇上信不信看你的信任。成：按秘密处罚对方，你信任 +5。不信：自己德行 -8，圣宠 -18，信任 -10'),
+                   desc='需先探到对方的秘密。皇上信不信看你的信任。成：按秘密处罚对方，你信任 +5。不信：自己德行 -8，圣宠 -18，信任 -5'),
     'witch':  dict(name='构陷巫蛊', silver=300, energy=1, min_rank=4, base=0.35, npc_ok=True,
                    desc='成：对方打入冷宫。败露：打入冷宫的是你'),
     'punish': dict(name='发落宫人', silver=50, energy=1, min_rank=5, base=0.50, npc_ok=False,
                    desc='找个由头，把对方宫里一个宫人拖去慎刑司。要比对方高两级以上，每 3 天一次；'
-                        '对方会知道是你。成：那个宫人没了，对方全宫宫人忠心 -5。败露：德行 -8，信任 -10'),
+                        '对方会知道是你。成：那个宫人没了，对方全宫宫人忠心 -5。败露：德行 -8，信任 -5'),
 }
 INTRIGUE_TARGET_DAILY_MAX = 2
 LEGACY_INTRIGUE_NAMES = dict(lethal='毒害', poison='暗下麝香')
@@ -1748,6 +1748,7 @@ def add_favor(cid, delta, gain_mult=True):
     return int(delta)
 
 # 2026-10-07：扣圣宠一律扣定额，不再按比例（圣宠越高、扣得越多，高位的人被一次流言就掉几十点，太狠）
+CAUGHT_TRUST_LOSS, CAUGHT_TRUST_LOSS_LIGHT = 8, 5     # 使计败露扣信任：一般计策 8，告发不信/发落宫人 5（信任起点才 20，扣太多一次就见底）
 FAVOR_LOSS = dict(
     rumor=18, rumor_trusted=9,              # 被散布流言（皇上信任你时减半）
     frame=24, frame_trusted=12,             # 被栽赃陷害
@@ -4234,7 +4235,7 @@ def knife_expose(c, it, names):
         confine(c['id']); cut_favor(c['id'], FAVOR_LOSS['caught_frame']); pen = f"禁足半天，圣宠 -{FAVOR_LOSS['caught_frame']}"
     else:
         add_stat(c['id'], 'virtue', -8); pen = '德行 -8'
-    tloss = 10 if m == 'punish' else 15
+    tloss = CAUGHT_TRUST_LOSS_LIGHT if m == 'punish' else CAUGHT_TRUST_LOSS
     add_trust(c['id'], -tloss)
     bond_caught_huanghou(c['id'])
     night_mark(c['id'], 'caught')
@@ -7196,7 +7197,7 @@ def resolve_intrigue(it, bed_id=None):
             if mood_extra and m != 'witch':
                 cut_favor(a['id'], FAVOR_LOSS['mood_extra']); pen += f"（皇上正在气头上，圣宠再 -{FAVOR_LOSS['mood_extra']}）"
             if a['user_id']:
-                tloss = 10 if m in ('expose', 'punish') else 15
+                tloss = CAUGHT_TRUST_LOSS_LIGHT if m in ('expose', 'punish') else CAUGHT_TRUST_LOSS
                 add_trust(a['id'], -tloss)
                 bond_caught_huanghou(a['id'])
                 pen += f'，信任 -{tloss}'
