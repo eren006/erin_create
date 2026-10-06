@@ -4630,8 +4630,12 @@ def shop_price(c, it):
 BOT_AWAKE_HOURS = (8, 23)           # 这个钟点范围内才有动静（和真人作息差不多）
 BOT_ACTION_CHANCE = 1 / 75          # 每分钟动手的概率，约每 75 分钟一件事
 BOT_ACTIONS = (('greet', 4), ('study', 3), ('garden', 3), ('visit', 3), ('groom', 1), ('seek', 2))   # 日常动作及权重，复用玩家动作的同一套处理函数
+BOT_INTRIGUE_CHANCE = 1 / 900       # 白天每分钟起意害人的概率，约每个白天一次；一天最多一件（和玩家共用「每天只能谋划一件事」）
+BOT_INTRIGUE_METHODS = (('rumor', 5), ('steal', 3), ('frame', 2))    # 只用便宜的三种；下药、巫蛊、告发、发落不做
+BOT_GRUDGE_DAYS, BOT_GRUDGE_ATTACKED, BOT_GRUDGE_VICTIM = 5, 4, 2   # 结仇：最近 5 天内，谁算计过她每次 +4 权重，她算计过谁每次 +2（盯着同一个人下手），其余人权重 1
+BOT_SILVER_FLOOR = 400              # 托管角色的银子低于这个数就自动补到这个数，保证她出得起手
 
-def spawn_managed_consort(surname, given, rank=4, tier='dali', personality='gentle', age=22):
+def spawn_managed_consort(surname, given, rank=4, tier='dali', personality='gentle', age=22, scheme=None):
     """新建一个托管角色并直接安顿进宫（不走殿选）。surname 不能和已有家族重复"""
     if surname_taken(surname):
         raise ValueError(f'姓氏「{surname}」已经有人家用了')
@@ -4641,7 +4645,7 @@ def spawn_managed_consort(surname, given, rank=4, tier='dali', personality='gent
     uid = run("INSERT INTO users (username, password_hash, qq_number, created_ts, managed) VALUES (?,?,?,?,1)",
               ('sys_' + secrets.token_hex(4), generate_password_hash(secrets.token_hex(16), method='pbkdf2:sha256'), '', now_ts())).lastrowid
     create_family(uid, surname, tier)
-    st = dict(appearance=random.randint(42, 58), talent=random.randint(40, 56), scheme=random.randint(36, 54),
+    st = dict(appearance=random.randint(42, 58), talent=random.randint(40, 56), scheme=scheme if scheme is not None else random.randint(36, 54),
               virtue=random.randint(42, 60), health=random.randint(72, 90))
     cid = run("""INSERT INTO consorts (user_id, surname, given, family, personality, appearance, talent, scheme, virtue, health,
                  silver, secret, status, created_ts, reign_no, seq, entry_age, lineage, patron, inherit, heirloom_maid_id)
@@ -4663,7 +4667,10 @@ def managed_consorts():
     return q("SELECT c.* FROM consorts c JOIN users u ON u.id=c.user_id WHERE u.managed=1 AND c.status IN ('normal','confined')")
 
 def bot_care(c):
-    """病了请太医、孩子没名字就自己挑一个——托管角色没有人替她操心"""
+    """病了请太医、孩子没名字就自己挑一个、银子不够就补上——托管角色没有人替她操心"""
+    if c['silver'] < BOT_SILVER_FLOOR:
+        add_silver(c['id'], BOT_SILVER_FLOOR - c['silver'])
+        c = get_consort(c['id'])
     for col, flag in (('poisoned_day', 'poison_treatment'), ('ill_day', 'ill_treatment')):
         if c[col] and not c[flag] and c['silver'] >= treat_cost(c):
             add_silver(c['id'], -treat_cost(c))
@@ -4697,16 +4704,53 @@ def bot_do(c, key):
     run("UPDATE consorts SET pending_scene='' WHERE id=? AND pending_scene!=''", (c['id'],))   # 没人替她拿主意的场景直接作废
     return True
 
+def bot_grudge_weights(c, targets):
+    """结仇：最近几天谁算计过她、她算计过谁，下手的权重就高一些；其余人一视同仁（随机挑，不看心计高低）"""
+    since = cur_day() - BOT_GRUDGE_DAYS
+    weights = []
+    for t in targets:
+        w = 1
+        w += BOT_GRUDGE_ATTACKED * q("SELECT COUNT(*) n FROM intrigues WHERE attacker_id=? AND target_id=? AND day>=? AND status!='cancelled'", (t['id'], c['id'], since), one=True)['n']
+        w += BOT_GRUDGE_VICTIM * q("SELECT COUNT(*) n FROM intrigues WHERE attacker_id=? AND target_id=? AND day>=? AND status!='cancelled'", (c['id'], t['id'], since), one=True)['n']
+        weights.append(w)
+    return weights
+
+def bot_intrigue(c):
+    """托管角色偶尔害人：只用流言、截宠、栽赃三种便宜的，目标在真玩家里随机挑（带结仇权重），套用玩家同一套检查和结算"""
+    day = cur_day()
+    if daily_count(c['id'], 'intrigue') >= 1 or c['status'] != 'normal' or is_sick(c): return False
+    methods = [(m, w) for m, w in BOT_INTRIGUE_METHODS if c['rank'] >= INTRIGUES[m]['min_rank']
+               and c['silver'] >= INTRIGUES[m]['silver'] and c['energy'] >= INTRIGUES[m]['energy']]
+    if not methods: return False
+    targets = [t for t in q("""SELECT x.* FROM consorts x JOIN users u ON u.id=x.user_id WHERE u.managed=0 AND x.id!=?
+                               AND x.status IN ('normal','confined') AND x.entered_day<?""", (c['id'], day))
+               if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status='pending'", (t['id'], day), one=True)['n'] < INTRIGUE_TARGET_DAILY_MAX]
+    if not targets: return False
+    for _ in range(4):                                  # 挑到不合适的（比如截宠碰上有孕的）就换一个
+        t = random.choices(targets, weights=bot_grudge_weights(c, targets))[0]
+        method = random.choices([m for m, _ in methods], weights=[w for _, w in methods])[0]
+        if method == 'steal' and (t['pregnant_since'] or is_sick(t)): continue
+        cfg = INTRIGUES[method]
+        run("UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?", (cfg['energy'], cfg['silver'], c['id']))
+        run("""INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts)
+               VALUES (?,?,?,?,?,?,?)""", (day, c['id'], t['id'], method, cfg['silver'], '', now_ts()))
+        daily_inc(c['id'], 'intrigue')
+        return True
+    return False
+
 def bot_tick(now):
     st = state()
     if not st['event_started'] or st['maintenance'] or st['mourning']: return
     for c in managed_consorts():
         bot_care(c)
         c = get_consort(c['id'])
-        if c['status'] != 'normal' or is_sick(c) or c['energy'] <= 0: continue
-        if not (BOT_AWAKE_HOURS[0] <= now.hour < BOT_AWAKE_HOURS[1]) or random.random() >= BOT_ACTION_CHANCE: continue
-        keys, weights = zip(*BOT_ACTIONS)
-        bot_do(c, random.choices(keys, weights=weights)[0])
+        if c['status'] != 'normal' or is_sick(c): continue
+        if not (BOT_AWAKE_HOURS[0] <= now.hour < BOT_AWAKE_HOURS[1]): continue
+        if c['energy'] > 0 and random.random() < BOT_ACTION_CHANCE:
+            keys, weights = zip(*BOT_ACTIONS)
+            bot_do(c, random.choices(keys, weights=weights)[0])
+        if random.random() < BOT_INTRIGUE_CHANCE:      # 起意害人和做日常各算各的概率
+            bot_intrigue(get_consort(c['id']))
 
 def spy_success_p(c, t, m):
     p = 0.35 + (c['scheme'] - t['scheme']) * 0.01 - (0.15 if eyes_active(t) else 0)

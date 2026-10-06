@@ -128,6 +128,93 @@ class ManagedConsortTests(unittest.TestCase):
             game.maybe_settle()
         tick.assert_called_once()
 
+    # ── 害人 ───────────────────────────────────────────────────────────────
+
+    def bot(self, **kw):
+        cid = self.spawn(**kw)
+        game.run("UPDATE consorts SET energy=8, silver=1000 WHERE id=?", (cid,))
+        game.run("UPDATE consorts SET entered_day=1 WHERE id IN (?,?)", (self.atk, self.tgt))
+        return cid
+
+    def test_bot_intrigue_submits_a_cheap_intrigue_against_a_real_player_and_pays(self):
+        cid = self.bot()
+        before = game.get_consort(cid)['silver']
+        self.assertTrue(game.bot_intrigue(game.get_consort(cid)))
+        it = game.q("SELECT * FROM intrigues WHERE attacker_id=?", (cid,), one=True)
+        self.assertIn(it['method'], ('rumor', 'steal', 'frame'))
+        self.assertIn(it['target_id'], (self.atk, self.tgt))
+        self.assertEqual(it['status'], 'pending')
+        self.assertEqual(game.get_consort(cid)['silver'], before - game.INTRIGUES[it['method']]['silver'])
+        self.assertEqual(game.daily_count(cid, 'intrigue'), 1)
+
+    def test_at_most_one_a_day_and_never_when_sick_or_confined(self):
+        cid = self.bot()
+        self.assertTrue(game.bot_intrigue(game.get_consort(cid)))
+        self.assertFalse(game.bot_intrigue(game.get_consort(cid)), '一天只谋划一件事')
+        game.run("DELETE FROM daily_counters")
+        game.run("UPDATE consorts SET status='confined' WHERE id=?", (cid,))
+        self.assertFalse(game.bot_intrigue(game.get_consort(cid)))
+        game.run("UPDATE consorts SET status='normal', ill_day=? WHERE id=?", (game.cur_day(), cid))
+        self.assertFalse(game.bot_intrigue(game.get_consort(cid)))
+
+    def test_new_arrivals_and_other_managed_players_are_never_targets(self):
+        cid = self.bot()
+        other_bot = game.spawn_managed_consort('商', '雨墨')
+        game.run("UPDATE consorts SET entered_day=? WHERE id IN (?,?)", (game.cur_day(), self.atk, self.tgt))   # 今天才入宫，受保护
+        self.assertFalse(game.bot_intrigue(game.get_consort(cid)))
+        self.assertFalse(game.q("SELECT 1 FROM intrigues WHERE target_id IN (?,?)", (cid, other_bot), one=True))
+
+    def test_grudge_raises_the_weight_of_those_who_attacked_her_and_those_she_attacked(self):
+        cid = self.bot()
+        targets = [game.get_consort(self.atk), game.get_consort(self.tgt)]
+        self.assertEqual(game.bot_grudge_weights(game.get_consort(cid), targets), [1, 1])
+        game.run("INSERT INTO intrigues(day,attacker_id,target_id,method,status,created_ts) VALUES(?,?,?,'rumor','done',0)", (game.cur_day(), self.atk, cid))
+        game.run("INSERT INTO intrigues(day,attacker_id,target_id,method,status,created_ts) VALUES(?,?,?,'rumor','done',0)", (game.cur_day(), cid, self.tgt))
+        self.assertEqual(game.bot_grudge_weights(game.get_consort(cid), targets), [1 + game.BOT_GRUDGE_ATTACKED, 1 + game.BOT_GRUDGE_VICTIM])
+        game.run("UPDATE intrigues SET day=? ", (game.cur_day() - game.BOT_GRUDGE_DAYS - 1,))
+        self.assertEqual(game.bot_grudge_weights(game.get_consort(cid), targets), [1, 1], '仇不会记一辈子')
+
+    def test_target_choice_ignores_scheme(self):
+        cid = self.bot()
+        game.run("UPDATE consorts SET scheme=100 WHERE id=?", (self.atk,))
+        game.run("UPDATE consorts SET scheme=5 WHERE id=?", (self.tgt,))
+        self.assertEqual(game.bot_grudge_weights(game.get_consort(cid), [game.get_consort(self.atk), game.get_consort(self.tgt)]), [1, 1])
+
+    def test_steal_skips_pregnant_target_and_money_is_topped_up(self):
+        cid = self.bot()
+        game.run("UPDATE consorts SET pregnant_since=3 WHERE id IN (?,?)", (self.atk, self.tgt))
+        with patch.object(game.random, 'choices', side_effect=lambda pop, weights=None, k=1: [('steal' if 'steal' in pop else pop[0])]):
+            self.assertFalse(game.bot_intrigue(game.get_consort(cid)))
+        game.run("UPDATE consorts SET silver=10 WHERE id=?", (cid,))
+        game.bot_care(game.get_consort(cid))
+        self.assertEqual(game.get_consort(cid)['silver'], game.BOT_SILVER_FLOOR)
+
+    def test_it_resolves_like_a_player_intrigue_and_can_be_caught(self):
+        cid = self.bot()
+        with patch.object(game.random, 'choices', side_effect=lambda pop, weights=None, k=1: [pop[0]]):     # 第一个目标、第一种手段（流言）
+            self.assertTrue(game.bot_intrigue(game.get_consort(cid)))
+        it = game.q("SELECT * FROM intrigues WHERE attacker_id=?", (cid,), one=True)
+        self.assertEqual(it['method'], 'rumor')
+        virtue = game.get_consort(cid)['virtue']
+        with patch.object(game.random, 'random', side_effect=[0.99, 0.0] + [0.5] * 30):     # 失手并被当场拿住
+            self.assertEqual(game.resolve_intrigue(it)[0], 'caught')
+        self.assertEqual(game.get_consort(cid)['virtue'], virtue - 5, '和玩家一样受罚')
+        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%败露%'", (cid,), one=True))
+
+    def test_scheduler_gates_are_independent(self):
+        cid = self.bot()
+        game.run("UPDATE game_state SET event_started=1,maintenance=0")
+        with patch.object(game.random, 'random', return_value=0.5):      # 日常和起意都没触发
+            with patch.object(game, 'bot_intrigue') as intrigue:
+                game.bot_tick(self.at(10))
+                intrigue.assert_not_called()
+        with patch.object(game.random, 'random', return_value=0.0), patch.object(game, 'bot_intrigue') as intrigue:
+            game.bot_tick(self.at(10))
+            intrigue.assert_called_once()
+        with patch.object(game.random, 'random', return_value=0.0), patch.object(game, 'bot_intrigue') as intrigue:
+            game.bot_tick(self.at(3))
+            intrigue.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
