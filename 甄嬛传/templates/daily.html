@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}日常{% endblock %}
+{% block head %}
+<style>
+.day{margin:0 0 22px;padding:22px;background:var(--paper);border:1px solid var(--line);border-top:3px double var(--jin)}
+.day h3{margin-top:0;color:var(--zhu-deep);font-size:22px}
+.day ul{list-style:none;padding:0;margin:0}
+.day li{display:grid;grid-template-columns:3.2em minmax(0,1fr);gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.day li:last-child{border-bottom:0}
+.day .t{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;padding-top:2px}
+.day .w{font-family:var(--kai);font-size:17px}
+</style>
+{% endblock %}
+{% block body %}
+<h2>日常</h2>
+<p class="muted">各宫嫔妃明面上做了什么，都记在这儿，最近三天；背地里的事不在此列。</p>
+{% for d, items in days.items() %}
+<div class="day">
+  <h3>{{ '今日' if d == today else '第 ' ~ d ~ ' 天' }}</h3>
+  <ul>{% for r in items %}<li><span class="t">{{ r.hhmm }}</span><span><span class="w">{{ dn(r.who) }}</span>{{ r.text }}</span></li>{% endfor %}</ul>
+</div>
+{% else %}<p class="muted">这几天宫里还静悄悄的。</p>{% endfor %}
+{% endblock %}

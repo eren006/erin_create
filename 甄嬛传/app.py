@@ -2994,6 +2994,7 @@ def act(key):
             raise Reject('宫人今天都派出去了。' if active_maids(c['id']) else '你宫里还没有宫人，先去内务府挑一个。')
         msg, kind = ACTION_HANDLERS[key](c, cfg)
         daily_inc(c['id'], key)
+        feed_for_action(c, key)
         if key in REQ_LABELS: guide_mark(c['id'], key)
         if getattr(g, 'scene_started', False):
             return redirect(url_for('scene'))
@@ -4762,6 +4763,49 @@ def maid_event_choose():
         say = maid_gossip(c, m)
     flash('　'.join(x for x in (say, '，'.join(parts) + ('。' if parts else '')) if x), 'good')
     return redirect(url_for('place', key='home'))
+
+# ── 日常消息（2026-10-06）：嫔妃明面上的日常都记下来，大家都看得到 ─────────────────────────
+# 只记这里列出的几样；使计、下药、买药、打探、安插眼线、读书习谋这类暗事一概不记
+FEED_KEEP_DAYS = 5
+FEED_TEXT = {
+    'greet':       lambda t: '到礼仪堂参加了晨省',
+    'study':       lambda t: '在宫里练了练才艺',
+    'groom':       lambda t: '对镜梳妆，好生打扮了一番',
+    'garden':      lambda t: '去御花园逛了逛',
+    'seek':        lambda t: '往养心殿送了汤羹',
+    'rest':        lambda t: '在宫里静养',
+    'reflect':     lambda t: '闭门抄经自省',
+    'visit':       lambda t: f"去{display_name(t)}宫里坐了坐" if t else '四处串了串门',
+    'plead':       lambda t: f"去养心殿替{display_name(t)}求了情" if t else '去养心殿求了情',
+    'pray':        lambda t: '到佛堂上了香',
+    'perform':     lambda t: '在养心殿御前展示了才艺',
+    'palace_work': lambda t: '在礼仪堂协办宫务',
+    'aid':         lambda t: f"给{display_name(t)}送去了日常补养" if t else '给姐妹送去了日常补养',
+    'attend':      lambda t: '去养心殿侍疾',
+    'shoukang':    lambda t: '去寿康宫给太妃请安',
+}
+
+def feed(cid, text):
+    run("INSERT INTO daily_feed (day, consort_id, text, created_ts) VALUES (?,?,?,?)", (cur_day(), cid, text, now_ts()))
+
+def feed_for_action(c, key):
+    fn = FEED_TEXT.get(key)
+    if not fn: return
+    t = None
+    try: t = get_consort(int(request.form.get('target_id', 0))) if key in ('visit', 'plead', 'aid') else None
+    except ValueError: t = None
+    feed(c['id'], fn(t))
+
+@app.route('/daily')
+@login_required
+def daily_page():
+    day = cur_day()
+    rows = q("SELECT * FROM daily_feed WHERE day>=? ORDER BY day DESC, id DESC LIMIT 400", (max(1, day - 2),))
+    days = {}
+    for r in rows:
+        days.setdefault(r['day'], []).append(dict(r, who=get_consort(r['consort_id']),
+                                                 hhmm=datetime.fromtimestamp(r['created_ts'], TZ).strftime('%H:%M')))
+    return render_template('daily.html', days=days, today=day)
 
 GOSSIP_WORDS = dict(greet='去景仁宫请了安', study='练了才艺', groom='梳妆打扮', garden='逛了御花园',
                     seek='往养心殿送了汤羹', rest='在宫里静养', reflect='闭门抄经', visit='四处串门',
@@ -7247,6 +7291,8 @@ def _settle_night():
     resolve_poison_crises(day)
     resolve_illness_crises(day)
     resolve_drug_cases(day)
+
+    run("DELETE FROM daily_feed WHERE day < ?", (day - FEED_KEEP_DAYS,))
 
     # 1. NPC 出手 + 结算阴谋（截宠除外，要等翻牌子）
     pend = q("SELECT * FROM intrigues WHERE status='pending' AND day<=? AND method!='steal'", (day,))

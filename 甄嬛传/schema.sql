@@ -199,6 +199,16 @@ CREATE TABLE IF NOT EXISTS gazette (
     created_ts  INTEGER NOT NULL
 );
 
+-- 日常消息：谁在什么时候做了什么（只记明面上的日常，使计、买药、打探这类暗事不记）
+CREATE TABLE IF NOT EXISTS daily_feed (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    day         INTEGER NOT NULL,
+    consort_id  INTEGER NOT NULL,
+    text        TEXT NOT NULL,
+    created_ts  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_daily_feed_day ON daily_feed(day, id);
+
 -- 两人关系，a_id < b_id
 CREATE TABLE IF NOT EXISTS relations (
     a_id        INTEGER NOT NULL,
