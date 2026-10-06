@@ -110,7 +110,7 @@ STIPEND = {1: 5, 2: 10, 3: 15, 4: 25, 5: 40, 6: 60, 7: 90, 8: 130, 9: 200}  # �
 PLAYER_MAX_RANK = 9   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[9]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
 
 PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:45,7:70,8:110,9:150}
-INFLUENCE_GAINS = dict(rumor=5,steal=8,frame=10,drug=10,expose=10,witch=18,punish=10)
+INFLUENCE_GAINS = dict(rumor=5,steal=1,frame=10,drug=10,expose=10,witch=18,punish=10)
 FIZZLE_INFLUENCE_FRACTION = 0.25    # 计谋没成但也没败露：照成功的四分之一给势力（至少 1 点）；败露、落空不给
 RANDOM_STAT_RANGES = dict(appearance=(30,50),talent=(25,45),scheme=(25,45),virtue=(35,55),health=(60,80))
 
@@ -523,7 +523,7 @@ INTRIGUES = {
     'rumor':  dict(name='散布流言', silver=30, energy=0, min_rank=1, base=0.55, npc_ok=True,
                    desc='成：对方圣宠 -18（皇上信任她则 -9），德行 -3。败露：自己德行 -5，圣宠 -12'),
     'steal':  dict(name='截宠', silver=60, energy=0, min_rank=1, base=0.50, npc_ok=True,
-                   desc='若今晚翻的是对方的牌子，由你顶上。败露：圣宠 -18，禁足半天'),
+                   desc='若今晚翻的是对方的牌子，由你顶上。得手：对方圣宠 -5，且一定知道是你。败露：不受处罚。落空（对方没被翻牌）退还一半银子'),
     'frame':  dict(name='栽赃陷害', silver=100, energy=0, min_rank=2, base=0.45, npc_ok=True,
                    desc='成：对方禁足半天，圣宠 -24（皇上信任她则 -12）。败露：自己禁足半天，圣宠 -18'),
     'drug':   dict(name='下药', silver=0, energy=DRUG_ENERGY, min_rank=2, base=DRUG_BASE, npc_ok=False,
@@ -7050,6 +7050,10 @@ def intrigue_caught_p(atk, tgt):
         p += BOND_CAO_LEAK_CAUGHT                   # 曹贵人两头下注，把风声漏了出去
     return max(0.15, min(0.8, p))
 
+STEAL_HATRED = -15               # 截宠得手后，截的人和被截的人好感 -15（邸报公开，没有别的处罚）
+STEAL_VICTIM_FAVOR_LOSS = 5     # 被截宠得手的人，圣宠 -5
+STEAL_VOID_REFUND = 0.5      # 截宠落空退还银子的比例
+
 def resolve_intrigue(it, bed_id=None):
     """结算一条阴谋。steal 需要传入今晚被翻牌的人。返回 (result, 被截宠后的新侍寝人或 None)"""
     if 'status' in it.keys() and it['status']!='pending': return it['result'],None
@@ -7078,7 +7082,12 @@ def resolve_intrigue(it, bed_id=None):
         if atk['user_id']: notify(atk['id'], f"你今晚自身难保，对{tn}的截宠只好作罢。")
         return done('void')
     if it['method'] == 'steal' and tgt['id'] != bed_id:
-        if atk['user_id']: notify(atk['id'], f"今晚翻的不是{tn}的牌子，你的截宠落了空。银子白花了。")
+        back = int(it['silver_paid'] * STEAL_VOID_REFUND)           # 落空（对方没被翻牌，或被别人抢先截走）退还一部分银子
+        back_p = int(it['partner_silver'] * STEAL_VOID_REFUND) if it['partner_id'] else 0
+        if back: add_silver(atk['id'], back)
+        if back_p: add_silver(it['partner_id'], back_p)
+        if atk['user_id']: notify(atk['id'], f"今晚翻的不是{tn}的牌子，你的截宠落了空。退还 {back} 两银子。")
+        if back_p: notify(it['partner_id'], f"今晚翻的不是{tn}的牌子，你与{display_name(atk)}的截宠落了空。退还 {back_p} 两银子。")
         return done('void')
 
     if it['method'] == 'lethal' and (atk['status'] != 'normal' or is_sick(atk) or
@@ -7088,7 +7097,7 @@ def resolve_intrigue(it, bed_id=None):
     if it['method'] == 'punish' and (atk['status'] != 'normal' or not punishable_maids(tgt['id'])):
         if atk['user_id']: notify(atk['id'], f"你想发落{tn}的宫人，可眼下找不到由头，只好作罢。")
         return done('void')
-    tell_name = eyes_active(tgt)
+    tell_name = eyes_active(tgt) or it['method'] == 'steal'      # 截宠得手，对方一定知道是谁（人是在她眼皮底下顶上的）
     if it['method'] == 'expose':
         success, caught = random.random() < intrigue_success_p(atk, tgt, cfg, conspired), True
     else:
@@ -7142,8 +7151,11 @@ def resolve_intrigue(it, bed_id=None):
                 gz = None
         elif m == 'steal':
             new_bed = atk['id']
-            victim = f"原本今晚翻的是你的牌子，却被{who}半路截了去。"
-            gz = None
+            lost = cut_favor(tgt['id'], STEAL_VICTIM_FAVOR_LOSS)
+            victim = f"原本今晚翻的是你的牌子，却被{who}半路截了去。圣宠 -{lost}。"
+            gz = f"{an}半路截了{tn}的牌子，顶上侍寝。"      # 邸报一定登，谁都看得见
+            for x in ((atk, partner) if conspired else (atk,)):
+                add_affinity(x['id'], tgt['id'], STEAL_HATRED)      # 拉仇恨：和被截的人好感下降
         elif m == 'expose':
             sec = SECRETS[tgt['secret']]
             apply_secret_penalty(tgt['id'], confessed=False)
@@ -7186,6 +7198,7 @@ def resolve_intrigue(it, bed_id=None):
 
         def punish_for(a):
             """败露的惩罚落到 a 头上，返回写给她的说明"""
+            if m == 'steal': return '皇上没有追究'      # 截宠败露不罚：不扣圣宠、不禁足、不扣信任、皇后好感也不动（2026-10-07 起）
             if m == 'lethal':
                 send_to_cold(a['id'])
                 pen = '毒害败露，废位并打入冷宫'
