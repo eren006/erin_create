@@ -29,6 +29,23 @@ class PregnancyClockTests(unittest.TestCase):
         self.assertEqual(after['energy'],before['energy'])
         self.assertEqual(game.cur_day(),10)
 
+    def test_birth_costs_health_and_scales_with_prior_births(self):
+        game.run("UPDATE consorts SET health=90 WHERE id=?",(self.atk,))
+        self.conceive()
+        with patch.object(game.time,'time',return_value=186400):game.resolve_births(10,False)
+        self.assertEqual(game.get_consort(self.atk)['health'],90-game.BIRTH_HEALTH_LOSS)
+        self.assertGreater(game.get_consort(self.atk)['postpartum_until'],10)
+        game.run("UPDATE consorts SET health=90 WHERE id=?",(self.atk,))
+        self.conceive()
+        with patch.object(game.time,'time',return_value=186400):game.resolve_births(10,False)
+        self.assertEqual(game.get_consort(self.atk)['health'],90-game.BIRTH_HEALTH_LOSS-game.BIRTH_HEALTH_PER_PRIOR)
+
+    def test_birth_health_never_below_floor(self):
+        game.run("UPDATE consorts SET health=12 WHERE id=?",(self.atk,))
+        self.conceive()
+        with patch.object(game.time,'time',return_value=186400),patch.object(game.random,'random',return_value=0.99):game.resolve_births(10,False)
+        self.assertEqual(game.get_consort(self.atk)['health'],game.BIRTH_HEALTH_FLOOR)
+
     def test_progress_stages(self):
         self.conceive()
         for elapsed,percent,stage in ((0,0,'初孕'),(8*3600,33,'安胎'),(16*3600,66,'待产'),(86400,100,'临盆')):

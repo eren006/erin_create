@@ -76,6 +76,7 @@
         <input name="silver" type="number" value="{{ r.silver }}" style="width:72px" aria-label="银子">
         <select name="rank" aria-label="位分">{% for n in RANK_NAMES %}<option value="{{ loop.index0 }}" {{ 'selected' if loop.index0==r.rank }}>{{ n }}</option>{% endfor %}</select>
         <select name="status" aria-label="状态">{% for s, n in [('normal','正常'),('confined','禁足'),('cold','冷宫'),('xiunv','待殿选')] %}<option value="{{ s }}" {{ 'selected' if s==r.status }}>{{ n }}</option>{% endfor %}</select>
+        {% for f, n in [('appearance','貌'),('talent','才'),('scheme','计'),('virtue','德'),('health','体')] %}<input name="{{ f }}" type="number" min="1" max="100" value="{{ r[f] }}" style="width:56px" aria-label="{{ n }}" title="{{ n }}">{% endfor %}
         <button class="plain">改</button>
       </form>
       {% endif %}

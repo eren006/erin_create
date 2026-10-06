@@ -103,17 +103,17 @@ class PoolTests(unittest.TestCase):
         game.run("UPDATE consorts SET status='cold' WHERE id=?", (self.atk,))
         self.assertEqual(game.free_errand_maids(game.get_consort(self.atk)), [])
 
-    # ── 书信附件：入宫不满 5 天不能附银子/道具/雅趣作品 ─────────────────────────
+    # ── 书信附件：入宫不满 LETTER_ATTACH_SHIELD 天不能附银子/道具/雅趣作品 ─────────────────────────
 
     def test_letter_attachment_shield_blocks_then_allows(self):
-        game.run('UPDATE consorts SET entered_day=?, silver=1000 WHERE id=?', (game.cur_day() - 4, self.atk))   # 差 1 天
+        game.run('UPDATE consorts SET entered_day=?, silver=1000 WHERE id=?', (game.cur_day() - (game.LETTER_ATTACH_SHIELD - 1), self.atk))   # 差 1 天
         before = game.get_consort(self.tgt)['silver']
         self.client.post('/letters/send', data=dict(to_id=self.tgt, body='一点心意', silver=100))
-        self.assertEqual(game.get_consort(self.tgt)['silver'], before, '入宫不满 5 天，附银子送不出去')
+        self.assertEqual(game.get_consort(self.tgt)['silver'], before, '入宫未满保护期，附银子送不出去')
 
-        game.run('UPDATE consorts SET entered_day=? WHERE id=?', (game.cur_day() - 5, self.atk))   # 正好满 5 天
+        game.run('UPDATE consorts SET entered_day=? WHERE id=?', (game.cur_day() - game.LETTER_ATTACH_SHIELD, self.atk))   # 正好满保护期
         self.client.post('/letters/send', data=dict(to_id=self.tgt, body='一点心意', silver=100))
-        self.assertEqual(game.get_consort(self.tgt)['silver'], before + 100, '满 5 天可以附银子了')
+        self.assertEqual(game.get_consort(self.tgt)['silver'], before + 100, '满保护期可以附银子了')
 
     def test_letter_body_alone_unaffected_by_shield(self):
         game.run('UPDATE consorts SET entered_day=? WHERE id=?', (game.cur_day(), self.atk))   # 刚入宫

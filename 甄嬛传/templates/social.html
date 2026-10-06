@@ -37,10 +37,10 @@
       {% if o.id in known %}　底细：{{ SECRETS[o.secret].name }}{% endif %}</div>
     {% if o.poisoned_day %}<p style="color:var(--bad);margin:4px 0">中毒了，{{ '太医已经在了' if o.poison_treatment else '还没请太医' }}</p>
     {% if not o.poison_treatment and r and (r.sister or r.affinity >= 30) %}
-    <form method="post" action="{{ url_for('treat', tid=o.id) }}"><button>替她请太医（50 两）</button></form>{% endif %}{% endif %}
+    <form method="post" action="{{ url_for('treat', tid=o.id) }}"><button>替她请太医（{{ treat_cost(o) }} 两）</button></form>{% endif %}{% endif %}
     {% if o.ill_day %}<p style="color:var(--bad);margin:4px 0">病倒了，{{ '太医已经在了' if o.ill_treatment else '还没请太医' }}</p>
     {% if not o.ill_treatment and r and (r.sister or r.affinity >= 30) %}
-    <form method="post" action="{{ url_for('treat', tid=o.id) }}"><button>替她请太医（50 两）</button></form>{% endif %}{% endif %}
+    <form method="post" action="{{ url_for('treat', tid=o.id) }}"><button>替她请太医（{{ treat_cost(o) }} 两）</button></form>{% endif %}{% endif %}
     {% if r and r.invite_from == o.id %}
       <p style="margin:6px 0">她想与你义结金兰。</p>
       <form method="post" action="{{ url_for('sister', action='accept', tid=o.id) }}"><button>答应</button></form>

@@ -107,7 +107,7 @@ class MaidTests(unittest.TestCase):
         self.client.post('/intrigue/submit', data={'method': 'punish', 'target_id': self.other})
         it = game.q("SELECT * FROM intrigues WHERE method='punish'", one=True)
         self.assertIsNotNone(it)
-        self.assertEqual(game.get_consort(self.me)['punish_ready_day'], 17)
+        self.assertEqual(game.get_consort(self.me)['punish_ready_day'], game.cur_day() + game.PUNISH_COOLDOWN)
         with patch.object(game.random, 'random', return_value=0.0):
             self.assertEqual(game.resolve_intrigue(it)[0], 'success')
         self.assertEqual(game.get_maid(victim)['status'], 'dead')
@@ -116,7 +116,7 @@ class MaidTests(unittest.TestCase):
         note = game.q("SELECT text FROM messages WHERE consort_id=? ORDER BY id DESC", (self.other,), one=True)['text']
         self.assertIn(game.display_name(game.get_consort(self.me)), note)
         self.assertIn('春桃', game.q("SELECT text FROM gazette ORDER BY id DESC", one=True)['text'])
-        # 冷却：出手的人 7 天一次，对方宫里 7 天内也不会再被发落
+        # 冷却：出手的人 PUNISH_COOLDOWN 天一次，对方宫里同样时间内也不会再被发落
         game.run("UPDATE consorts SET punish_ready_day=0 WHERE id=?", (self.me,))
         self.assertIn('没了人', game.punish_block(game.get_consort(self.me), game.get_consort(self.other), 11))
         # 位分差不够

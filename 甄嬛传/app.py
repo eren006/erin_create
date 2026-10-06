@@ -192,6 +192,10 @@ BRIBE_NEWCOMER_SHIELD = 2     # 入宫不满 2 天的人，宫人不能被打点
 NEWCOMER_LETHAL_SHIELD = 3   # 入宫前 3 天不能被毒害
 RESCUE_PROTECT_DAYS = 2      # 中毒获救后这么多天不能再被毒害（2026-09-28 从 3 压到 2）
 TREAT_COST = 50
+TREAT_COST_BY_RANK = {1: 20, 2: 20, 3: 30, 4: 40}   # 按病人的位分，嫔以上 50（2026-10-06：官女子净赚 2 两/晚，原 50 两要攒 25 晚）
+
+def treat_cost(c):
+    return TREAT_COST_BY_RANK.get(c['rank'], TREAT_COST)
 POISON_SURVIVE = {0: 0.35, 1: 0.90}   # 没请太医 / 请了太医（病重沿用同一套概率）
 CONFINE_DAYS = 1   # 2026-09-28 从 2 压到 1
 COLD_DAYS = 3   # 2026-09-28 从 5 压到 3
@@ -4850,6 +4854,7 @@ def heir_label(h):
     return f"{cn_ordinal(h['ordinal'])}阿哥" if h['gender'] == '皇子' else f"{cn_ordinal(h['ordinal'])}公主"
 
 app.jinja_env.globals['heir_label'] = heir_label
+app.jinja_env.globals['treat_cost'] = treat_cost
 app.jinja_env.globals['cn_ordinal'] = cn_ordinal
 app.jinja_env.globals['TIER_OFFICE_TEXT'] = {k: FAMILY_CAREER_TITLES[k][TIER_OFFICE[k]] for k in TIER_JOB}
 
@@ -6394,7 +6399,7 @@ def resolve_intrigue(it, bed_id=None):
         if m == 'lethal':
             run('UPDATE consorts SET poisoned_day=?, poison_treatment=0, health=MAX(1,health-20) WHERE id=?',
                 (cur_day(), tgt['id']))
-            victim = f"你中毒了，体质 -20。下一次结算前一定要请太医（{TREAT_COST} 两，姐妹也能替你请）：请了九成能活，不请只有三成五。" + \
+            victim = f"你中毒了，体质 -20。下一次结算前一定要请太医（{treat_cost(tgt)} 两，姐妹也能替你请）：请了九成能活，不请只有三成五。" + \
                      (f"眼线查到是{an}下的手。" if tell_name else '')
             gz = f'{tn}突然中毒，性命垂危。'
             night_mark(tgt['id'], 'poisoned')
@@ -6842,6 +6847,7 @@ PRENATAL = {
     'ride':   dict(name='听乐观射', stat='riding', gain=2, line='你常让人在院里演武、奏乐，孩子出世后骑射底子更好。'),
     'virtue': dict(name='礼佛积德', stat='virtue', gain=2, line='你日日礼佛抄经，孩子出世后品行底子更好。'),
 }
+BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR = 25, 8, 5   # 2026-10-06：每次生产必扣体质，生得越多扣得越狠，防一个人孩子太多
 LABOR_RISK_BASE, LABOR_RISK_PER_REST = 0.30, 0.10    # 体质不到 50 的人难产概率，每次安胎静养减 10 个点
 
 
@@ -6887,6 +6893,7 @@ def resolve_births(day, include_legacy=True):
         ordinal = n + (6 if gender == '皇子' else 3)
         personality = random.choice(list(HEIR_PERSONALITIES))
         pre = prenatal_state(c)
+        prior_births = q('SELECT COUNT(*) n FROM heirs WHERE mother_id=?', (c['id'],), one=True)['n']
         gifts = roll_heir_gifts(c)
         run("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, born_day, personality, study, riding, virtue, health,
                                 gift_study, gift_riding, gift_virtue)
@@ -6898,10 +6905,12 @@ def resolve_births(day, include_legacy=True):
              clamp(60 + c['health'] * 0.1, 0, 100),
              gifts['study'], gifts['riding'], gifts['virtue']))
         run("UPDATE consorts SET pregnant_since=0, pregnancy_started_ts=0, prenatal='{}' WHERE id=?", (c['id'],))
-        extra = ''
+        birth_loss = min(BIRTH_HEALTH_LOSS + BIRTH_HEALTH_PER_PRIOR * prior_births, max(0, c['health'] - BIRTH_HEALTH_FLOOR))
+        if birth_loss > 0: add_stat(c['id'], 'health', -birth_loss)
+        run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day + POSTPARTUM_SICK_DAYS, c['id']))
+        extra = f'生产耗去元气，体质 -{birth_loss}。' if birth_loss > 0 else ''
         if c['health'] < 50 and random.random() < max(0.0, LABOR_RISK_BASE - LABOR_RISK_PER_REST * pre.get('rest', 0)):
-            add_stat(c['id'], 'health', -20); extra = '难产了一整夜，元气大伤，体质 -20。'
-            run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day + POSTPARTUM_SICK_DAYS, c['id']))
+            add_stat(c['id'], 'health', -20); extra += '难产了一整夜，元气大伤，体质再 -20。'
         label = f"{cn_ordinal(ordinal)}{'阿哥' if gender == '皇子' else '公主'}"
         if gender == '皇子':
             add_prestige(c, PRESTIGE_BORN_PRINCE, f"{full_name(c)}诞下皇子")
@@ -7393,7 +7402,7 @@ def help_page():
                            PROMOTE_VIRTUE=PROMOTE_VIRTUE, MAID_QUOTA=MAID_QUOTA, MAID_WAGE=MAID_WAGE,
                            diet_norm={r: diet_cost(r, 'normal') for r in range(1, 10)}, DIETS=DIETS, DIET_RATIO=DIET_RATIO,
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
-                           FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
+                           FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
                            HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, CONFINE_DAYS=CONFINE_DAYS,
                            COLD_DAYS=COLD_DAYS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_DAYS=PREGNANCY_DAYS,
                            settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,
@@ -7442,8 +7451,8 @@ def energy_tick(key):
 
 
 HEALTH_DECAY_HOUR = 23       # 每晚 23 点，所有人体质自然衰减一次（与日结算时刻无关）
-HEALTH_DECAY_BASE = 0.2      # 20 岁时每晚平均掉这么多点体质
-HEALTH_DECAY_PER_YEAR = 0.03 # 20 岁以后每长一岁，每晚平均多掉这么多
+HEALTH_DECAY_BASE = 0.5      # 20 岁时每晚平均掉这么多点体质（2026-10-06 从 0.2 提到 0.5）
+HEALTH_DECAY_PER_YEAR = 0.08 # 20 岁以后每长一岁，每晚平均多掉这么多（原 0.03）
 HEALTH_DECAY_FLOOR = 20      # 自然衰减最低到这里（和饮食、屋损的下限一致）
 
 def health_decay_rate(age_months):
@@ -7655,6 +7664,13 @@ def admin_edit(cid):
         return redirect(url_for('admin'))
     status = f.get('status', c['status'])
     if status not in ('normal', 'confined', 'cold', 'xiunv'): status = c['status']
+    for field in ('appearance', 'talent', 'scheme', 'virtue', 'health'):    # 五项属性：表单里有就改，空着不动
+        raw = (f.get(field) or '').strip()
+        if raw:
+            try: set_stat(cid, field, int(raw))
+            except ValueError:
+                flash('属性数值有误。', 'bad')
+                return redirect(url_for('admin'))
     run("UPDATE consorts SET favor=?, silver=?, rank=?, status=? WHERE id=?",
         (max(0, favor), max(0, silver), max(0, min(9, rank)), status, cid))
     if status in ('confined', 'cold') and c['status'] != status:
@@ -7832,7 +7848,7 @@ def fall_ill(cid, day, cause):
     run('UPDATE consorts SET ill_day=?,ill_treatment=?,ill_care=?,weak_days=0,health=MAX(1,health-15) WHERE id=?',(day,treatment,tier,cid))
     cfg=FAVOR_CARE[tier]
     if c['user_id']:
-        care='皇上已命太医诊治，免付诊金。' if treatment else f'请在下一次结算前请太医（{TREAT_COST} 两，可由姐妹代付）。'
+        care='皇上已命太医诊治，免付诊金。' if treatment else f'请在下一次结算前请太医（{treat_cost(c)} 两，可由姐妹代付）。'
         notify(cid,f"你{cause}，体质 -15。{care}本次为{cfg['name']}待遇：治疗后存活率 {int(cfg['survive']*100)}%，未治疗 {int(cfg['untreated']*100)}%；治疗成功需 {cfg['recover_nights']} 次结算康复（福报另有加成）。",'bad')
         guide_tip(cid,'sick','「早请太医，姐妹也能替你垫诊金。」')
     gazette(f'{display_name(c)}{cause}，卧床不起。')
@@ -7923,12 +7939,12 @@ def treat(tid):
         err = '你与她交情不够，要结为姐妹或好感 30 以上才能替她请太医。'
     elif (t['poison_treatment'] if crisis == 'poison' else t['ill_treatment']):
         err = '太医已经在了。'
-    elif c['silver'] < TREAT_COST:
-        err = f'请太医要 {TREAT_COST} 两银子。'
+    elif c['silver'] < treat_cost(t):
+        err = f'请太医要 {treat_cost(t)} 两银子。'
     if err:
         flash(err, 'bad')
     else:
-        add_silver(c['id'], -TREAT_COST)
+        add_silver(c['id'], -treat_cost(t))
         col = 'poison_treatment' if crisis == 'poison' else 'ill_treatment'
         run(f'UPDATE consorts SET {col}=1 WHERE id=?', (tid,))
         if crisis=='poison':
@@ -8534,7 +8550,7 @@ def resolve_realtime_drugs(day):
 
 def poison_player(cid, day):
     run('UPDATE consorts SET poisoned_day=?, poison_treatment=0, health=MAX(1,health-20) WHERE id=?', (day, cid))
-    notify(cid, f'你中毒了，体质 -20。下一次结算前请太医（{TREAT_COST} 两）：请了九成能活，不请只有三成五。', 'bad')
+    notify(cid, f'你中毒了，体质 -20。下一次结算前请太医（{treat_cost(get_consort(cid))} 两）：请了九成能活，不请只有三成五。', 'bad')
     gazette(f'{display_name(get_consort(cid))}突然中毒，性命垂危。')
     night_mark(cid, 'poisoned')
     guide_tip(cid, 'poisoned', '「快请太医！这钱不能省，命才是自己的。」')

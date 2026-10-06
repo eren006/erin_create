@@ -100,13 +100,13 @@
 <div class="state-conf" role="alert"><b>你中毒了</b>
 <p>下一次结算（{{ next_settle }}）见生死：请了太医九成能活，没请只有三成五。禁足、冷宫里也能请；姐妹也可以替你请。</p>
 {% if c.poison_treatment %}<p>太医已经在了。</p>
-{% else %}<form method="post" action="{{ url_for('treat', tid=c.id) }}"><button {{ 'disabled' if c.silver < 50 }}>请太医（50 两）</button></form>{% endif %}
+{% else %}<form method="post" action="{{ url_for('treat', tid=c.id) }}"><button {{ 'disabled' if c.silver < treat_cost(c) }}>请太医（{{ treat_cost(c) }} 两）</button></form>{% endif %}
 </div>
 {% elif c.ill_day %}
 <div class="state-conf" role="alert"><b>你病倒了</b>
 <p>下一次结算（{{ next_settle }}）见生死：请了太医九成能活，没请只有三成五。禁足、冷宫里也能请；姐妹也可以替你请。</p>
 {% if c.ill_treatment %}<p>太医已经在了。</p>
-{% else %}<form method="post" action="{{ url_for('treat', tid=c.id) }}"><button {{ 'disabled' if c.silver < 50 }}>请太医（50 两）</button></form>{% endif %}
+{% else %}<form method="post" action="{{ url_for('treat', tid=c.id) }}"><button {{ 'disabled' if c.silver < treat_cost(c) }}>请太医（{{ treat_cost(c) }} 两）</button></form>{% endif %}
 </div>
 {% elif c.protected_until_day >= day %}<p class="state-conf">刚从鬼门关回来，第 {{ c.protected_until_day }} 天前不会再被毒害。</p>{% endif %}
 {% if c.status == 'cold' %}

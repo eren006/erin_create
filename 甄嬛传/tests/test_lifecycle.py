@@ -80,7 +80,7 @@ class LifecycleTests(unittest.TestCase):
         self.client.post(f'/treat/{self.tgt}')
         self.client.post(f'/treat/{self.tgt}')   # 重复请不重复扣钱
         self.assertEqual(game.get_consort(self.tgt)['poison_treatment'], 1)
-        self.assertEqual(game.get_consort(self.tgt)['silver'], before - game.TREAT_COST)
+        self.assertEqual(game.get_consort(self.tgt)['silver'], before - game.treat_cost(game.get_consort(self.tgt)))
         with patch.object(game.random, 'random', return_value=0.99):   # 0.99 > 九成，照样救不回
             game.resolve_poison_crises(11)
         dead = game.get_consort(self.tgt)
@@ -140,7 +140,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(len(game.q('SELECT * FROM heirs')), 1)
         self.assertEqual(game.get_consort(self.tgt)['pregnant_since'], 0)
         self.assertEqual(game.get_consort(self.tgt)['age_months'], 240 + 3 * game.AGE_MONTHS_PER_DAY)
-        self.assertEqual(game.get_consort(self.tgt)['health'], 70)   # 年龄不再扣体质
+        self.assertEqual(game.get_consort(self.tgt)['health'], 70 - game.BIRTH_HEALTH_LOSS)   # 年龄在 settle_day 里不扣体质，只扣生产的
         self.assertEqual(game.age_text(258), '21岁半')
 
     def test_no_pregnancy_after_45(self):
@@ -192,7 +192,7 @@ class LifecycleTests(unittest.TestCase):
         game.add_affinity(ally, self.tgt, 30)
         self.client.post(f'/treat/{self.tgt}')
         self.assertEqual(game.get_consort(self.tgt)['poison_treatment'], 1)
-        self.assertEqual(game.get_consort(ally)['silver'], 2000 - game.TREAT_COST)
+        self.assertEqual(game.get_consort(ally)['silver'], 2000 - game.treat_cost(game.get_consort(self.tgt)))
 
     def test_dead_stop_aging_and_admin_cannot_revive(self):
         game.die(self.tgt, '测试')

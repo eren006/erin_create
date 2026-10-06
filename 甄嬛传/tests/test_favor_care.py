@@ -59,7 +59,7 @@ class FavorCareTests(unittest.TestCase):
         game.add_affinity(self.tgt,self.atk,50)
         self.login(self.tgt);silver=game.get_consort(self.tgt)['silver']
         self.client.post(f'/treat/{self.atk}')
-        self.assertEqual(game.get_consort(self.tgt)['silver'],silver-game.TREAT_COST)
+        self.assertEqual(game.get_consort(self.tgt)['silver'],silver-game.treat_cost(game.get_consort(self.atk)))
         self.assertEqual(game.get_consort(self.atk)['ill_treatment'],1)
         with patch.object(game.random,'random',return_value=.81):game.resolve_illness_crises(12)
         self.assertEqual(game.get_consort(self.atk)['status'],'dead')

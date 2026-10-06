@@ -210,7 +210,7 @@ class IllnessCrisisTests(unittest.TestCase):
         game.add_affinity(self.atk, self.tgt, 30)
         r = self.client.post(f'/treat/{self.tgt}')
         self.assertEqual(game.get_consort(self.tgt)['ill_treatment'], 1)
-        self.assertEqual(game.get_consort(self.atk)['silver'], 2000 - game.TREAT_COST)
+        self.assertEqual(game.get_consort(self.atk)['silver'], 2000 - game.treat_cost(game.get_consort(self.tgt)))
 
     def test_stranger_cannot_treat(self):
         game.fall_ill(self.tgt, game.cur_day(), '久病体虚')
