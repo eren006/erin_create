@@ -5480,7 +5480,7 @@ def heirs():
     acts = {}
     for h in rows:
         a = {}
-        if h['mother_id'] == c['id'] and h['caretaker_id'] == c['id'] and c['rank'] < 5 and c['status'] == 'normal' \
+        if h['mother_id'] == c['id'] and h['caretaker_id'] in (c['id'], 0) and c['rank'] < 5 and c['status'] == 'normal' \
                 and not h['zhuazhou'] and heir_age_days(h, day) < ZHUAZHOU_AGE_DAYS:
             a['entrust'] = True
             if h['foster_request_to']: a['waiting_on'] = get_consort(h['foster_request_to'])
@@ -5816,7 +5816,7 @@ def heir_entrust(hid):
     except ValueError: tid = 0
     t = get_consort(tid) if tid else None
     err = None
-    if not h or h['mother_id'] != c['id'] or h['caretaker_id'] != c['id']: err = '这不是你亲自带着的孩子。'
+    if not h or h['mother_id'] != c['id'] or h['caretaker_id'] not in (c['id'], 0): err = '这不是你亲自带着的孩子。'
     elif h['zhuazhou'] or heir_age_days(h) >= ZHUAZHOU_AGE_DAYS: err = '孩子已经周岁，祖制已定，托付不及了。'
     elif c['rank'] >= 5: err = '你已是嫔位，本就可以亲自抚养，不必托付。'
     elif c['status'] != 'normal': err = '眼下这个境况，托付不了人。'
@@ -5827,7 +5827,7 @@ def heir_entrust(hid):
     label = heir_label(h)
     run('UPDATE heirs SET foster_request_to=? WHERE id=?', (t['id'], hid))
     notify(t['id'], f"{display_name(c)}想把{label}托付给你抚养。去「子嗣」页点头或回绝。周岁抓周前不答复，祖制就另指别人了。", 'info')
-    flash(f"已请{display_name(t)}过目。对方点头之前，孩子还在你身边。", 'good')
+    flash(f"已请{display_name(t)}过目。对方点头之前，孩子仍由皇嗣养育所照料。" if h['caretaker_id'] == 0 else f"已请{display_name(t)}过目。对方点头之前，孩子还在你身边。", 'good')
     return redirect(url_for('heirs'))
 
 
@@ -5844,7 +5844,7 @@ def heir_entrust_reply(hid):
     if request.form.get('reply') != 'yes':
         if mother['user_id']: notify(mother['id'], f"{display_name(c)}婉拒了你托付{label}的请求。", 'bad')
         flash('已回绝。', 'good'); return redirect(url_for('heirs'))
-    if c['rank'] < 5 or c['status'] != 'normal' or h['zhuazhou'] or h['caretaker_id'] != h['mother_id'] or mother['status'] == 'dead':
+    if c['rank'] < 5 or c['status'] != 'normal' or h['zhuazhou'] or h['caretaker_id'] not in (0, h['mother_id']) or mother['status'] == 'dead':
         flash('这桩托付已经办不成了。', 'bad'); return redirect(url_for('heirs'))
     run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (c['id'], hid))
     add_affinity(c['id'], mother['id'], 5)
@@ -7525,6 +7525,7 @@ def resolve_births(day, include_legacy=True):
         pre = prenatal_state(c)
         prior_births = q('SELECT COUNT(*) n FROM heirs WHERE mother_id=?', (c['id'],), one=True)['n']
         born = []   # [(label, 资质文字)]
+        born_ids = []
         for gender in genders:
             # 排行按本届、同性别已有的最大排行往下数（不再从 6、3 起跳；换届后重新从「大」排起）
             top = q("SELECT COALESCE(MAX(ordinal),0) m FROM heirs WHERE gender=? AND (born_day>=? OR COALESCE(npc_key,'')!='')", (gender, state()['reign_start_day']), one=True)['m']
@@ -7542,6 +7543,7 @@ def resolve_births(day, include_legacy=True):
                  gifts['study'], gifts['riding'], gifts['virtue']))
             hid = q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id']
             ensure_name_choices(hid)
+            born_ids.append(q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id'])
             born.append((f"{heir_rank_word(ordinal)}{'阿哥' if gender == '皇子' else '公主'}",
                          gift_text(dict(gift_study=gifts['study'], gift_riding=gifts['riding'], gift_virtue=gifts['virtue']))))
         run("UPDATE consorts SET pregnant_since=0, pregnancy_started_ts=0, prenatal='{}' WHERE id=?", (c['id'],))
@@ -7572,6 +7574,11 @@ def resolve_births(day, include_legacy=True):
         notify(c['id'], f"请嬷嬷看了孩子的根骨：{gift_line}。", 'info')
         notify(c['id'], "皇上为孩子点了几个字，去「子嗣」页挑一个定名，名字是本届字辈加你选的字。", 'info')
         night_mark(c['id'], 'birth', label=label, son='皇子' in genders)
+        mom = get_consort(c['id'])       # 母凭子贵晋位之后的位分才算数：晋到嫔位就能亲自抚养
+        if mom['rank'] < 5:       # 嫔位以下不能亲自抚养：一出生就由皇嗣养育所照料，抓周前还能托付、晋到嫔位还能领回
+            for hid_ in born_ids: run("UPDATE heirs SET caretaker_id=0, caretaker_affinity=50 WHERE id=?", (hid_,))
+            gazette(f"{label}按祖制送入皇嗣养育所，由乳母与师傅照料，嫔位以上可申请领养。", 'decree')
+            notify(c['id'], f"按祖制，{RANK_NAMES[mom['rank']]}不能亲自抚养孩子，{label}先由皇嗣养育所照料。周岁抓周前，你可以去「子嗣」页托付给好感不低于 {HEIR_ENTRUST_MIN_AFFINITY} 的嫔位以上姐妹，或者晋到嫔位后领回。", 'info')
 
 
 def prenatal_state(c):
