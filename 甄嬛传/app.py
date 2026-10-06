@@ -3262,6 +3262,8 @@ def do_eyes(c, cfg):
 
 SEEK_SCENE_CHANCE = 0.3   # 皇上心情平和时，送汤羹有三成会被留下（yangxin_emperor 场景）
 
+SEEK_TRUST_GAIN = 1      # 送汤羹见到皇上、圣宠有涨时附带的信任（皇上发火那次没有）
+
 def do_seek(c, cfg):
     if emperor_ill():
         raise Reject('皇上病重，不见外人。要尽心就去侍疾。')
@@ -3269,19 +3271,19 @@ def do_seek(c, cfg):
     mood = state()['emperor_mood']
     run("UPDATE consorts SET seek_bonus=seek_bonus+15 WHERE id=?", (c['id'],))
     if mood == '大悦':
-        g_ = add_favor(c['id'], random.randint(10, 15))
-        return f"皇上心情正好，留你说了会儿话。圣宠 +{g_}。", 'good'
+        g_ = add_favor(c['id'], random.randint(10, 15)); add_trust(c['id'], SEEK_TRUST_GAIN)
+        return f"皇上心情正好，留你说了会儿话。圣宠 +{g_}，信任 +{SEEK_TRUST_GAIN}。", 'good'
     if mood == '平和':
         if random.random() < SEEK_SCENE_CHANCE:
             start_scene(c['id'], 'yangxin_emperor')
             return '', 'info'
-        g_ = add_favor(c['id'], random.randint(8, 12))
-        return f"御前总管接了汤羹，说皇上喝着很合口。圣宠 +{g_}。", 'good'
+        g_ = add_favor(c['id'], random.randint(8, 12)); add_trust(c['id'], SEEK_TRUST_GAIN)
+        return f"御前总管接了汤羹，说皇上喝着很合口。圣宠 +{g_}，信任 +{SEEK_TRUST_GAIN}。", 'good'
     if mood == '烦闷':
         if random.random() < 0.5:
             return "御前总管说皇上在批折子，汤羹放下就走吧。", 'info'
-        g_ = add_favor(c['id'], random.randint(8, 12))
-        return f"皇上心里烦，喝了你的汤倒舒坦了些。圣宠 +{g_}。", 'good'
+        g_ = add_favor(c['id'], random.randint(8, 12)); add_trust(c['id'], SEEK_TRUST_GAIN)
+        return f"皇上心里烦，喝了你的汤倒舒坦了些。圣宠 +{g_}，信任 +{SEEK_TRUST_GAIN}。", 'good'
     start_scene(c['id'], 'seek_angry')
     return '', 'info'
 
@@ -7560,7 +7562,7 @@ def reigns():
 
 
 # ── 生育：侍寝人数、怀孕率、孕期 ─────────────────────────────────────────────────
-BED_TRUST_GAIN = 2      # 每次被翻牌侍寝（没被惊梦香搅黄）涨的信任
+BED_TRUST_GAIN = 3      # 每次被翻牌侍寝（没被惊梦香搅黄）涨的信任
 BED_DAILY_MAX = 3      # 每人每游戏日最多被翻几次（原来 2，2026-10-06 放宽）
 BED_PER_ROUND = 2      # 2026-10-07 起：每轮翻 2 位（原来按玩家数 1~6 位）
 PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.06, 0.0005, 0.0005   # 福报每 1 点再 +0.2%，攒满 100 点 +20%
