@@ -7545,6 +7545,7 @@ def reigns():
 
 
 # ── 生育：侍寝人数、怀孕率、孕期 ─────────────────────────────────────────────────
+BED_TRUST_GAIN = 2      # 每次被翻牌侍寝（没被惊梦香搅黄）涨的信任
 BED_DAILY_MAX = 3      # 每人每游戏日最多被翻几次（原来 2，2026-10-06 放宽）
 BED_PER_ROUND = 2      # 2026-10-07 起：每轮翻 2 位（原来按玩家数 1~6 位）
 PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.06, 0.0005, 0.0005   # 福报每 1 点再 +0.2%，攒满 100 点 +20%
@@ -7680,6 +7681,7 @@ def do_bedding(bed, day, primary, tray):
         notify(bed['id'], f"惊梦香发作，惊扰圣驾，圣宠 -{FAVOR_LOSS['dream']}、信任 -3，惊梦香已失效。", 'bad')
     else:
         gain = add_favor(bed['id'], 6 + bed['appearance'] * 0.04)
+        add_trust(bed['id'], BED_TRUST_GAIN)
     run("UPDATE consorts SET bedded_count=bedded_count+1, last_audience_day=? WHERE id=?", (day, bed['id']))
     if primary:
         run("UPDATE game_state SET last_bed_id=?, last_bed_day=?, last_bed_pool=?, last_bed_ids=? WHERE id=1",
@@ -7689,7 +7691,7 @@ def do_bedding(bed, day, primary, tray):
         run("UPDATE game_state SET last_bed_ids=? WHERE id=1", (json.dumps(ids + [bed['id']]),))
     gazette(f"敬事房：本轮皇上翻了{display_name(bed)}的牌子。", 'bed')
     if bed['user_id']:
-        msg = f"敬事房来传话：本轮皇上翻了你的牌子。圣宠 +{gain}。"
+        msg = f"敬事房来传话：本轮皇上翻了你的牌子。圣宠 +{gain}" + ('。' if dream else f"，信任 +{BED_TRUST_GAIN}。")
         newly_pregnant = False
         if not dream and not affliction(bed['id'], 'hanshui', day) and random.random() < pregnancy_chance(bed):
             run("UPDATE consorts SET pregnant_since=?, pregnancy_started_ts=?, prenatal='{}', pregnancy_misses=0 WHERE id=?", (day, time.time(), bed['id']))
