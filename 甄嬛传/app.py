@@ -7318,15 +7318,18 @@ def latest_bedding_slot(now):
 
 
 @atomic
-def settle_day(bed_key=None):
+def settle_day(bed_key=None, partial=False):
+    """partial=True：补结算——只做换日这类增量项，月例、长年龄、宫人月钱、疾病老死、圣宠流失、伙食修缮这些「每晚一次」的账不再算（2026-10-07 换时间表那天用过一次）"""
     with settle_lock:
         # 结算期间 notify/gazette 会标成"夜间"，night_mark 记下每个人这一夜的经历，最后据此下口谕
         g.bed_round_key=bed_key
+        g.settle_partial = partial
         g.settling, g.night_events = True, {}
         try:
             return _settle_night()
         finally:
             g.bed_round_key=None
+            g.settle_partial = False
             g.settling, g.night_events = False, {}
 
 def audience_weight(c, day):
@@ -7368,6 +7371,7 @@ def resolve_promotions(day):
 def _settle_night():
     st = state()
     day = st['day']
+    partial = getattr(g, 'settle_partial', False)
     report = []
     if st['mourning']:
         return finish_mourning(day, st)
@@ -7426,8 +7430,9 @@ def _settle_night():
     heir_orphan_tick(day)
     heir_adult_tick(day)
     heir_succession_tick(day)
-    diet_tick(day)
-    repair_tick(day)
+    if not partial:
+        diet_tick(day)
+        repair_tick(day)
     family_tick(day)
     family_venture_tick(day)
     family_patron_tick(day)
@@ -7446,20 +7451,21 @@ def _settle_night():
     capital_mothers = capital_mother_ids()
     for c in q("SELECT * FROM consorts WHERE status NOT IN ('xiunv','dead')"):
         c = get_consort(c['id'])
-        run('UPDATE consorts SET age_months=age_months+? WHERE id=?', (AGE_MONTHS_PER_DAY, c['id']))   # 一天 = 宫中两年
-        streak = c['unfavored_days']+1 if c['favor']<FAVOR_LOW else 0
-        run('UPDATE consorts SET unfavored_days=? WHERE id=?',(streak,c['id']))
-        c=get_consort(c['id'])
-        if c['status'] != 'cold':
-            income=favor_stipend(c,day)
-            add_silver(c['id'],income)
-            if income != STIPEND.get(c['rank'],0) and c['user_id']:
-                notify(c['id'],f"今日{FAVOR_CARE[favor_care_tier(c,day)]['name']}待遇，月例与赏银合计 {income} 两。",'good' if favor_care_tier(c,day)=='hot' else 'info')
-        if not c['pregnant_since']:
-            decay = math.ceil(c['favor'] * FAVOR_DECAY * (CAPITAL_DECAY_FACTOR if c['id'] in capital_mothers else 1))
-            run("UPDATE consorts SET favor=MAX(0, favor-?) WHERE id=?", (decay, c['id']))
-        if c['npc_key'] and c['status'] == 'normal':
-            add_favor(c['id'], random.randint(0, 8), gain_mult=False)
+        if not partial:      # 补结算不再算这几笔每晚一次的账
+            run('UPDATE consorts SET age_months=age_months+? WHERE id=?', (AGE_MONTHS_PER_DAY, c['id']))   # 一天 = 宫中两年
+            streak = c['unfavored_days']+1 if c['favor']<FAVOR_LOW else 0
+            run('UPDATE consorts SET unfavored_days=? WHERE id=?',(streak,c['id']))
+            c=get_consort(c['id'])
+            if c['status'] != 'cold':
+                income=favor_stipend(c,day)
+                add_silver(c['id'],income)
+                if income != STIPEND.get(c['rank'],0) and c['user_id']:
+                    notify(c['id'],f"今日{FAVOR_CARE[favor_care_tier(c,day)]['name']}待遇，月例与赏银合计 {income} 两。",'good' if favor_care_tier(c,day)=='hot' else 'info')
+            if not c['pregnant_since']:
+                decay = math.ceil(c['favor'] * FAVOR_DECAY * (CAPITAL_DECAY_FACTOR if c['id'] in capital_mothers else 1))
+                run("UPDATE consorts SET favor=MAX(0, favor-?) WHERE id=?", (decay, c['id']))
+            if c['npc_key'] and c['status'] == 'normal':
+                add_favor(c['id'], random.randint(0, 8), gain_mult=False)
         run("UPDATE consorts SET energy=?, seek_bonus=0 WHERE id=?", (ENERGY_MAX, c['id']))
         if c['status'] == 'confined' and c['status_until_day'] <= day:
             run("UPDATE consorts SET status='normal', status_until_day=0 WHERE id=?", (c['id'],))
@@ -7476,12 +7482,14 @@ def _settle_night():
                 notify(c['id'], f"你已经 {missed} 天没参加晨省了，宫里说你恃宠而骄。德行 -3。", 'bad')
 
     # 5a. 老死、染病：年岁到了、体虚、冷宫、时疫、产后失调
-    old_age_tick(day)
-    illness_onset_tick(day)
+    if not partial:
+        old_age_tick(day)
+        illness_onset_tick(day)
 
     # 5b. 宫人：月钱、忠心、病好了没有；白天没处理的小事作废
-    drug_gifts(day)
-    maid_upkeep(day)
+    if not partial:
+        drug_gifts(day)
+        maid_upkeep(day)
 
     # 6. 口谕：根据每个人这一夜的真实经历挑一句，没什么可说的就不说
     issue_edicts(day)
