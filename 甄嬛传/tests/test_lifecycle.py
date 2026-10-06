@@ -241,7 +241,7 @@ class EmperorTests(unittest.TestCase):
             game.settle_day()
         scenes = [game.get_scene(game.get_consort(i)) for i in (self.atk, self.tgt, c3)]
         kinds = sorted((s['key'], s.get('bed')) for s in scenes if s)
-        self.assertEqual(kinds, [('audience', 0), ('audience', 0), ('audience', 1)])   # 1 侍寝 + 2 召见
+        self.assertEqual(kinds, [('audience', 0), ('audience', 1), ('audience', 1)])   # 每轮 2 人侍寝，剩下的 1 人被召见
         st = game.state()
         self.assertTrue(game.json.loads(st['last_bed_pool']))
         # 早上先进「昨夜宫中」，看完再去定夺场景

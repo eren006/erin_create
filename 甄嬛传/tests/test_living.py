@@ -82,23 +82,24 @@ class LivingTests(unittest.TestCase):
     def cands(self, players, npcs=0):
         return [dict(user_id=1)] * players + [dict(user_id=None)] * npcs
 
-    def test_bed_count_grows_with_players_not_npcs(self):
-        self.assertEqual([game.bed_count(self.cands(n)) for n in (1, 5, 6, 11, 12, 17, 18, 29, 30, 60)], [1, 1, 2, 2, 3, 3, 4, 5, 6, 6])
-        self.assertEqual(game.bed_count(self.cands(2, npcs=30)), 1)
-        self.assertEqual(game.bed_count([]), 1)
+    def test_bed_count_is_two_per_round_whatever_the_crowd(self):
+        self.assertEqual(game.BED_PER_ROUND, 2)
+        self.assertEqual([game.bed_count(self.cands(n)) for n in (1, 5, 6, 11, 12, 17, 18, 29, 30, 60)], [2] * 10)
+        self.assertEqual(game.bed_count(self.cands(2, npcs=30)), 2)
+        self.assertEqual(game.bed_count([]), 2)
 
-    def test_crowded_palace_beds_several_people_a_night(self):
+    def test_crowded_palace_still_beds_two_per_round(self):
         for i in range(11):
             self.player(f'玩{i}', rank=3)
         self.assertEqual(game.q("SELECT COUNT(*) n FROM consorts WHERE user_id IS NOT NULL", one=True)['n'], 13)
         self.settle()
         bedded = game.q("SELECT id FROM consorts WHERE bedded_count>0")
-        self.assertEqual(len(bedded), 3, '13 位玩家 → 每晚翻 3 位')
-        self.assertEqual(len(game.q("SELECT id FROM gazette WHERE kind='bed'")), 3)
+        self.assertEqual(len(bedded), game.BED_PER_ROUND, '13 位玩家 → 每轮也只翻 2 位')
+        self.assertEqual(len(game.q("SELECT id FROM gazette WHERE kind='bed'")), game.BED_PER_ROUND)
 
-    def test_small_palace_still_one_a_night(self):
+    def test_small_palace_beds_everyone_it_has_up_to_two(self):
         self.settle()
-        self.assertEqual(game.q("SELECT COUNT(*) n FROM consorts WHERE bedded_count>0", one=True)['n'], 1)
+        self.assertEqual(game.q("SELECT COUNT(*) n FROM consorts WHERE bedded_count>0", one=True)['n'], 2)
 
     def test_every_bedded_player_gets_favor_and_a_scene_but_only_one_is_the_primary(self):
         for i in range(5):

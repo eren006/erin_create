@@ -1870,7 +1870,7 @@ def admin_required(f):
 
 @app.context_processor
 def inject_globals():
-    ctx = dict(family_career_title=family_career_title, FAMILY_CAREER_TITLES=FAMILY_CAREER_TITLES,family_origin_options=family_origin_options, family_background=family_background,BED_DAILY_MAX=BED_DAILY_MAX,badge_name=badge_name, pregnancy_progress=pregnancy_progress, pregnancy_due_text=pregnancy_due_text, bed_chance_text=bed_chance_text, next_bedding_text=next_bedding_text, PROMOTE_INFLUENCE=PROMOTE_INFLUENCE, entry_stat_roll=entry_stat_roll, RANDOM_STAT_RANGES=RANDOM_STAT_RANGES, FAVOR_CARE=FAVOR_CARE, favor_care_tier=favor_care_tier, favor_stipend=favor_stipend, EAST_PALACE_CHANCE=EAST_PALACE_CHANCE, EAST_PALACE_FAVOR=EAST_PALACE_FAVOR, EAST_PALACE_TRUST=EAST_PALACE_TRUST, AGE_YEARS_PER_DAY=AGE_YEARS_PER_DAY, ENERGY_MAX=ENERGY_MAX, dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
+    ctx = dict(family_career_title=family_career_title, FAMILY_CAREER_TITLES=FAMILY_CAREER_TITLES,family_origin_options=family_origin_options, family_background=family_background,BED_DAILY_MAX=BED_DAILY_MAX, BED_PER_ROUND=BED_PER_ROUND,badge_name=badge_name, pregnancy_progress=pregnancy_progress, pregnancy_due_text=pregnancy_due_text, bed_chance_text=bed_chance_text, next_bedding_text=next_bedding_text, PROMOTE_INFLUENCE=PROMOTE_INFLUENCE, entry_stat_roll=entry_stat_roll, RANDOM_STAT_RANGES=RANDOM_STAT_RANGES, FAVOR_CARE=FAVOR_CARE, favor_care_tier=favor_care_tier, favor_stipend=favor_stipend, EAST_PALACE_CHANCE=EAST_PALACE_CHANCE, EAST_PALACE_FAVOR=EAST_PALACE_FAVOR, EAST_PALACE_TRUST=EAST_PALACE_TRUST, AGE_YEARS_PER_DAY=AGE_YEARS_PER_DAY, ENERGY_MAX=ENERGY_MAX, dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
                favor_word=favor_word, trust_word=trust_word, residence_name=residence_name, HALL_NAMES=HALL_NAMES, ITEMS=ITEMS, DRUGS=DRUGS, HOBBIES=HOBBIES, DISPLAY_SLOTS=DISPLAY_SLOTS,
                HOBBY_ENERGY=HOBBY_ENERGY, HOBBY_DAILY_MAX=HOBBY_DAILY_MAX, HOBBY_UNLOCK_ITEMS=HOBBY_UNLOCK_ITEMS, daily_count=daily_count, intrigue_label=intrigue_label, FAMILIES=FAMILIES, PERSONALITIES=PERSONALITIES, age_text=age_text, palace_date=palace_date,
                HEIR_STATS=HEIR_STATS, HEIR_PERSONALITIES=HEIR_PERSONALITIES, gift_word=gift_word, gift_text=gift_text, heir_age_days=heir_age_days,
@@ -7238,7 +7238,7 @@ def reigns():
 
 # ── 生育：侍寝人数、怀孕率、孕期 ─────────────────────────────────────────────────
 BED_DAILY_MAX = 3      # 每人每游戏日最多被翻几次（原来 2，2026-10-06 放宽）
-BED_PLAYERS_PER_EXTRA, MAX_BEDS = 6, 6      # 宫里每多 6 位玩家，每晚多翻一位牌子，最多 6 位
+BED_PER_ROUND = 2      # 2026-10-07 起：每轮翻 2 位（原来按玩家数 1~6 位）
 PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.06, 0.0005, 0.0005   # 福报每 1 点再 +0.2%，攒满 100 点 +20%
 OLD_MOTHER_AGE, OLD_MOTHER_FACTOR, PREGNANCY_MAX = 35, 0.6, 0.15
 PRENATAL_ENERGY, PRENATAL_STAT_CAP = 1, 6
@@ -7265,7 +7265,7 @@ def pregnancy_chance(c):
 def bed_count(cands):
     """今晚翻几位：一晚只翻一位的话，人一多每个人几十天才轮得到一次，所以玩家每多 6 位加一位"""
     players = sum(1 for c in cands if c['user_id'])
-    return max(1, min(MAX_BEDS, 1 + players // BED_PLAYERS_PER_EXTRA))
+    return BED_PER_ROUND
 
 
 def pregnancy_due_text(c):
@@ -7401,7 +7401,8 @@ def bed_weight(c, day):
     if c['npc_key']: w *= NPC_BED_MULT
     return max(1, w)
 
-BED_ROUND_HOURS = (0,4,8,12,16,20)    # 2026-10-06 起整点对齐（原 1/5/9/13/17/21）
+BED_ROUND_HOURS = tuple(range(0, 24, 2))    # 翻牌（侍寝）每 2 小时一轮：0/2/4/…/22 点（2026-10-07 起，原来每 4 小时）
+PACE_ROUND_HOURS = (0,4,8,12,16,20)         # 精力回复、晋封检查仍是每 4 小时一次，和翻牌轮分开
 
 
 def eligible_bedding(c,day):
@@ -7466,10 +7467,16 @@ def next_bedding_text():
     return min(t for t in slots if t>now).strftime('%m-%d %H:%M')+'（北京时间）'
 
 
-def latest_bedding_slot(now):
-    slots=[now.replace(hour=h,minute=0,second=0,microsecond=0) for h in BED_ROUND_HOURS]
-    slots+=[(now-timedelta(days=1)).replace(hour=BED_ROUND_HOURS[-1],minute=0,second=0,microsecond=0)]
+def latest_slot(now,hours):
+    slots=[now.replace(hour=h,minute=0,second=0,microsecond=0) for h in hours]
+    slots+=[(now-timedelta(days=1)).replace(hour=hours[-1],minute=0,second=0,microsecond=0)]
     return max(slot for slot in slots if slot<=now).strftime('%Y-%m-%d:%H')
+
+def latest_bedding_slot(now):
+    return latest_slot(now,BED_ROUND_HOURS)
+
+def latest_pace_slot(now):
+    return latest_slot(now,PACE_ROUND_HOURS)
 
 
 @atomic
@@ -7868,7 +7875,7 @@ ENERGY_REGEN = 2   # 除结算那一轮外，每个翻牌时点（4/8/12/16/20 �
 
 @atomic
 def energy_tick(key):
-    """每 4 小时回一点精力。和翻牌轮共用时点，但不受皇上病重/国丧影响"""
+    """每 4 小时回精力（用 PACE_ROUND_HOURS 的时点，不是翻牌轮）；不受皇上病重/国丧影响"""
     st = state()
     if st['last_energy_key'] == key or key.endswith(':%02d' % SETTLE_HOUR): return
     run('UPDATE game_state SET last_energy_key=? WHERE id=1', (key,))
@@ -7895,7 +7902,7 @@ def health_decay_tick():
 
 @atomic
 def promotion_tick(key, settle_due=False):
-    """晋封每 4 小时检查一次（和翻牌轮同时点）；这一分钟日结算要跑的话由结算自己查，免得同一分钟晋两级"""
+    """晋封每 4 小时检查一次（PACE_ROUND_HOURS 的时点）；这一分钟日结算要跑的话由结算自己查，免得同一分钟晋两级"""
     st = state()
     if st['last_promo_key'] == key or settle_due: return
     run("UPDATE game_state SET last_promo_key=? WHERE id=1", (key,))
@@ -7905,19 +7912,20 @@ def promotion_tick(key, settle_due=False):
 
 @atomic
 def maybe_settle():
-    """翻牌每4小时（0/4/8/12/16/20 点）、22点宴会、0点日结算；补执行时也先发宴会奖励。"""
+    """翻牌每 2 小时一轮（每轮 2 位）、精力和晋封每 4 小时、22点宴会、0点日结算；补执行时也先发宴会奖励。"""
     now=datetime.now(TZ)
     st=state()
     if not st['event_started'] or st['maintenance']:return
     resolve_births(st['day'],include_legacy=False)
     key=latest_bedding_slot(now)
-    energy_tick(key)
+    pace_key=latest_pace_slot(now)
+    energy_tick(pace_key)
     bedding_round(st['day'],key)
     maybe_banquet(now)
     today = now.date().isoformat()
     st = state()
     settle_due = past_settle_time(now) and state()['last_settle_date'] != today
-    promotion_tick(key, settle_due)
+    promotion_tick(pace_key, settle_due)
     release_confinements()
     if settle_due:
         settle_day(bed_key=key)
