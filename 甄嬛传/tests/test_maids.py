@@ -102,8 +102,8 @@ class MaidTests(unittest.TestCase):
         self.assertAlmostEqual(game.intrigue_success_p(atk, tgt, cfg), min(0.85, base + 0.10))
 
     def test_punish_kills_a_maid_and_names_the_culprit(self):
-        victim = self.maid(self.other, '春桃', joined=1)
-        fresh = self.maid(self.other, '夏荷', joined=9)       # 刚来 1 天，动不得
+        victim = self.maid(self.other, '春桃', trait='tancai', joined=1)      # 忠厚的宫人有一半机会被保下来，这里用别的特质
+        fresh = self.maid(self.other, '夏荷', trait='tancai', joined=9)       # 刚来 1 天，动不得
         self.client.post('/intrigue/submit', data={'method': 'punish', 'target_id': self.other})
         it = game.q("SELECT * FROM intrigues WHERE method='punish'", one=True)
         self.assertIsNotNone(it)

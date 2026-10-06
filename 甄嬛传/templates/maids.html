@@ -18,6 +18,19 @@
 <p class="muted">按{{ RANK_NAMES[c.rank] }}的份例，你宫里能有 {{ quota }} 个宫人。每个宫人每天能替你跑一次差使（今天还能差遣 {{ errands }} 人），每晚领 {{ costs.wage }} 两月钱；发不出月钱，人心就散了。</p>
 
 {% if mine %}
+<div class="sheet" style="margin:14px 0">
+  <h3 style="margin-top:0">今日差使</h3>
+  <p class="muted" style="margin:0 0 8px">每个宫人每天一次差使，今天还能差遣 {{ errands }} 人。差使要宫人没病、你不在冷宫。</p>
+  {% for k, a in errand_actions %}
+  <form method="post" action="{{ url_for('act', key=k) }}" style="display:inline-block;margin:4px 8px 4px 0">
+    <input type="hidden" name="back" value="maids">
+    <button class="plain" title="{{ a.desc }}" {{ 'disabled' if errands < 1 or c.silver < a.silver or c.status == 'cold' }}>{{ a.name.replace('差使·', '') }}{% if a.silver %}（{{ a.silver }} 两）{% endif %}</button>
+  </form>{% endfor %}
+  <ul class="muted" style="margin:8px 0 0;padding-left:1.2em;font-size:14px">
+    {% for k, a in errand_actions %}<li><b>{{ a.name.replace('差使·', '') }}</b>：{{ a.desc.split('（用一次')[0] }}</li>{% endfor %}
+  </ul>
+</div>
+<p class="muted">护主：忠心 ≥{{ MAID_GUARD_LOYALTY }} 的宫人每人让别人对你使计的成算 −3%（最多 −9%）；忠心太低（&lt;30）的反而会泄密 +2%。{% if maid_defense > 0 %}眼下合计让对方成算 −{{ (maid_defense*100)|round|int }}%。{% elif maid_defense < 0 %}眼下合计让对方成算 +{{ (-maid_defense*100)|round|int }}%，宫人寒了心。{% endif %}忠心 ≥{{ MAID_HEART_LOYALTY }} 的是体己人，不领月钱{% if heart %}（现有 {{ heart }} 位）{% endif %}。</p>
 {% for m in mine %}
 <div class="maid">
   <div class="nm">{{ m.name }}</div>

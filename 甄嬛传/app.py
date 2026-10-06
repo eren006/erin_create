@@ -483,6 +483,16 @@ ACTIONS = {
                     desc='双方好感 +6~10；每天第一次串门不花精力'),
     'spy':     dict(name='打探底细', energy=0, silver=30, daily=1, when={'normal'}, target=True, errand=True,
                     desc='派一个宫人去打听对方的秘密（用一次差使，不花精力）'),
+    'maid_snack':  dict(name='差使·御膳房取点心', energy=0, silver=0, daily=4, when={'normal', 'confined'}, errand=True,
+                        desc='派一个宫人去御膳房讨点心：体质 +1，今晚翻牌的机会略添一分（用一次差使，不花精力）'),
+    'maid_shop':   dict(name='差使·内务府跑腿', energy=0, silver=0, daily=4, when={'normal', 'confined'}, errand=True,
+                        desc='派一个宫人去内务府打点招呼：今天在内务府买东西九折（用一次差使，不花精力）'),
+    'maid_scribe': dict(name='差使·敬事房打点', energy=0, silver=20, daily=4, when={'normal'}, errand=True,
+                        desc='花 20 两让宫人去敬事房递个话：今晚翻牌的机会大增（用一次差使，不花精力）'),
+    'maid_watch':  dict(name='差使·守夜', energy=0, silver=0, daily=4, when={'normal', 'confined'}, errand=True,
+                        desc='派一个宫人守夜：今晚被人使计、下药的成算 −8%，多个宫人守夜不叠加（用一次差使，不花精力）'),
+    'maid_gossip': dict(name='差使·探风声', energy=0, silver=0, daily=4, when={'normal'}, errand=True,
+                        desc='派一个宫人去各宫听风声，带回一则别宫今天的动静；贪财的宫人再花 10 两能多买到一则（用一次差使，不花精力）'),
     'plead':   dict(name='向皇上求情', energy=1, silver=50, daily=1, when={'normal'}, target=True,
                     desc='为禁足或冷宫中的姐妹求情，缩短日子。成败看皇上对你的信任'),
     'pray':    dict(name='去佛堂礼佛', energy=1, silver=0, daily=1, when={'normal', 'confined'},
@@ -3005,6 +3015,7 @@ def act(key):
     back = request.form.get('back', '')
     if back in PLACES:
         return redirect(url_for('place', key=back, **({'living': 1} if key == 'pray' else {})))
+    if back == 'maids': return redirect(url_for('maids_page'))
     return redirect(url_for('social') if back == 'social' else url_for('index'))
 
 def do_greet(c, cfg):
@@ -3027,6 +3038,7 @@ def do_study(c, cfg):
     charge(c, cfg)
     gain = 2 if c['talent'] < 60 else 1
     if c['personality'] == 'clever': gain += 1
+    if has_maid_trait(c['id'], 'shouqiao'): gain += 1       # 手巧的宫人研墨递琴，帮着练
     add_stat(c['id'], 'talent', gain)
     arts = arts_of(c)
     before = arts.get(art, 0)
@@ -3091,6 +3103,7 @@ def do_aid(c, cfg):
 def do_groom(c, cfg):
     charge(c, cfg)
     gain = 2 if c['appearance'] < 70 else 1
+    if has_maid_trait(c['id'], 'shouqiao'): gain += 1       # 手巧的宫人帮着梳妆
     add_stat(c['id'], 'appearance', gain)
     add_stat(c['id'], 'health', 3)
     return f"你细细梳妆，敷了珍珠粉。容貌 +{gain}，体质 +3。", 'good'
@@ -3204,9 +3217,7 @@ def do_spy(c, cfg):
         raise Reject('她的底细你已经摸清了。')
     charge(c, cfg)
     m = take_errand(c, prefer='jiling')
-    p = 0.35 + (c['scheme'] - t['scheme']) * 0.01 - (0.15 if eyes_active(t) else 0)
-    if m['trait'] == 'jiling': p += 0.10
-    p = clamp(p * 100, 10, 85) / 100
+    p = spy_success_p(c, t, m)
     if random.random() < p:
         run("INSERT OR IGNORE INTO known_secrets (knower_id, target_id, day) VALUES (?,?,?)",
             (c['id'], t['id'], cur_day()))
@@ -3410,7 +3421,41 @@ def do_pray(c, cfg):
     return msg, 'good'
 
 
-ACTION_HANDLERS = dict(schemestudy=do_schemestudy, perform=do_perform, palace_work=do_palace_work, aid=do_aid, greet=do_greet, study=do_study, groom=do_groom, rest=do_rest, reflect=do_reflect,
+def do_maid_snack(c, cfg):
+    charge(c, cfg)
+    m = take_errand(c)
+    add_stat(c['id'], 'health', 1)
+    run("UPDATE consorts SET seek_bonus=seek_bonus+6 WHERE id=?", (c['id'],))
+    return f"{m['name']}去御膳房讨了碟点心回来。体质 +1，今晚翻牌的机会略添一分。", 'good'
+
+def do_maid_shop(c, cfg):
+    charge(c, cfg)
+    m = take_errand(c)
+    return f"{m['name']}去内务府打了招呼，今天在内务府买东西九折。", 'good'
+
+def do_maid_scribe(c, cfg):
+    if emperor_ill():
+        raise Reject('皇上病重，敬事房今天不递牌子。')
+    charge(c, cfg)
+    m = take_errand(c)
+    run("UPDATE consorts SET seek_bonus=seek_bonus+15 WHERE id=?", (c['id'],))
+    return f"{m['name']}捧着银子去了敬事房。今晚翻牌子的机会大增。", 'good'
+
+def do_maid_watch(c, cfg):
+    charge(c, cfg)
+    m = take_errand(c, prefer='zuijin')
+    return f"{m['name']}今夜替你守着门。今晚有人想算计你，成算要低些。", 'good'
+
+def do_maid_gossip(c, cfg):
+    charge(c, cfg)
+    m = take_errand(c, prefer='suizui')
+    lines = [maid_gossip(c, m)]
+    if m['trait'] == 'tancai' and c['silver'] >= 10:
+        add_silver(c['id'], -10)
+        lines.append(maid_gossip(c, m))
+    return ' '.join(lines), 'info'
+
+ACTION_HANDLERS = dict(maid_snack=do_maid_snack, maid_shop=do_maid_shop, maid_scribe=do_maid_scribe, maid_watch=do_maid_watch, maid_gossip=do_maid_gossip, schemestudy=do_schemestudy, perform=do_perform, palace_work=do_palace_work, aid=do_aid, greet=do_greet, study=do_study, groom=do_groom, rest=do_rest, reflect=do_reflect,
                        eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend, shoukang=do_shoukang, pray=do_pray)
 
 # ── 秘密坦白 ───────────────────────────────────────────────────────────────────
@@ -4262,10 +4307,10 @@ def shop_buy(key):
         return redirect(url_for('shop'))
     if c['status'] == 'cold':
         flash('冷宫的人，内务府不理会。', 'bad')
-    elif c['silver'] < it['price']:
-        flash(f"银子不够，{it['name']}要 {it['price']} 两。", 'bad')
+    elif c['silver'] < shop_price(c, it):
+        flash(f"银子不够，{it['name']}要 {shop_price(c, it)} 两。", 'bad')
     else:
-        add_silver(c['id'], -it['price'])
+        add_silver(c['id'], -shop_price(c, it))
         inv_add(c['id'], key, 1)
         flash(f"买下了{it['name']}。", 'good')
     return redirect(url_for('shop'))
@@ -4465,11 +4510,11 @@ def intrigue_cancel(iid):
 
 MAID_QUOTA = {1: 1, 2: 2, 3: 2, 4: 3}   # 官女子 1、答应/常在 2、贵人 3，嫔以上 4
 MAID_TRAITS = {
-    'shouqiao': dict(name='手巧', desc='手脚利落，心细如发。'),
-    'zuijin':   dict(name='嘴紧', desc='什么话到她这儿都烂在肚子里。'),
-    'suizui':   dict(name='碎嘴', desc='消息灵通，主子散布流言时成算 +10%。可她自己的嘴也管不住。'),
-    'tancai':   dict(name='贪财', desc='见钱眼开，忠心最高只到 70。', cap=70),
-    'zhonghou': dict(name='忠厚', desc='老实本分，忠心不会低于 40。', floor=40),
+    'shouqiao': dict(name='手巧', desc='手脚利落，心细如发：主子梳妆、练才艺时多帮一把（各 +1），当下药内应也更稳（+8%）。'),
+    'zuijin':   dict(name='嘴紧', desc='什么话到她这儿都烂在肚子里：别人来打听你的底细成算 −15%，也很难被人收买；守夜最合适。'),
+    'suizui':   dict(name='碎嘴', desc='消息灵通，主子散布流言时成算 +10%，派去探风声最合适。可她自己的嘴也管不住。'),
+    'tancai':   dict(name='贪财', desc='见钱眼开，忠心最高只到 70；肯花银子替你多打听一则风声。', cap=70),
+    'zhonghou': dict(name='忠厚', desc='老实本分，忠心不会低于 40；被人发落时有一半机会被保下来。', floor=40),
     'jiling':   dict(name='机灵', desc='眼疾手快，派她去打探，成算 +10%。'),
 }
 MAID_BACKSTORIES = [
@@ -4526,6 +4571,34 @@ def maid_leave(mid, status, reason):
 
 def has_maid_trait(cid, trait):
     return any(m['trait'] == trait and m['sick_until_day'] < cur_day() for m in active_maids(cid))
+
+MAID_GUARD_LOYALTY, MAID_GUARD_EACH, MAID_GUARD_MAX = 60, 0.03, 0.09   # 忠心 ≥60 的宫人护主：每人让你被使计的成算 −3%，最多 −9%
+MAID_LEAK_LOYALTY, MAID_LEAK_EACH, MAID_LEAK_MAX = 30, 0.02, 0.06       # 忠心 <30 的宫人容易泄密：每人让别人对你得手 +2%，最多 +6%
+MAID_HEART_LOYALTY = 80        # 忠心 ≥80 是体己人，月钱免了
+MAID_WATCH_GUARD = 0.08        # 当天派了宫人守夜：被使计、下药的成算 −8%
+MAID_SAVE_CHANCE = 0.5         # 被发落时，忠厚的宫人有这么大概率被人保下来
+SHOP_ERRAND_DISCOUNT = 0.9     # 当天派过宫人去内务府跑腿：买东西九折
+
+def maid_defense(cid):
+    """宫人护主（正）与泄密（负）合起来，对被使计成算的影响：返回要从对方成算里减掉的值"""
+    day = cur_day()
+    maids = active_maids(cid)
+    loyal = sum(1 for m in maids if m['loyalty'] >= MAID_GUARD_LOYALTY and m['sick_until_day'] < day)
+    leaky = sum(1 for m in maids if m['loyalty'] < MAID_LEAK_LOYALTY)
+    return min(MAID_GUARD_MAX, MAID_GUARD_EACH * loyal) - min(MAID_LEAK_MAX, MAID_LEAK_EACH * leaky)
+
+def watch_guard(cid):
+    return MAID_WATCH_GUARD if daily_count(cid, 'maid_watch') > 0 else 0
+
+def shop_price(c, it):
+    price = it['price']
+    return max(1, round(price * SHOP_ERRAND_DISCOUNT)) if daily_count(c['id'], 'maid_shop') > 0 else price
+
+def spy_success_p(c, t, m):
+    p = 0.35 + (c['scheme'] - t['scheme']) * 0.01 - (0.15 if eyes_active(t) else 0)
+    if m['trait'] == 'jiling': p += 0.10
+    if has_maid_trait(t['id'], 'zuijin'): p -= 0.15            # 对方宫里有嘴紧的宫人，话不好套
+    return clamp(p * 100, 10, 85) / 100
 
 def free_errand_maids(c):
     """今天还没跑过差使、没卧病的宫人。冷宫里宫人不在身边"""
@@ -4610,11 +4683,12 @@ def maid_upkeep(day):
         if c['status'] == 'cold':          # 冷宫里宫人不在跟前，不发月钱，心也散了
             for m in maids: add_loyalty(m['id'], -5)
             continue
-        wage = MAID_WAGE * len(maids)
+        paid = [m for m in maids if m['loyalty'] < MAID_HEART_LOYALTY]      # 忠心 ≥80 的体己人不领月钱
+        wage = MAID_WAGE * len(paid)
         if c['silver'] < wage:
             for m in maids: add_loyalty(m['id'], -5)
             if c['user_id']:
-                notify(c['id'], f"宫人的月钱发不出来（{len(maids)} 人要 {wage} 两），全宫宫人忠心 -5。", 'bad')
+                notify(c['id'], f"宫人的月钱发不出来（{len(paid)} 人要 {wage} 两），全宫宫人忠心 -5。", 'bad')
             continue
         add_silver(c['id'], -wage)
         for m in maids:
@@ -4776,6 +4850,8 @@ FEED_TEXT = {
     'visit':       lambda t: f"去{display_name(t)}宫里坐了坐" if t else '四处串了串门',
     'plead':       lambda t: f"去养心殿替{display_name(t)}求了情" if t else '去养心殿求了情',
     'pray':        lambda t: '到佛堂上了香',
+    'maid_snack':  lambda t: '派宫人去御膳房取了点心',
+    'maid_shop':   lambda t: '派宫人去内务府跑了趟腿',
     'perform':     lambda t: '在养心殿御前展示了才艺',
     'palace_work': lambda t: '在礼仪堂协办宫务',
     'aid':         lambda t: f"给{display_name(t)}送去了日常补养" if t else '给姐妹送去了日常补养',
@@ -4839,7 +4915,9 @@ def maids_page():
                            offer=maid_offer(c) if can_pick else [], past=past, TRAITS=MAID_TRAITS,
                            loyalty_word=loyalty_word, free_reroll=daily_count(c['id'], 'maid_reroll') == 0,
                            rewarded=daily_count(c['id'], 'maid_reward') > 0,
-                           errands=len(free_errand_maids(c)), costs=dict(reroll=MAID_REROLL_COST,
+                           errands=len(free_errand_maids(c)), maid_defense=maid_defense(c['id']), heart=sum(1 for m in mine if m['loyalty'] >= MAID_HEART_LOYALTY),
+                           errand_actions=[(k, ACTIONS[k]) for k in ('maid_snack', 'maid_shop', 'maid_scribe', 'maid_watch', 'maid_gossip')],
+                           MAID_GUARD_LOYALTY=MAID_GUARD_LOYALTY, MAID_HEART_LOYALTY=MAID_HEART_LOYALTY, costs=dict(reroll=MAID_REROLL_COST,
                            reward=MAID_REWARD_COST, bury=MAID_BURY_COST, wage=MAID_WAGE))
 
 @app.route('/maids/pick', methods=['POST'])
@@ -5070,6 +5148,7 @@ def heir_label(h):
 
 app.jinja_env.globals['heir_label'] = heir_label
 app.jinja_env.globals['treat_cost'] = treat_cost
+app.jinja_env.globals['shop_price'] = shop_price
 app.jinja_env.globals['cn_ordinal'] = cn_ordinal
 app.jinja_env.globals['TIER_OFFICE_TEXT'] = {k: FAMILY_CAREER_TITLES[k][TIER_OFFICE[k]] for k in TIER_JOB}
 
@@ -6561,6 +6640,8 @@ def intrigue_success_p(atk, tgt, cfg, conspired=False):
         p += 0.10
     if cfg is INTRIGUES['rumor'] and has_maid_trait(atk['id'], 'suizui'):
         p += 0.10                                   # 碎嘴的宫人替主子把话传出去
+    if tgt['user_id']:
+        p -= maid_defense(tgt['id']) + watch_guard(tgt['id'])   # 宫人护主、泄密、守夜
     if tgt['user_id']:                              # 交好 NPC 的护持（九点二十一节）
         if bond(tgt['id'], 'huanghou') >= BOND_CLOSE: p -= BOND_HUANGHOU_GUARD
         if bond(tgt['id'], 'huafei') >= BOND_INTIMATE: p -= BOND_HUAFEI_GUARD
@@ -6678,13 +6759,17 @@ def resolve_intrigue(it, bed_id=None):
             gz = f"{an}告发{tn}{sec['name']}，皇上震怒，{sec['penalty']}。"
         elif m == 'punish':
             maid = random.choice(punishable_maids(tgt['id']))
-            maid_leave(maid['id'], 'dead', f"被{an}以冲撞为由拖去慎刑司，杖毙")
-            for other in active_maids(tgt['id']):
-                add_loyalty(other['id'], -5)
             run('UPDATE consorts SET maid_punished_day=? WHERE id=?', (cur_day(), tgt['id']))
-            # 发落是明面上的欺压：主子一定知道是谁，不看眼线
-            victim = f"{an}说你宫里的{maid['name']}冲撞了她，把人拖去慎刑司，杖毙了。宫里的人都吓坏了，全宫宫人忠心 -5。"
-            gz = f"{tgt['palace']}宫人{maid['name']}没了。"
+            if maid['trait'] == 'zhonghou' and random.random() < MAID_SAVE_CHANCE:      # 忠厚本分，宫里人替她求了情
+                victim = f"{an}说你宫里的{maid['name']}冲撞了她，要拖去慎刑司杖毙。{maid['name']}平日忠厚本分，宫里人替她求了情，只挨了顿板子，保下了一条命。"
+                gz = f"{tgt['palace']}宫人{maid['name']}险些被发落，被人保下了。"
+            else:
+                maid_leave(maid['id'], 'dead', f"被{an}以冲撞为由拖去慎刑司，杖毙")
+                for other in active_maids(tgt['id']):
+                    add_loyalty(other['id'], -5)
+                # 发落是明面上的欺压：主子一定知道是谁，不看眼线
+                victim = f"{an}说你宫里的{maid['name']}冲撞了她，把人拖去慎刑司，杖毙了。宫里的人都吓坏了，全宫宫人忠心 -5。"
+                gz = f"{tgt['palace']}宫人{maid['name']}没了。"
         elif m == 'witch':
             send_to_cold(tgt['id'])
             victim = f"你宫中搜出了写着皇上生辰八字的巫蛊人偶。百口莫辩，你被打入冷宫。" + \
@@ -8898,6 +8983,7 @@ def resolve_drug(it):
     p -= (0 if m or same_palace(c, t) else SELF_HAND_PENALTY) + (0.12 if eyes_active(t) else 0)
     p -= min(0.15,0.05*active_sister_count(t['id'])) + (0.05 if t['personality']=='dignified' else 0)
     p -= (0.05 if t['virtue']>=70 else 0) + t['trust']*0.0015
+    if t['user_id']: p -= maid_defense(t['id']) + watch_guard(t['id'])
     needle = inv_qty(t['id'], 'yinzhen') > 0
     before = max(0.08,min(0.85,p))
     after = max(0.08,min(0.85,p-(NEEDLE_BLOCK if needle else 0)))
@@ -9186,7 +9272,7 @@ def agent_action():
         elif not free_errand_maids(c): err='没有空闲宫人去办差。'
         else:
             take_errand(c); add_silver(c['id'],-30); daily_inc(c['id'],f'bribe:{mid}')
-            gain=int((15+c['scheme']*0.15)*{'suizui':1.5,'tancai':1.5,'zhonghou':0.5}.get(m['trait'],1))
+            gain=int((15+c['scheme']*0.15)*{'suizui':1.5,'tancai':1.5,'zhonghou':0.5,'zuijin':0.5}.get(m['trait'],1))
             run('INSERT INTO bribes(briber_id,maid_id,progress,last_day) VALUES(?,?,?,?) ON CONFLICT(briber_id,maid_id) DO UPDATE SET progress=progress+excluded.progress,last_day=excluded.last_day',(c['id'],mid,gain,day))
             run('UPDATE bribes SET turned=(progress>=?) WHERE briber_id=? AND maid_id=?',(m['loyalty'],c['id'],mid))
             if has_maid_trait(owner['id'],'jiling') and random.random()<0.4:
