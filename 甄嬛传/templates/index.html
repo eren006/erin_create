@@ -111,7 +111,7 @@
 {% if c.status == 'cold' %}
 <div class="state-cold">你被废为庶人，关在冷宫里。第 {{ c.status_until_day }} 天夜里，皇上或许会念及旧情放你出来。姐妹可以替你求情，你自己也可以闭门自省，等一个转机。</div>
 {% elif c.status == 'confined' %}
-<div class="state-conf">禁足中，第 {{ c.status_until_day }} 天夜里解禁。这几天出不了宫门，只能在自己宫里修习、保养、自省。</div>
+<div class="state-conf">禁足中，{% if c.confine_until_ts %}{{ confine_until }} 解禁{% else %}第 {{ c.status_until_day }} 天夜里解禁{% endif %}。这段时间出不了宫门，只能在自己宫里修习、保养、自省。</div>
 {% endif %}
 
 {% if unnamed_heirs %}

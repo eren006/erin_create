@@ -138,6 +138,22 @@ class HeirNameTests(unittest.TestCase):
         self.login(other)
         self.assertNotIn('还没有名字', self.client.get('/').get_data(as_text=True))
 
+    def test_first_prince_is_da_ahge_then_er_and_princess_counts_separately(self):
+        h1 = self.birth('皇子')
+        self.assertEqual(game.heir_label(dict(h1, name='')), '大阿哥')
+        self.assertEqual(h1['ordinal'], 1)
+        h2 = self.birth('皇子')
+        self.assertEqual((h2['ordinal'], game.heir_label(dict(h2, name=''))), (2, '二阿哥'))
+        h3 = self.birth('公主')
+        self.assertEqual((h3['ordinal'], game.heir_label(dict(h3, name=''))), (1, '大公主'))
+        self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%诞下大阿哥%'", one=True))
+
+    def test_numbering_restarts_in_a_new_reign(self):
+        self.birth('皇子')
+        game.run('UPDATE game_state SET reign_start_day=?', (game.cur_day() + 1,))     # 下一届开始，旧皇嗣不再占排行
+        h = self.birth('皇子')
+        self.assertEqual(h['ordinal'], 1)
+
 
 if __name__ == '__main__':
     unittest.main()

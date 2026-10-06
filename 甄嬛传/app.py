@@ -197,7 +197,8 @@ TREAT_COST_BY_RANK = {1: 20, 2: 20, 3: 30, 4: 40}   # 按病人的位分，嫔�
 def treat_cost(c):
     return TREAT_COST_BY_RANK.get(c['rank'], TREAT_COST)
 POISON_SURVIVE = {0: 0.35, 1: 0.90}   # 没请太医 / 请了太医（病重沿用同一套概率）
-CONFINE_DAYS = 1   # 2026-09-28 从 2 压到 1
+CONFINE_DAYS = 1   # 2026-09-28 从 2 压到 1；2026-10-07 起禁足统一半天，按小时算（CONFINE_HOURS），这个只作按天结算的兜底
+CONFINE_HOURS = 12 # 所有禁足一律半天，不管因为什么
 COLD_DAYS = 3   # 2026-09-28 从 5 压到 3
 
 # ── 老死与病死 ─────────────────────────────────────────────────────────────────
@@ -345,11 +346,11 @@ SECRETS = {
     'fake':      dict(name='冒认了出身', weight=12,
                       penalty='降一级位分', confess='圣宠 -30%'),
     'book':      dict(name='私藏禁书', weight=10,
-                      penalty='禁足 3 天', confess='禁足 1 天'),
+                      penalty='禁足半天', confess='禁足半天'),
     'scar':      dict(name='脸上旧伤一直用脂粉遮着', weight=13,
                       penalty='容貌 -10，圣宠 -20%', confess='容貌 -5'),
     'physician': dict(name='与太医过从甚密', weight=5,
-                      penalty='打入冷宫', confess='禁足 3 天'),
+                      penalty='打入冷宫', confess='禁足半天'),
 }
 
 def roll_secret():
@@ -383,7 +384,7 @@ DRUGS = {
  'yachan':dict(name='哑蝉汤',rank=3,price=120,case='now',eat=True,days=1,hours=24,desc='才艺暂降5，24小时内召见与侍寝只能选体谅；药效结束恢复被扣才艺'),
  'hanshui':dict(name='寒水散',rank=3,price=200,case='now',eat=True,days=2,hours=48,desc='体质-10、阻孕48小时；有孕时50%概率小产，安胎药可挡一次'),
  'qingsi':dict(name='青丝引',rank=4,price=250,case='diag',eat=True,days=3,hours=0,desc='慢毒：最多3次日结算，每次体质-4；诊脉可提前解毒'),
- 'chunxin':dict(name='春信丹',rank=4,price=300,case='due',eat=True,days=0,hours=24,desc='假孕24小时后揭穿，不会生出孩子；信任不足50时禁足1天、信任-5'),
+ 'chunxin':dict(name='春信丹',rank=4,price=300,case='due',eat=True,days=0,hours=24,desc='假孕24小时后揭穿，不会生出孩子；信任不足50时禁足半天、信任-5'),
  'lihun':dict(name='离魂草',rank=5,price=500,case='now',eat=True,days=0,hours=0,desc='致死毒：下次结算判断生死，需及时请太医；存活率受得宠待遇、治疗及福报影响，成功后账号冷却2天'),
  'wuming':dict(name='无名',rank=6,price=800,case='none',eat=False,days=0,hours=0,desc='可配其他药（离魂草除外），24小时后线索浮现，仍可调查；成功后账号冷却1天'),
 }
@@ -514,9 +515,9 @@ INTRIGUES = {
     'rumor':  dict(name='散布流言', silver=30, energy=0, min_rank=1, base=0.55, npc_ok=True,
                    desc='成：对方圣宠 -15%，德行 -3。败露：自己德行 -5，圣宠 -10%'),
     'steal':  dict(name='截宠', silver=60, energy=0, min_rank=1, base=0.50, npc_ok=True,
-                   desc='若今晚翻的是对方的牌子，由你顶上。败露：圣宠 -15%，禁足 1 天'),
+                   desc='若今晚翻的是对方的牌子，由你顶上。败露：圣宠 -15%，禁足半天'),
     'frame':  dict(name='栽赃陷害', silver=100, energy=0, min_rank=2, base=0.45, npc_ok=True,
-                   desc='成：对方禁足 2 天，圣宠 -20%。败露：自己禁足 2 天'),
+                   desc='成：对方禁足半天，圣宠 -20%。败露：自己禁足半天'),
     'drug':   dict(name='下药', silver=0, energy=DRUG_ENERGY, min_rank=2, base=DRUG_BASE, npc_ok=False,
                    desc='用手里的药，交给对方宫里的内应去下，或者自己动手'),
     'expose': dict(name='告发秘密', silver=50, energy=0, min_rank=1, base=0.70, npc_ok=False,
@@ -1338,7 +1339,7 @@ def init_db():
     migrations = {
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
         'banquet_entries': {'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'tier': 'INTEGER NOT NULL DEFAULT 1', 'buff': 'INTEGER NOT NULL DEFAULT 0', 'note': "TEXT NOT NULL DEFAULT ''"},
-        'consorts': {'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
+        'consorts': {'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
                      'age_months': 'INTEGER NOT NULL DEFAULT 240',
                      'poisoned_day': 'INTEGER NOT NULL DEFAULT 0',
                      'poison_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -1756,11 +1757,20 @@ def set_rank(cid, new_rank, reason_day=None):
             if gain: add_prestige(c, gain, f"{full_name(c)}晋为{RANK_NAMES[new_rank]}")
     housing_sync(fill_main=not settling())
 
-def confine(cid, days):
+def confine(cid, days=None):
+    """禁足统一半天（CONFINE_HOURS 小时），days 只是沿用的旧参数，不再决定时长；到点由 release_confinements 每分钟检查放人"""
     c = get_consort(cid)
     if c['status'] in ('cold', 'dead'): return
-    until = max(c['status_until_day'] if c['status'] == 'confined' else 0, cur_day() + days)
-    run("UPDATE consorts SET status='confined', status_until_day=? WHERE id=?", (until, cid))
+    until = max(c['status_until_day'] if c['status'] == 'confined' else 0, cur_day() + 1)    # 按天结算的兜底
+    ts = max(c['confine_until_ts'] if c['status'] == 'confined' else 0, now_ts() + CONFINE_HOURS * 3600)
+    run("UPDATE consorts SET status='confined', status_until_day=?, confine_until_ts=? WHERE id=?", (until, ts, cid))
+
+@atomic
+def release_confinements():
+    """禁足满半天就放人（每分钟查一次）"""
+    for c in q("SELECT * FROM consorts WHERE status='confined' AND confine_until_ts>0 AND confine_until_ts<=?", (now_ts(),)):
+        run("UPDATE consorts SET status='normal', status_until_day=0, confine_until_ts=0 WHERE id=?", (c['id'],))
+        if c['user_id']: notify(c['id'], '禁足期满，你又能出门了。', 'good')
 
 def send_to_cold(cid):
     c = get_consort(cid)
@@ -2938,7 +2948,8 @@ def index():
     maid_gap = 0 if c['status'] == 'cold' else maid_quota(c['rank']) - len(active_maids(c['id']))
     unnamed_heirs = [h for h in heirs if not h['name']]
     for h in unnamed_heirs: ensure_name_choices(h['id'])      # 老档里没点过字的，补上，提醒才有的选
-    return render_template('index.html', c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs,
+    confine_until = datetime.fromtimestamp(c['confine_until_ts'], TZ).strftime('%m-%d %H:%M') if c['confine_until_ts'] else ''
+    return render_template('index.html', c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs, confine_until=confine_until,
                            sick=is_sick(c), eyes=eyes_active(c), secret=SECRETS[c['secret']], guide=guide_view(c),
                            day=day, PREGNANCY_DAYS=PREGNANCY_DAYS, tiles=map_tiles(c))
 
@@ -4125,7 +4136,7 @@ def knife_expose(c, it, names):
     if m == 'rumor':
         add_stat(c['id'], 'virtue', -5); cut_favor(c['id'], 0.1); pen = '德行 -5，圣宠 -10%'
     elif m == 'frame':
-        confine(c['id'], CONFINE_DAYS); cut_favor(c['id'], 0.15); pen = f'禁足 {CONFINE_DAYS} 天，圣宠 -15%'
+        confine(c['id']); cut_favor(c['id'], 0.15); pen = '禁足半天，圣宠 -15%'
     else:
         add_stat(c['id'], 'virtue', -8); pen = '德行 -8'
     tloss = 10 if m == 'punish' else 15
@@ -5110,6 +5121,10 @@ def gazette_page():
 
 CN_NUM = '零一二三四五六七八九十'
 
+def heir_rank_word(n):
+    """排行的叫法：第一位叫「大」（大阿哥、大公主），其余照常（二、三……）"""
+    return '大' if n == 1 else cn_ordinal(n)
+
 def cn_ordinal(n):
     if n <= 10: return CN_NUM[n]
     if n < 20: return '十' + CN_NUM[n - 10]
@@ -5198,7 +5213,7 @@ def name_choice_view(h):
 
 def heir_label(h):
     if h['name']: return h['name']
-    return f"{cn_ordinal(h['ordinal'])}阿哥" if h['gender'] == '皇子' else f"{cn_ordinal(h['ordinal'])}公主"
+    return f"{heir_rank_word(h['ordinal'])}阿哥" if h['gender'] == '皇子' else f"{heir_rank_word(h['ordinal'])}公主"
 
 app.jinja_env.globals['heir_label'] = heir_label
 app.jinja_env.globals['treat_cost'] = treat_cost
@@ -6779,7 +6794,7 @@ def resolve_intrigue(it, bed_id=None):
             loss = cut_favor(tgt['id'], 0.1 if trusted else 0.2)
             confine(tgt['id'], CONFINE_DAYS)
             night_mark(tgt['id'], 'victim', trusted=trusted)
-            victim = f"你宫里搜出了不该有的东西，{who}栽赃陷害了你。禁足 {CONFINE_DAYS} 天，圣宠 -{loss}。" + \
+            victim = f"你宫里搜出了不该有的东西，{who}栽赃陷害了你。禁足半天，圣宠 -{loss}。" + \
                      ('皇上信你，圣宠只折了一半。' if trusted else '')
             gz = f"{tn}宫中搜出违禁之物，皇上下旨禁足。"
         elif m == 'poison':
@@ -6853,15 +6868,15 @@ def resolve_intrigue(it, bed_id=None):
                 add_stat(a['id'], 'virtue', -5); cut_favor(a['id'], 0.1)
                 pen = '德行 -5，圣宠 -10%'
             elif m == 'frame':
-                confine(a['id'], CONFINE_DAYS); cut_favor(a['id'], 0.15)
-                pen = f'禁足 {CONFINE_DAYS} 天，圣宠 -15%'
+                confine(a['id']); cut_favor(a['id'], 0.15)
+                pen = '禁足半天，圣宠 -15%'
             elif m == 'poison':
                 if a['rank'] > 1: set_rank(a['id'], a['rank'] - 1)
                 confine(a['id'], 3)
-                pen = '降一级位分，禁足 3 天'
+                pen = '降一级位分，禁足半天'
             elif m == 'steal':
                 cut_favor(a['id'], 0.15); confine(a['id'], 1)
-                pen = '圣宠 -15%，禁足 1 天'
+                pen = '圣宠 -15%，禁足半天'
             elif m == 'expose':
                 add_stat(a['id'], 'virtue', -8); cut_favor(a['id'], 0.15)
                 pen = '德行 -8，圣宠 -15%'
@@ -7281,8 +7296,9 @@ def resolve_births(day, include_legacy=True):
         prior_births = q('SELECT COUNT(*) n FROM heirs WHERE mother_id=?', (c['id'],), one=True)['n']
         born = []   # [(label, 资质文字)]
         for gender in genders:
-            n = q("SELECT COUNT(*) n FROM heirs WHERE gender=?", (gender,), one=True)['n']
-            ordinal = n + (6 if gender == '皇子' else 3)
+            # 排行按本届、同性别已有的最大排行往下数（不再从 6、3 起跳；换届后重新从「大」排起）
+            top = q("SELECT COALESCE(MAX(ordinal),0) m FROM heirs WHERE gender=? AND (born_day>=? OR COALESCE(npc_key,'')!='')", (gender, state()['reign_start_day']), one=True)['m']
+            ordinal = top + 1
             personality = random.choice(list(HEIR_PERSONALITIES))
             gifts = roll_heir_gifts(c)
             run("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, born_day, personality, study, riding, virtue, health,
@@ -7296,7 +7312,7 @@ def resolve_births(day, include_legacy=True):
                  gifts['study'], gifts['riding'], gifts['virtue']))
             hid = q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id']
             ensure_name_choices(hid)
-            born.append((f"{cn_ordinal(ordinal)}{'阿哥' if gender == '皇子' else '公主'}",
+            born.append((f"{heir_rank_word(ordinal)}{'阿哥' if gender == '皇子' else '公主'}",
                          gift_text(dict(gift_study=gifts['study'], gift_riding=gifts['riding'], gift_virtue=gifts['virtue']))))
         run("UPDATE consorts SET pregnant_since=0, pregnancy_started_ts=0, prenatal='{}' WHERE id=?", (c['id'],))
         birth_loss = min(BIRTH_HEALTH_LOSS + BIRTH_HEALTH_PER_PRIOR * prior_births + (TWIN_EXTRA_HEALTH_LOSS if twins else 0),
@@ -7813,7 +7829,7 @@ def help_page():
                            diet_norm={r: diet_cost(r, 'normal') for r in range(1, 10)}, DIETS=DIETS, DIET_RATIO=DIET_RATIO,
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
                            FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, TWIN_CHANCE=TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS=TWIN_EXTRA_HEALTH_LOSS, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
-                           HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, CONFINE_DAYS=CONFINE_DAYS,
+                           HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, CONFINE_DAYS=CONFINE_DAYS, CONFINE_HOURS=CONFINE_HOURS,
                            COLD_DAYS=COLD_DAYS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_DAYS=PREGNANCY_DAYS,
                            settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,
                            HEIR_EXAM_INTERVAL=HEIR_EXAM_INTERVAL, HEIR_EXAM_MIN_AGE=HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE=HEIR_EXAM_MAX_AGE,
@@ -7902,6 +7918,7 @@ def maybe_settle():
     st = state()
     settle_due = past_settle_time(now) and state()['last_settle_date'] != today
     promotion_tick(key, settle_due)
+    release_confinements()
     if settle_due:
         settle_day(bed_key=key)
         for r in _player_rows():check_achievements(r['id'])
@@ -8093,7 +8110,8 @@ def admin_edit(cid):
         (max(0, favor), max(0, silver), max(0, min(9, rank)), status, cid))
     if status in ('confined', 'cold') and c['status'] != status:
         run("UPDATE consorts SET status_until_day=? WHERE id=?",
-            (cur_day() + (CONFINE_DAYS if status == 'confined' else COLD_DAYS), cid))
+            (cur_day() + (1 if status == 'confined' else COLD_DAYS), cid))
+        if status == 'confined': run("UPDATE consorts SET confine_until_ts=? WHERE id=?", (now_ts() + CONFINE_HOURS * 3600, cid))
     if rank >= 5 and not c['title']: assign_title(cid)
     housing_sync()
     flash(f"已修改 {full_name(c)}。", 'good')
@@ -8959,7 +8977,7 @@ def resolve_realtime_drugs(day):
         finish_affliction(a)
         run("UPDATE consorts SET pregnant_since=0,pregnancy_started_ts=0,prenatal='{}' WHERE id=?",(c['id'],))
         if punished:confine(c['id'],1);add_trust(c['id'],-5)
-        notify(c['id'],'春信丹造成的假孕被查明，没有孩子出生。'+('皇上疑你欺君，禁足1天、信任-5。' if punished else '皇上相信你是被人所害。'),'bad')
+        notify(c['id'],'春信丹造成的假孕被查明，没有孩子出生。'+('皇上疑你欺君，禁足半天、信任-5。' if punished else '皇上相信你是被人所害。'),'bad')
         open_drug_case(q('SELECT * FROM intrigues WHERE id=?',(a['intrigue_id'],),one=True),int(punished))
     for a in q("SELECT * FROM afflictions WHERE status='active' AND drug!='chunxin' AND expires_ts>0 AND expires_ts<=?",(time.time(),)):finish_affliction(a)
     for it in q("SELECT i.* FROM intrigues i WHERE method='drug' AND item_used='wuming' AND status='done' AND result IN ('success','caught','fizzle') AND CASE WHEN resolved_ts>0 THEN resolved_ts ELSE created_ts END<=? AND NOT EXISTS(SELECT 1 FROM cases WHERE intrigue_id=i.id)",(time.time()-86400,)):
