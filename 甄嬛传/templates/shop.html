@@ -7,14 +7,14 @@
 <div class="scroll">
 <table>
   <tr><th>物件</th><th>用处</th><th>价钱</th><th>手里</th><th></th></tr>
-  {% for k, it in ITEMS.items() %}
+  {% for k, it in ITEMS.items() if not it.get('craft') or inv.get(k, 0) %}
   <tr>
     <td style="font-family:var(--kai);font-size:17px;white-space:nowrap">{{ it.name }}{% if it.get('black') %}<br><span class="muted" style="font-family:var(--song)">托人从宫外带</span>{% endif %}</td>
     <td>{{ it.desc }}</td>
-    <td style="white-space:nowrap">{% if shop_price(c, it) != it.price %}<s class="muted">{{ it.price }}</s> {% endif %}{{ shop_price(c, it) }} 两</td>
+    <td style="white-space:nowrap">{% if it.get('craft') %}<span class="muted">宫人所制</span>{% else %}{% if shop_price(c, it) != it.price %}<s class="muted">{{ it.price }}</s> {% endif %}{{ shop_price(c, it) }} 两{% endif %}</td>
     <td>{{ inv.get(k, 0) }}</td>
     <td style="white-space:nowrap">
-      <form method="post" action="{{ url_for('shop_buy', key=k) }}" style="display:inline"><button class="plain" {{ 'disabled' if c.silver < shop_price(c, it) }}>买</button></form>
+      {% if not it.get('craft') %}<form method="post" action="{{ url_for('shop_buy', key=k) }}" style="display:inline"><button class="plain" {{ 'disabled' if c.silver < shop_price(c, it) }}>买</button></form>{% endif %}
       {% if it.usable and inv.get(k, 0) %}<form method="post" action="{{ url_for('shop_use', key=k) }}" style="display:inline"><button>用</button></form>{% endif %}
     </td>
   </tr>

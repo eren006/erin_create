@@ -366,6 +366,11 @@ ITEMS = {
     'antai':    dict(name='安胎药', price=100, usable=False, desc='放在身边：有孕时若遭人下药，可保住胎儿一次'),
     'ruyi':     dict(name='玉如意', price=120, usable=False, desc='赠给别人，对方好感 +15'),
     'yinzhen':  dict(name='银针', price=60, usable=False, desc='放在身边：被人下药时成算 -15%，挡下一次就断一根'),
+    # 宫人闲时做的小东西：内务府不卖，只能攒出来；可以自己用，也能写信附给别人
+    'xiangnang': dict(name='香囊', price=0, craft=True, usable=True, desc='手巧的宫人缝的。佩上：今晚翻牌子的机会略添一分'),
+    'dianxin':   dict(name='点心匣', price=0, craft=True, usable=True, desc='忠厚的宫人备的。吃下：体质 +2'),
+    'tiseng':    dict(name='提神茶', price=0, craft=True, usable=True, desc='机灵的宫人泡的。喝下：精力 +1（不超过上限）'),
+    'hebao':     dict(name='荷包', price=0, craft=True, usable=True, desc='嘴紧的宫人缝得严严实实，里头塞着攒下的体己：银子 +15 两'),
 }
 
 # ── 药材（内务府暗柜）──────────────────────────────────────────────────────────
@@ -4305,6 +4310,9 @@ def shop_buy(key):
     it = ITEMS.get(key)
     if not it:
         return redirect(url_for('shop'))
+    if it.get('craft'):
+        flash('这是宫人自己做的，内务府不卖。', 'bad')
+        return redirect(url_for('shop'))
     if c['status'] == 'cold':
         flash('冷宫的人，内务府不理会。', 'bad')
     elif c['silver'] < shop_price(c, it):
@@ -4333,6 +4341,17 @@ def shop_use(key):
         add_stat(c['id'], 'health', 15); msg = '体质 +15。'
     elif key == 'qinpu':
         add_stat(c['id'], 'talent', 3); msg = '才艺 +3。'
+    elif key == 'dianxin':
+        add_stat(c['id'], 'health', 2); msg = '体质 +2。'
+    elif key == 'tiseng':
+        run('UPDATE consorts SET energy=MIN(?, energy+1) WHERE id=?', (ENERGY_MAX, c['id'])); msg = '精神好些了，精力 +1。'
+    elif key == 'hebao':
+        add_silver(c['id'], 15); msg = '银子 +15 两。'
+    elif key == 'xiangnang':
+        if c['status'] != 'normal':
+            flash('现在佩给谁看呢。', 'bad')
+            return redirect(url_for('shop'))
+        run("UPDATE consorts SET seek_bonus=seek_bonus+8 WHERE id=?", (c['id'],)); msg = '今晚翻牌子的机会略添一分。'
     elif key == 'shujin':
         if c['status'] != 'normal':
             flash('现在穿给谁看呢。', 'bad')
@@ -4673,6 +4692,39 @@ def huafei_punish(day):
         run("UPDATE consorts SET punish_ready_day=? WHERE id=?", (day + PUNISH_COOLDOWN, hf['id']))
         return
 
+MAID_CRAFT_MIN_LOYALTY, MAID_CRAFT_BASE, MAID_CRAFT_PER_LOYALTY, MAID_CRAFT_MAX = 40, 0.12, 0.003, 0.35   # 宫人每晚闲时做点东西的概率：忠心 40 起 12%，每高 1 点 +0.3%，最多 35%
+MAID_CRAFT = {        # 特质 → 做出什么：item 进背包，silver 直接给银子，gossip 带回一则风声
+    'shouqiao': dict(kind='item', key='xiangnang', verb='缝了个'),
+    'zhonghou': dict(kind='item', key='dianxin', verb='备了一匣'),
+    'jiling':   dict(kind='item', key='tiseng', verb='泡了一壶'),
+    'zuijin':   dict(kind='item', key='hebao', verb='缝了个'),
+    'tancai':   dict(kind='silver', low=5, high=12),
+    'suizui':   dict(kind='gossip'),
+}
+
+def maid_craft_chance(loyalty):
+    if loyalty < MAID_CRAFT_MIN_LOYALTY: return 0.0
+    return min(MAID_CRAFT_MAX, MAID_CRAFT_BASE + (loyalty - MAID_CRAFT_MIN_LOYALTY) * MAID_CRAFT_PER_LOYALTY)
+
+def maid_craft(c, m):
+    """宫人闲时偶尔做点小东西。病着的、忠心不到 40 的不做。返回写给主子的那句话，没做就是 None"""
+    cur = get_maid(m['id'])
+    if cur['status'] != 'active' or cur['sick_until_day'] >= cur_day(): return None
+    if random.random() >= maid_craft_chance(cur['loyalty']): return None
+    spec = MAID_CRAFT.get(cur['trait'])
+    if not spec: return None
+    if spec['kind'] == 'item':
+        inv_add(c['id'], spec['key'], 1)
+        text = f"{cur['name']}闲着没事，{spec['verb']}{ITEMS[spec['key']]['name']}，放进了你的箱笼。"
+    elif spec['kind'] == 'silver':
+        n = random.randint(spec['low'], spec['high'])
+        add_silver(c['id'], n)
+        text = f"{cur['name']}替你跑腿时抠下了点零碎，孝敬了 {n} 两。"
+    else:
+        text = f"{cur['name']}在各宫门口转了转，听来一桩事：" + maid_gossip(c, cur)
+    if c['user_id']: notify(c['id'], text, 'good')
+    return text
+
 def maid_upkeep(day):
     for c in q("SELECT * FROM consorts WHERE status NOT IN ('xiunv','dead')"):
         maids = active_maids(c['id'])
@@ -4693,6 +4745,8 @@ def maid_upkeep(day):
         add_silver(c['id'], -wage)
         for m in maids:
             add_loyalty(m['id'], -2 if c['status'] == 'confined' else 1)
+        if c['status'] != 'confined':
+            for m in maids: maid_craft(c, m)
     run("UPDATE consorts SET maid_event='' WHERE maid_event!=''")
 
 # ── 宫人的小事 ─────────────────────────────────────────────────────────────────
