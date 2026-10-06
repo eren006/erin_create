@@ -205,7 +205,7 @@
   function renderSelectors() {
     if(!state.maps.some(m=>String(m.id)===selectedMap)) {selectedMap=state.maps[0]?String(state.maps[0].id):'';selectedSpot='';editorDirty=false;}
     mapSelect.innerHTML=options(state.maps,selectedMap,state.maps.length?null:'先添加地图');
-    const map=getMap();spotSelect.innerHTML=options(map?.spots||[],selectedSpot,'＋ 新建地点');
+    const map=getMap();spotSelect.innerHTML=options((map?.spots||[]).map(s=>({id:s.id,name:s.name+(!s.enabled&&s.x===50&&s.y===50?' · 待定位':'')})),selectedSpot,'＋ 新建地点');
     mapSelect.disabled=!map;spotSelect.disabled=!map;
     if(!map){form.hidden=true;}else form.hidden=false;
     drawPosition();
@@ -318,6 +318,81 @@
   qform.onsubmit=e=>{e.preventDefault();if(!selectedRoles.size){message(feedback(qform),'先选至少一个角色。',true);return;}const action=qform.elements.action.value,n=Number(qform.elements.amount.value);if(action==='bonus'&&n===0){message(feedback(qform),'临时次数不能是 0。',true);return;}const roles=[...selectedRoles],body=action==='bonus'?{roles,amount:n,note:qform.elements.note.value}:{roles,daily:action==='default'?null:n};save(qform,action==='bonus'?'bonus':'quota',body,()=>message(feedback(qform),`已更新 ${roles.length} 位角色的次数。`));};
   $('xp-log-role').onchange=renderLogs;$('xp-admin-log-reload').onclick=loadLogs;
   $('xp-admin-reload').onclick=async()=>{try{const initial=!state;await refresh({settings:initial});if(initial)loadSpot();message($('xp-global-message'),'配置已更新，正在编辑的地点内容已保留。');}catch(err){fail($('xp-global-message'),err);}};
+  // 批量导入 / 导出（文本）与批量设置次数：先预览，再提交；预览之后文本或选项改了，就要重新预览
+  const impText=$('xp-import-text'), impMsg=$('xp-import-msg'), impBox=$('xp-import-result'), impPanel=$('xp-import');
+  const conflict=()=>document.querySelector('input[name=xp-conflict]:checked').value;
+  let impKey='';const impSig=()=>conflict()+'\n'+impText.value;
+  function impButtons(){const good=impKey&&impKey===impSig();$('xp-import-commit').disabled=!good;$('xp-conflict-warn').hidden=conflict()!=='replace';}
+  function sampleText() {
+    const item=(state.items||[]).flatMap(g=>g.names)[0];
+    return ['# 地图：学院','@图书馆 📚 x=20 y=28 | 安静得能听见翻页声。','线索 5 | 撕碎的信 | 信纸被撕成两半，只剩半句：「别让他知道……」\\n（内容里换行写 \\n）',item?`物品 2 | ${item} ×1 | 压在书页里。`:'// 物品 2 | 注册过的物品名 ×1','空手 2 | 只有灰尘。','','@钟楼 🔔 | 没写 x、y：先停用，等你在图上点选位置','线索 4 | 停摆的怀表 | 怀表停在 21:07。','空手 3',''].join('\n');
+  }
+  function jumpToLine(n) {
+    if(!n)return;const lines=impText.value.split('\n');let start=0;for(let i=0;i<n-1&&i<lines.length;i++)start+=lines[i].length+1;
+    impText.focus();impText.setSelectionRange(start,start+(lines[n-1]||'').length);
+    const lh=parseFloat(getComputedStyle(impText).lineHeight)||20;impText.scrollTop=Math.max(0,(n-3)*lh);
+  }
+  function errorsHTML(errors,more) {
+    return `<ul class="xp-errors">${errors.map(e=>`<li>${e.line?`<button type="button" class="xp-button xp-quiet" data-line="${e.line}">${esc(e.msg)}</button>`:esc(e.msg)}</li>`).join('')}</ul>${more?`<p class="xp-hint">还有 ${more} 处错误没有列出，先改上面这些。</p>`:''}`;
+  }
+  const TAGS={create:'新建',replace:'覆盖',skip:'跳过'};
+  function planHTML(res) {
+    const s=res.summary;
+    return `<p class="xp-summary">新增地图 ${s.maps_new} · 新建地点 ${s.spots_create} · 覆盖 ${s.spots_replace} · 跳过 ${s.spots_skip} · 共 ${s.drops_total} 条掉落</p><ul class="xp-plan">${res.plan.map(p=>`<li><span class="xp-tag ${p.action}">${TAGS[p.action]}</span> <b>${esc(p.map)}${p.map_new?'（新地图）':''} · ${esc(p.spot)}</b>${p.action==='skip'?'<small>已有同名地点，保持不变</small>':`<small>${p.drops} 条掉落${p.items.length?' · '+esc(p.items.join('、')):''}</small>`}${p.action==='create'&&!p.has_pos?'<span class="xp-tag pending">待定位</span>':''}</li>`).join('')}</ul>`;
+  }
+  async function impRun(mode) {
+    await lock(impPanel,async()=>{
+      message(impMsg,mode==='commit'?'正在导入…':'正在检查…');impBox.innerHTML='';
+      try {
+        const sig=impSig(), res=await request('/admin/explore/api/import',{text:impText.value,mode,on_conflict:conflict()});
+        if(res.errors.length){message(impMsg,`有 ${res.errors.length+(res.more||0)} 处错误，改好再预览。点一条可跳到那一行。`,true);impBox.innerHTML=errorsHTML(res.errors,res.more);impKey='';return;}
+        impBox.innerHTML=planHTML(res);
+        if(mode==='preview'){impKey=sig;message(impMsg,'检查通过，确认计划无误后点「导入」。');return;}
+        impKey='';
+        let note=`导入完成：新建 ${res.summary.spots_create} 个地点，覆盖 ${res.summary.spots_replace} 个。`;
+        if(res.pending_pos)note+=` 其中 ${res.pending_pos} 个新地点还没有位置，请在上面的图上点选位置并开放。`;
+        try{await refresh();note+='';}catch(e){note+=' 但最新配置暂时没读到，请点「重新读取配置」。';$('xp-admin-reload').hidden=false;}
+        message(impMsg,note);
+      } catch(err){fail(impMsg,err);impKey='';}
+    });
+    impButtons();
+  }
+  impText.addEventListener('input',impButtons);
+  document.querySelectorAll('input[name=xp-conflict]').forEach(r=>r.onchange=impButtons);
+  impBox.addEventListener('click',e=>{const b=e.target.closest('[data-line]');if(b)jumpToLine(Number(b.dataset.line));});
+  $('xp-import-preview').onclick=()=>impRun('preview');
+  $('xp-import-commit').onclick=async()=>{
+    if(conflict()==='replace'&&!await ask('同名地点的描述、图标和掉落表会被文本里的内容替换（位置和启用状态保留）。','覆盖同名地点？','确认覆盖'))return;
+    impRun('commit');
+  };
+  $('xp-import-sample').onclick=async()=>{if(impText.value.trim()&&!await ask('文本框里现有的内容会被示例覆盖。','填入示例？','覆盖'))return;impText.value=sampleText();impKey='';impButtons();};
+  $('xp-import-export').onclick=async()=>{
+    if(impText.value.trim()&&!await ask('文本框里现有的内容会被当前配置覆盖。','导出当前配置？','覆盖'))return;
+    await lock(impPanel,async()=>{try{const res=await request('/admin/explore/api/export');impText.value=res.text;impKey='';impBox.innerHTML='';message(impMsg,res.text?'已导出当前全部地图。可以改完再导入（同名地点选「覆盖」）。':'现在还没有任何地图和地点。');}catch(err){fail(impMsg,err);}});
+    impButtons();
+  };
+  $('xp-import-copy').onclick=async()=>{
+    try{await navigator.clipboard.writeText(impText.value);}catch(e){impText.focus();impText.select();try{document.execCommand('copy');}catch(_){message(impMsg,'复制失败，请手动全选复制。',true);return;}}
+    message(impMsg,'已复制。');
+  };
+  const qText=$('xp-quota-text'), qMsg=$('xp-quota-msg'), qBox=$('xp-quota-result'), qPanel=$('xp-quota-import');let qKey='';
+  function qButtons(){$('xp-quota-commit').disabled=!(qKey&&qKey===qText.value);}
+  async function qRun(mode) {
+    await lock(qPanel,async()=>{
+      message(qMsg,mode==='commit'?'正在应用…':'正在检查…');qBox.innerHTML='';
+      try {
+        const key=qText.value,res=await request('/admin/explore/api/quota_import',{text:key,mode});
+        if(res.errors.length){qKey='';message(qMsg,`有 ${res.errors.length} 处错误，改好再预览。`,true);qBox.innerHTML=errorsHTML(res.errors,0);return;}
+        qBox.innerHTML=(res.default!=null?`<p class="xp-summary">默认每人每天 ${res.default} 次</p>`:'')+(res.warnings.length?`<p class="xp-hint">${res.warnings.map(esc).join('<br>')}</p>`:'')+`<ul class="xp-plan">${res.plan.map(p=>`<li><b>${esc(p.role)}</b> 每天 ${p.daily} 次 <span class="xp-tag ${p.change==='自定义'?'replace':'skip'}">${p.change}</span></li>`).join('')}</ul>`;
+        if(mode==='preview'){qKey=key;message(qMsg,'检查通过，确认后点「应用」。');return;}
+        qKey='';message(qMsg,'已应用。');
+        try{await refresh();}catch(e){message(qMsg,'已应用，但最新配置暂时没读到，请点「重新读取配置」。',true);$('xp-admin-reload').hidden=false;}
+      } catch(err){fail(qMsg,err);qKey='';}
+    });
+    qButtons();
+  }
+  qText.addEventListener('input',qButtons);qBox.addEventListener('click',e=>{const b=e.target.closest('[data-line]');if(!b)return;const n=Number(b.dataset.line),ls=qText.value.split('\n');let s=0;for(let i=0;i<n-1&&i<ls.length;i++)s+=ls[i].length+1;qText.focus();qText.setSelectionRange(s,s+(ls[n-1]||'').length);});
+  $('xp-quota-preview').onclick=()=>qRun('preview');$('xp-quota-commit').onclick=()=>qRun('commit');
   window.addEventListener('beforeunload',e=>{if(editorDirty){e.preventDefault();e.returnValue='';}});
   // base.html owns the existing viewport element, so update it without adding a duplicate.
   document.querySelector('meta[name=viewport]')?.setAttribute('content','width=device-width,initial-scale=1,viewport-fit=cover');

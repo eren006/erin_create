@@ -11,6 +11,8 @@ app.py 末尾 `import explore; explore.register(globals())` 挂载；init_db 末
 import io, json, os, random, secrets, threading, time, uuid
 from datetime import datetime, timedelta, timezone
 
+import explore_import as EI
+
 EXPLORE_COOKIE = "explore_auth"
 EXPLORE_COOKIE_AGE = 30 * 24 * 60 * 60
 EXPLORE_IMAGE_DIR = os.path.join(os.path.dirname(__file__), "explore_images")
@@ -614,6 +616,146 @@ def admin_log():
                                        "used": r["used"], "item_status": _item_status(db, r["op_id"]) if r["kind"] == "item" else ""} for r in rows]})
 
 
+# ───────────────────────── 文本批量导入 / 导出 ─────────────────────────
+
+def _item_name_set(db, sid):
+    return {n for _, ns in G["_admin_grant_item_names"](db, sid) for n in ns}
+
+
+def _import_plan(db, sid, parsed, on_conflict):
+    """只读：对照库里现有的地图/地点，算出每个地点是新建/覆盖/跳过。返回 (plan, summary)"""
+    plan, summary = [], {"maps_new": 0, "spots_create": 0, "spots_replace": 0, "spots_skip": 0, "drops_total": 0}
+    for m in parsed["maps"]:
+        row = db.execute("SELECT id FROM explore_maps WHERE show_id=? AND name=? ORDER BY id LIMIT 1", (sid, m["name"])).fetchone()
+        if not row:
+            summary["maps_new"] += 1
+        for sp in m["spots"]:
+            old = db.execute("SELECT id FROM explore_spots WHERE show_id=? AND map_id=? AND name=? ORDER BY id LIMIT 1",
+                             (sid, row["id"], sp["name"])).fetchone() if row else None
+            action = "create" if not old else ("replace" if on_conflict == "replace" else "skip")
+            summary["spots_" + action] += 1
+            if action != "skip":
+                summary["drops_total"] += len(sp["drops"])
+            plan.append({"map": m["name"], "map_new": not row, "spot": sp["name"], "action": action, "has_pos": sp["has_pos"],
+                         "drops": len(sp["drops"]),
+                         "items": [f"{d['item']}×{d['qty']}" for d in sp["drops"] if d["kind"] == "item"]})
+    return plan, summary
+
+
+def _import_write(db, sid, parsed, on_conflict, names):
+    """单事务写入（调用方负责 commit / rollback）。返回错误文案或 None"""
+    for m in parsed["maps"]:
+        row = db.execute("SELECT id FROM explore_maps WHERE show_id=? AND name=? ORDER BY id LIMIT 1", (sid, m["name"])).fetchone()
+        mid = row["id"] if row else db.execute(
+            "INSERT INTO explore_maps (show_id, name, sort) VALUES (?,?,(SELECT COALESCE(MAX(sort),0)+1 FROM explore_maps WHERE show_id=?))",
+            (sid, m["name"], sid)).lastrowid
+        for sp in m["spots"]:
+            old = db.execute("SELECT id, drops FROM explore_spots WHERE show_id=? AND map_id=? AND name=? ORDER BY id LIMIT 1",
+                             (sid, mid, sp["name"])).fetchone()
+            if old and on_conflict != "replace":
+                continue
+            raw = []
+            old_ids = {}
+            if old:
+                for d in json.loads(old["drops"] or "[]"):
+                    if d.get("kind") == "clue":
+                        old_ids.setdefault(d.get("title"), d.get("id"))
+            used = set()
+            for d in sp["drops"]:
+                e = dict(d)
+                if d["kind"] == "clue" and old_ids.get(d["title"]) and old_ids[d["title"]] not in used:
+                    e["id"] = old_ids[d["title"]]
+                    used.add(e["id"])
+                raw.append(e)
+            drops, derr = _clean_drops(raw, names)
+            if derr:
+                return f"地点「{sp['name']}」：{derr}"
+            js = json.dumps(drops, ensure_ascii=False)
+            if old:
+                db.execute("UPDATE explore_spots SET desc=?, icon=?, drops=? WHERE id=?", (sp["desc"], sp["icon"], js, old["id"]))
+                if sp["has_pos"]:
+                    db.execute("UPDATE explore_spots SET x=?, y=? WHERE id=?", (sp["x"], sp["y"], old["id"]))
+            else:
+                db.execute("INSERT INTO explore_spots (map_id, name, desc, icon, x, y, enabled, drops, show_id, sort) "
+                           "VALUES (?,?,?,?,?,?,?,?,?,(SELECT COALESCE(MAX(sort),0)+1 FROM explore_spots WHERE show_id=?))",
+                           (mid, sp["name"], sp["desc"], sp["icon"], sp["x"], sp["y"], 1 if sp["has_pos"] else 0, js, sid, sid))
+    return None
+
+
+def admin_import():
+    err = _admin_guard()
+    if err: return err
+    b = _body()
+    sid, db = G["get_show_id"](), G["get_db"]()
+    commit = b.get("mode") == "commit"
+    on_conflict = "replace" if b.get("on_conflict") == "replace" else "skip"
+    names = _item_name_set(db, sid)
+    parsed = EI.parse(b.get("text"), names)
+    if parsed["errors"]:
+        body = {"errors": parsed["errors"], "more": parsed["more"], "plan": [], "summary": {}, "committed": False}
+        if commit:
+            return _json(dict(body, ok=False, error=f"有 {len(parsed['errors']) + parsed['more']} 处错误，请先修改"), 400)
+        return _json(dict(body, ok=True))
+    plan, summary = _import_plan(db, sid, parsed, on_conflict)
+    if not commit:
+        return _json({"ok": True, "errors": [], "more": 0, "plan": plan, "summary": summary, "committed": False})
+    try:
+        werr = _import_write(db, sid, parsed, on_conflict, names)
+        if werr:
+            db.rollback()
+            return _json({"ok": False, "error": werr, "errors": [], "plan": plan, "summary": summary, "committed": False}, 400)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return _json({"ok": True, "errors": [], "more": 0, "plan": plan, "summary": summary, "committed": True,
+                  "pending_pos": sum(1 for p in plan if p["action"] == "create" and not p["has_pos"])})
+
+
+def admin_export():
+    from flask import request
+    sid, db = G["get_show_id"](), G["get_db"]()
+    maps = _maps_payload(db, sid, with_drops=True)
+    mid = request.args.get("map_id", type=int)
+    if mid is not None:
+        maps = [m for m in maps if m["id"] == mid]
+    return _json({"ok": True, "text": EI.render(maps)})
+
+
+def admin_quota_import():
+    err = _admin_guard()
+    if err: return err
+    b = _body()
+    sid, db = G["get_show_id"](), G["get_db"]()
+    roles = [r for r in G["_admin_role_list"](db, sid) if r != "*"]
+    res = EI.parse_quota(b.get("text"), roles)
+    base = {"errors": res["errors"], "warnings": res["warnings"], "plan": [], "committed": False}
+    commit = b.get("mode") == "commit"
+    if res["errors"]:
+        return _json(dict(base, ok=False, error=f"有 {len(res['errors'])} 处错误，请先修改"), 400) if commit else _json(dict(base, ok=True))
+    st = get_settings(db, sid)
+    default = res["default"] if res["default"] is not None else st["default_daily"]
+    plan = [{"role": r["role"], "daily": r["daily"], "change": "同默认" if r["daily"] == default else "自定义"} for r in res["rows"]]
+    base.update(plan=plan, default=res["default"])
+    if not commit:
+        return _json(dict(base, ok=True))
+    try:
+        if res["default"] is not None:
+            db.execute("INSERT INTO explore_settings (show_id, default_daily) VALUES (?,?) "
+                       "ON CONFLICT(show_id) DO UPDATE SET default_daily=excluded.default_daily", (sid, res["default"]))
+        for p in plan:
+            if p["change"] == "同默认":
+                db.execute("DELETE FROM explore_quota WHERE show_id=? AND role=?", (sid, p["role"]))
+            else:
+                db.execute("INSERT INTO explore_quota (show_id, role, daily) VALUES (?,?,?) "
+                           "ON CONFLICT(show_id, role) DO UPDATE SET daily=excluded.daily", (sid, p["role"], p["daily"]))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return _json(dict(base, ok=True, committed=True))
+
+
 def register(ns):
     for k in _NAMES:
         G[k] = ns[k]
@@ -641,6 +783,9 @@ def register(ns):
     R("/admin/explore/api/quota", "admin_explore_quota", adm(admin_quota), methods=["POST"])
     R("/admin/explore/api/bonus", "admin_explore_bonus", adm(admin_bonus), methods=["POST"])
     R("/admin/explore/api/log", "admin_explore_log", adm(admin_log))
+    R("/admin/explore/api/import", "admin_explore_import", adm(admin_import), methods=["POST"])
+    R("/admin/explore/api/export", "admin_explore_export", adm(admin_export))
+    R("/admin/explore/api/quota_import", "admin_explore_quota_import", adm(admin_quota_import), methods=["POST"])
 
     @app.after_request
     def _explore_headers(resp):

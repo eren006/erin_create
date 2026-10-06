@@ -170,3 +170,30 @@
 
 /* A full row keeps the Beijing time and native select arrow readable on phones. */
 @media(max-width:650px) { .xp-admin #xp-settings-form > .xp-two { grid-template-columns:1fr; } }
+
+/* 批量导入 / 导出 */
+.xp .xp-import { margin-top:22px; }
+.xp .xp-import > summary { cursor:pointer; min-height:44px; display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; font-weight:600; }
+.xp .xp-import > summary small { font-weight:400; font-size:12px; color:var(--xp-muted); }
+.xp .xp-mono { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"PingFang SC",monospace; font-size:14px; line-height:1.6; resize:vertical; white-space:pre; overflow:auto; }
+.xp .xp-import-actions { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0; }
+.xp .xp-import-actions > button { flex:1 1 120px; }
+.xp .xp-conflict { border:1px solid var(--xp-line); border-radius:6px; padding:8px 14px 12px; margin:12px 0; min-width:0; }
+.xp .xp-conflict legend { padding:0 6px; font-size:13px; color:var(--xp-muted); }
+.xp .xp-conflict .xp-check { min-height:44px; }
+.xp .xp-warn { margin:6px 0 0; padding:10px 12px; background:var(--xp-rust-soft); border-left:3px solid var(--xp-rust); border-radius:3px; color:var(--xp-rust); font-size:13px; font-weight:600; }
+.xp .xp-import-result { min-width:0; }
+.xp .xp-summary { font-weight:600; margin:8px 0; }
+.xp .xp-plan,.xp .xp-errors { list-style:none; padding:0; margin:8px 0; display:grid; gap:8px; }
+.xp .xp-plan li { padding:10px 12px; border:1px solid var(--xp-line); border-radius:6px; background:var(--xp-paper); overflow-wrap:anywhere; display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; }
+.xp .xp-plan small { color:var(--xp-muted); flex-basis:100%; }
+.xp .xp-tag { display:inline-block; font-size:11px; font-weight:600; padding:1px 8px; border-radius:99px; background:var(--xp-soft); color:var(--xp-accent); }
+.xp .xp-tag.replace { background:var(--xp-rust-soft); color:var(--xp-rust); }
+.xp .xp-tag.skip { background:var(--xp-clear); border:1px solid var(--xp-line); color:var(--xp-muted); }
+.xp .xp-tag.pending { background:var(--xp-rust-soft); color:var(--xp-error); }
+.xp .xp-errors li { overflow-wrap:anywhere; color:var(--xp-error); }
+.xp .xp-errors button { width:100%; justify-content:flex-start; text-align:left; color:var(--xp-error); border-color:var(--xp-error); height:auto; padding:10px 12px; }
+.xp .xp-format { margin-top:12px; }
+.xp .xp-format > summary { cursor:pointer; min-height:44px; display:flex; align-items:center; color:var(--xp-muted); font-size:13px; }
+.xp .xp-format code { font-family:ui-monospace,Menlo,monospace; font-size:12px; background:var(--xp-soft); padding:1px 5px; border-radius:3px; overflow-wrap:anywhere; }
+.xp input[type=radio] { width:20px; height:20px; min-height:20px; display:inline-block; margin:0; flex-shrink:0; accent-color:var(--xp-accent); }
