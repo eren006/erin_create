@@ -127,6 +127,8 @@ def entry_stat_roll(uid):
 
 CONSPIRE_INFLUENCE_SHARE = 0.75     # 合谋得手/落空时，两人各拿多少份势力（1=独自出手的全额，两人合计 1.5 份）
 
+SCHEME_GROW_CHANCE, SCHEME_GROW_CHANCE_FIZZLE, SCHEME_GROW_AMOUNT = 0.25, 0.10, 1   # 害人涨心计：得手 25%、没成没被察觉 10%，每次 +1；败露不涨
+
 def gain_intrigue_influence(it, fraction=1.0, share=1.0, actor_id=None):
     atk,tgt=get_consort(actor_id or it['attacker_id']),get_consort(it['target_id'])
     if not atk or not tgt or not atk['user_id'] or not tgt['user_id'] or atk['id']==tgt['id']: return
@@ -143,6 +145,11 @@ def gain_intrigue_influence(it, fraction=1.0, share=1.0, actor_id=None):
             notify(atk['id'],f'这一回使计没成，好在没人察觉，也算攒了点人脉，势力 +{gain}。','info')
         else:
             notify(atk['id'],f'你这一回使计得手，势力 +{gain}。同日对同一人不重复增加。','good')
+        # 害人历练心计：和势力共用「同日对同一人只算一次」，防止对着一个人狂刷
+        p = SCHEME_GROW_CHANCE if fraction >= 1 else SCHEME_GROW_CHANCE_FIZZLE
+        if atk['scheme'] < 100 and random.random() < p:
+            add_stat(atk['id'], 'scheme', SCHEME_GROW_AMOUNT)
+            notify(atk['id'], f'这一番算计让你长了些见识，心计 +{SCHEME_GROW_AMOUNT}。', 'good')
 
 FAVOR_HOT = 150
 FAVOR_LOW = 40
@@ -11161,7 +11168,8 @@ def rankings_boards():
         board('财富榜', '银子', lambda p: p['silver']),
         board('种菜榜', '累计收获', lambda p: harvest.get(p['id'], 0)),
         board('成就榜', '已得成就', lambda p: ach.get(p['id'], 0)),
-        board('心计榜', '心计', lambda p: p['scheme']),
+        # 心计榜已隐藏（2026-10-07）：心计是暗牌，不公开排名。想恢复就取消下面这行注释
+        # board('心计榜', '心计', lambda p: p['scheme']),
     ]
 
 
