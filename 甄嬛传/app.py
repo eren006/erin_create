@@ -333,7 +333,7 @@ HALL_DESCS = dict(
 DISCIPLINE_COOLDOWN = 3
 
 
-ARTS = ['琴', '棋', '书', '画', '诗', '舞', '女红']
+ARTS = ['琴', '棋', '书', '画', '诗', '舞', '女红', '琵琶', '笛子']
 ART_MASTERY = 8       # 修习满这么多次算精通
 
 FAVOR_WORDS = [(600, '圣眷正浓'), (250, '颇得圣心'), (80, '偶承恩泽'), (1, '圣恩尚浅'), (-1, '未曾承宠')]
@@ -555,7 +555,7 @@ ACTIONS = {
                     desc='才艺提升；正常时圣宠 +5，练皇上喜好的再 +3；某门修满 8 次即精通'),
     'schemestudy': dict(name='读书习谋', energy=1, silver=0, daily=2, when={'normal', 'confined'},
                     desc='读史书、兵书、旧年档案，琢磨人心。心计 +1（心计越高越难长：50 以下必涨，往上渐成概率）'),
-    'perform': dict(name='御前展示才艺', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True, desc='主动展示才艺，成功圣宠 +12～18，失败 +3；病重时暂停'),
+    'perform': dict(name='御前展示才艺', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True, desc='挑一样才艺御前展示，成功圣宠 +12～18，失败 +3；连着两次不能展示同一样才艺；病重时暂停'),
     'palace_work': dict(name='协办宫务', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True, desc='协助整理宫务，势力 +3、德行 +1'),
     'aid': dict(name='帮助姐妹', energy=1, silver=20, daily=1, when={'normal'}, sick_block=True, target=True, desc='送去日常补养，势力 +3、德行 +1，对方体质 +3；每天一次'),
     'groom':   dict(name='梳妆保养', energy=1, silver=15, daily=2, when={'normal', 'confined'},
@@ -1531,6 +1531,7 @@ def init_db():
                      'recap_seen_day': 'INTEGER NOT NULL DEFAULT 0',
                      'last_audience_day': 'INTEGER NOT NULL DEFAULT 0',
                      'pregnancy_misses': 'INTEGER NOT NULL DEFAULT 0',
+                     'last_perform_art': "TEXT NOT NULL DEFAULT ''",
                      'influence': 'INTEGER NOT NULL DEFAULT 0',
                      'pregnancy_started_ts': 'REAL NOT NULL DEFAULT 0', 'bed_daily_day': 'INTEGER NOT NULL DEFAULT 0', 'bed_daily_count': 'INTEGER NOT NULL DEFAULT 0', 'entry_origin': "TEXT NOT NULL DEFAULT 'new'",
                      'last_promote_day': 'INTEGER NOT NULL DEFAULT 0',
@@ -3369,10 +3370,14 @@ def do_study(c, cfg):
 
 def do_perform(c, cfg):
     if emperor_ill(): raise Reject('皇上病重，暂不安排御前才艺。')
+    art = request.form.get('art') if has_request_context() else random.choice(ARTS)
+    if art not in ARTS: raise Reject('选一样要在御前展示的才艺。')
+    if art == c['last_perform_art']: raise Reject(f'上一回你献的就是{art}，皇上刚听过，换一样才艺吧。')
     charge(c, cfg)
+    run('UPDATE consorts SET last_perform_art=? WHERE id=?', (art, c['id']))
     success = random.random() < min(.85, .40 + c['talent'] / 200)
     gain = add_favor(c['id'], random.randint(12,18) if success else 3)
-    return f"你向皇上展示才艺，{'赢得赞许' if success else '略有失误，仍被记住'}。圣宠 +{gain}。", 'good'
+    return f"你向皇上展示{art}，{'赢得赞许' if success else '略有失误，仍被记住'}。圣宠 +{gain}。", 'good'
 
 
 SCHEME_STUDY_CHANCE = [(50, 1.0), (70, 0.6), (90, 0.35), (101, 0.15)]
@@ -11232,6 +11237,8 @@ BANQUET_PIECES = {
     '诗': [('新岁贺诗', 1), ('即席联句', 2), ('《守岁》长歌', 3)],
     '舞': [('长袖独舞', 1), ('《飞天》', 2), ('《霓裳羽衣》', 3)],
     '女红': [('亲手缝的福袋', 1), ('双面绣', 2), ('百福图绣屏', 3)],
+    '琵琶': [('《春江花月夜》', 1), ('《十面埋伏》', 2), ('《霸王卸甲》', 3)],
+    '笛子': [('《妆台秋思》', 1), ('《姑苏行》', 2), ('《鹧鸪飞》', 3)],
 }
 BANQUET_TIER_MIN = {1: 0, 2: 5, 3: ART_MASTERY}     # 要达到的熟练度
 BANQUET_TIER_BONUS = {1: 3, 2: 9, 3: 16}             # 够格的加分
@@ -11256,6 +11263,7 @@ BANQUET_GEAR = {
 BANQUET_PROPS = {   # 才艺：(普通道具, 上等道具)
     '琴': ('松风琴', '焦尾琴'), '棋': ('云子玉棋', '玲珑棋盘'), '书': ('紫毫笔', '端溪砚'), '画': ('狼毫画笔', '青绿颜料'),
     '诗': ('洒金笺', '松烟墨'), '舞': ('长水袖', '银铃脚环'), '女红': ('金线', '苏绣绷架'),
+    '琵琶': ('檀木琵琶', '紫檀嵌螺钿琵琶'), '笛子': ('湘妃竹笛', '羊脂白玉笛'),
 }
 for _art, (_n1, _n2) in BANQUET_PROPS.items():
     BANQUET_GEAR[f'prop_{_art}_1'] = dict(name=_n1, slot='prop', art=_art, price=120, bonus=5)

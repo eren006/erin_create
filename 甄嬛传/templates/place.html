@@ -153,6 +153,8 @@
       <input type="hidden" name="back" value="{{ request.view_args.key }}">
       {% if key == 'study' %}
         <select name="art" aria-label="才艺">{% for art in ARTS %}<option value="{{ art }}" {{ 'selected' if art==gs.emperor_pref }}>{{ art }}（{{ arts.get(art, 0) }}{% if arts.get(art,0) >= ART_MASTERY %}，精通{% endif %}）</option>{% endfor %}</select>
+      {% elif key == 'perform' %}
+        <select name="art" aria-label="展示哪样才艺">{% for art in ARTS %}<option value="{{ art }}" {{ 'disabled' if art == c.last_perform_art }}>{{ art }}（{{ arts.get(art, 0) }}）{{ '·上回献过' if art == c.last_perform_art }}</option>{% endfor %}</select>
       {% elif key == 'aid' %}
         {% if aid_targets %}<select name="target_id" aria-label="帮助谁">{% for p in aid_targets %}<option value="{{ p.id }}">{{ dn(p) }}</option>{% endfor %}</select>{% else %}{% set blocked = true %}<span class="muted">眼下没有可帮助的姐妹</span>{% endif %}
       {% elif key == 'chastise' %}

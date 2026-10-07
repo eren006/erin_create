@@ -64,6 +64,20 @@ class RaiseRankMiscTests(unittest.TestCase):
         game.influence_check(game.get_consort(self.atk), game.cur_day())
         self.assertEqual(game.get_consort(self.atk)['influence'], need + 5)
 
+    def test_new_arts_and_no_repeat_perform(self):
+        self.assertIn('琵琶', game.ARTS); self.assertIn('笛子', game.ARTS)
+        for a in game.ARTS: self.assertIn(a, game.BANQUET_PIECES); self.assertIn(a, game.BANQUET_PROPS)
+        game.run('UPDATE consorts SET energy=8 WHERE id=?', (self.atk,))
+        self.login(self.atk)
+        self.client.post('/act/perform', data=dict(art='琵琶'))
+        self.assertEqual(game.get_consort(self.atk)['last_perform_art'], '琵琶')
+        game.run('DELETE FROM daily_counters')
+        energy = game.get_consort(self.atk)['energy']
+        self.client.post('/act/perform', data=dict(art='琵琶'))
+        self.assertEqual(game.get_consort(self.atk)['energy'], energy, '同一样才艺连着献被拒绝，不扣精力')
+        self.client.post('/act/perform', data=dict(art='笛子'))
+        self.assertEqual(game.get_consort(self.atk)['last_perform_art'], '笛子')
+
 
 if __name__ == '__main__':
     unittest.main()

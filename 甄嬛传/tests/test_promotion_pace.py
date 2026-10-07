@@ -35,8 +35,8 @@ class PromotionPaceTests(unittest.TestCase):
         game.run('UPDATE game_state SET emperor_death_day=0')
         before=game.get_consort(self.atk)
         with patch.object(game.random,'random',return_value=.99):
-            self.client.post('/act/perform')
-            self.client.post('/act/perform')
+            self.client.post('/act/perform',data=dict(art='琴'))
+            self.client.post('/act/perform',data=dict(art='笛子'))
         after=game.get_consort(self.atk)
         self.assertGreaterEqual(after['favor'],before['favor']+3)
         self.assertEqual(after['energy'],before['energy']-1)
