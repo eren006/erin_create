@@ -67,7 +67,7 @@
   <tr>
     <td>{{ dn(r) }}<br><span class="muted">{{ full_name(r) }}{{ '（NPC）' if r.npc_key }}</span></td>
     <td>{{ r.username or '' }}{% if r.managed %}<span class="tag">托管</span>{% endif %}<br><span class="muted">QQ：{{ r.qq_number or '未填写（旧账号）' }}</span></td>
-    <td class="muted" style="white-space:nowrap">貌{{ r.appearance }} 才{{ r.talent }} 计{{ r.scheme }}<br>德{{ r.virtue }} 体{{ r.health }} 侍寝{{ r.bedded_count }}</td>
+    <td class="muted" style="white-space:nowrap">貌{{ r.appearance }} 才{{ r.talent }} 计{{ r.scheme }}<br>德{{ r.virtue }} 体{{ r.health }} 侍寝{{ r.bedded_count }}<br>势力 {{ r.influence }}</td>
     <td class="muted">{{ (SECRETS.get(r.secret) or {}).get('name', '—') }}{{ '（已揭）' if r.secret_revealed }}</td>
     <td>
       {% if r.status == 'dead' %}<span class="muted">已故 · {{ age_text(r.age_months) }} · {{ r.death_reason }}</span>{% else %}
