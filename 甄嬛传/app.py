@@ -489,14 +489,16 @@ DRUGS = {
  'wuming':dict(name='无名',rank=6,price=800,case='none',eat=False,days=0,hours=0,desc='可配其他药（离魂草除外），24小时后线索浮现，仍可调查；成功后账号冷却1天'),
 }
 DRUG_ENERGY = 1
-PREGNANCY_DRUGS = {'honghua': dict(health=15, miscarry=0.60, preterm=0.06), 'musk': dict(health=25, miscarry=0.90, preterm=0.10)}   # 专对孕妇的药；眼线也查不出是谁（open_drug_case 里不通报）
-DRUG_BASE = 0.40
+PREGNANCY_DRUGS = {'honghua': dict(health=15, miscarry=0.60, preterm=0.06, base=0.60, cut_ratio=0.6), 'musk': dict(health=25, miscarry=0.90, preterm=0.10, base=0.55, cut_ratio=0.6)}   # 专对孕妇的药；眼线也查不出是谁（open_drug_case 里不通报）
+DRUG_BASE = 0.50           # 2026-10-08 从 0.40 提到 0.50
+DRUG_CUT_RATIO = 0.65      # 2026-10-08 起所有防守减成只算 65%（原来能叠到 −99%）
+DRUG_FLOOR = 0.20          # 2026-10-08 成功率下限从 8% 提到 20%
 CABINET_SLOTS = 3             # 暗柜每人每天刷几种
 LEDGER_CHANCE = 0.10          # 暗柜买药被内务府记一笔的概率
 NAMELESS_COOLDOWN = 1   # 无名成功后冷却1天
 DRUG_NEWCOMER_SHIELD = 1      # 入宫首日双方不可下药
 DRUGGED_SHIELD = 1            # 普通药保护1天，致命药用drugged_until_day保护2天
-SELF_HAND_PENALTY = 0.15      # 没有内应、自己动手
+SELF_HAND_PENALTY = 0.08      # 没有内应、自己动手（2026-10-08 从 15% 降到 8%）
 NEEDLE_BLOCK = 0.15
 TASTER_LOYALTY = 80           # 忠心到这里的宫人会替主子试毒
 TASTER_CHANCE = 0.20
@@ -10646,15 +10648,17 @@ def resolve_drug(it):
     if c['status'] != 'normal' or is_sick(c) or drug_block(c,t,it['drug'],it['item_used'],it['agent_maid_id'],day,False): return done('void')
     agents = drug_agents(c['id'], t['id'])
     m = next((m for m in agents if m['id'] == it['agent_maid_id']), None)
-    p = DRUG_BASE + (c['scheme']-t['scheme'])*0.008
+    pcfg = PREGNANCY_DRUGS.get(it['drug'])
+    p = (pcfg['base'] if pcfg else DRUG_BASE) + (c['scheme']-t['scheme'])*0.008
     p += min(2,len(agents))*0.10 + (0.08 if m and m['trait']=='shouqiao' else 0)
-    p -= (0 if m or same_palace(c, t) else SELF_HAND_PENALTY) + (0.12 if eyes_active(t) else 0)
-    p -= min(0.15,0.05*active_sister_count(t['id'])) + (0.05 if t['personality']=='dignified' else 0)
-    p -= (0.05 if t['virtue']>=70 else 0) + t['trust']*0.0015
-    if t['user_id']: p -= maid_defense(t['id']) + watch_guard(t['id'])
+    cut = (0 if m or same_palace(c, t) else SELF_HAND_PENALTY) + (0.12 if eyes_active(t) else 0)
+    cut += min(0.15,0.05*active_sister_count(t['id'])) + (0.05 if t['personality']=='dignified' else 0)
+    cut += (0.05 if t['virtue']>=70 else 0) + t['trust']*0.0015
+    if t['user_id']: cut += maid_defense(t['id']) + watch_guard(t['id'])
+    p -= cut * (pcfg['cut_ratio'] if pcfg else DRUG_CUT_RATIO)      # 红花、麝香减成只算六成，其他药六成五
     needle = inv_qty(t['id'], 'yinzhen') > 0
-    before = max(0.08,min(0.85,p))
-    after = max(0.08,min(0.85,p-(NEEDLE_BLOCK if needle else 0)))
+    before = max(DRUG_FLOOR,min(0.85,p))
+    after = max(DRUG_FLOOR,min(0.85,p-(NEEDLE_BLOCK if needle else 0)))
     roll = random.random()
     if (m and m['counter']) or roll >= after:
         if needle and after <= roll < before and not (m and m['counter']):

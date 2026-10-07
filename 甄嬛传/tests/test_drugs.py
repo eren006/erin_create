@@ -168,8 +168,8 @@ class DrugTests(unittest.TestCase):
         game.inv_add(self.tgt,'yinzhen')
         game.run("UPDATE consorts SET scheme=50,trust=0,virtue=50,personality='deep'")
         it=self.plan('yanzhi')
-        # Self-hand probability .20 before needle, .08 after.
-        with patch.object(game.random,'random',return_value=0.12):
+        # 自己动手：成算 .50-.08=.42，带银针 .27；掷 .35 刚好被银针挡下。
+        with patch.object(game.random,'random',return_value=0.35):
             self.assertEqual(game.resolve_intrigue(it)[0],'caught')
         self.assertEqual(game.inv_qty(self.tgt,'yinzhen'),0)
         self.assertEqual(game.get_consort(self.tgt)['drugged_day'],0)
