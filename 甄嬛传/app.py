@@ -443,6 +443,8 @@ def roll_secret():
 
 # ── 物品 ───────────────────────────────────────────────────────────────────────
 
+YINZHEN_OLD_PRICE, YINZHEN_PRICE = 60, 100     # 2026-10-07 银针涨价，已持有的按差价补扣（migrate_yinzhen_price）
+
 ITEMS = {
     'renshen':  dict(name='老山参', price=60, usable=True, desc='体质 +15'),
     'shuhen':   dict(name='舒痕胶', price=150, usable=True, desc='容貌 +3（每天限用一次）'),
@@ -451,7 +453,7 @@ ITEMS = {
     'cuisheng': dict(name='催产丹', price=150, usable=True, desc='有孕时服用：缩短孕期 6 小时，可连着吃'),
     'antai':    dict(name='安胎药', price=100, usable=False, desc='放在身边：有孕时若遭人下药，可保住胎儿一次'),
     'ruyi':     dict(name='玉如意', price=120, usable=False, desc='赠给别人，对方好感 +15'),
-    'yinzhen':  dict(name='银针', price=60, usable=False, desc='放在身边：被人下药时成算 -15%，挡下一次就断一根'),
+    'yinzhen':  dict(name='银针', price=YINZHEN_PRICE, usable=False, desc='放在身边：被人下药时成算 -15%，挡下一次就断一根'),
     # 宫人闲时做的小东西：内务府不卖，只能攒出来；可以自己用，也能写信附给别人
     'xiangnang': dict(name='香囊', price=0, craft=True, usable=True, desc='手巧的宫人缝的。佩上：今晚翻牌子的机会略添一分'),
     'dianxin':   dict(name='点心匣', price=0, craft=True, usable=True, desc='忠厚的宫人备的。吃下：体质 +2'),
@@ -1496,6 +1498,29 @@ def migrate_drug_cooldowns(db):
     db.execute('UPDATE game_state SET drug_rules_version=1 WHERE id=1')
 
 
+def migrate_yinzhen_price(db):
+    """银针涨价：手里还有银针的人，按差价补扣银子（银子不够就扣到 0），只做一次"""
+    if db.execute('SELECT yinzhen_price_version FROM game_state').fetchone()[0]: return
+    day = db.execute('SELECT day FROM game_state').fetchone()[0]
+    for cid, qty, silver in db.execute("SELECT i.consort_id, i.qty, c.silver FROM inventory i JOIN consorts c ON c.id=i.consort_id WHERE i.item_key='yinzhen' AND i.qty>0").fetchall():
+        due = qty * (YINZHEN_PRICE - YINZHEN_OLD_PRICE)
+        pay = min(due, max(0, silver))
+        db.execute('UPDATE consorts SET silver=silver-? WHERE id=?', (pay, cid))
+        db.execute("INSERT INTO messages (consort_id, day, kind, text, created_ts) VALUES (?,?,?,?,?)",
+                   (cid, day, 'info', f'内务府银针涨价（{YINZHEN_OLD_PRICE}→{YINZHEN_PRICE} 两），你手里的 {qty} 根按差价补扣了 {pay} 两' + ('' if pay == due else f'（银子不够，原应补 {due} 两）') + '。', time.time()))
+    db.execute('UPDATE game_state SET yinzhen_price_version=1 WHERE id=1')
+
+
+def migrate_new_arts_notice(db):
+    """才艺上新：琵琶、笛子，各才艺也新增了宴会曲目。只公告一次"""
+    if db.execute('SELECT arts_notice_version FROM game_state').fetchone()[0]: return
+    if not db.execute('SELECT 1 FROM gazette LIMIT 1').fetchone(): return      # 全新的库没人看公告，不用发
+    day = db.execute('SELECT day FROM game_state').fetchone()[0]
+    db.execute("INSERT INTO gazette (day, kind, text, is_night, created_ts) VALUES (?,?,?,?,?)",
+               (day, 'decree', '内务府新进了一批乐器与曲谱：宫中才艺上新「琵琶」「笛子」，各样才艺也添了新的宴会曲目。去本宫修习，御前展示时记得换着样儿来，皇上不爱连着听同一样。', 0, time.time()))
+    db.execute('UPDATE game_state SET arts_notice_version=1 WHERE id=1')
+
+
 def migrate_drug_balance(db):
     if db.execute('SELECT drug_balance_version FROM game_state').fetchone()[0]:return
     now=time.time();day=db.execute('SELECT day FROM game_state').fetchone()[0]
@@ -1532,6 +1557,7 @@ def init_db():
                      'last_audience_day': 'INTEGER NOT NULL DEFAULT 0',
                      'pregnancy_misses': 'INTEGER NOT NULL DEFAULT 0',
                      'last_perform_art': "TEXT NOT NULL DEFAULT ''",
+                     'banquet_wins': 'INTEGER NOT NULL DEFAULT 0',
                      'influence': 'INTEGER NOT NULL DEFAULT 0',
                      'pregnancy_started_ts': 'REAL NOT NULL DEFAULT 0', 'bed_daily_day': 'INTEGER NOT NULL DEFAULT 0', 'bed_daily_count': 'INTEGER NOT NULL DEFAULT 0', 'entry_origin': "TEXT NOT NULL DEFAULT 'new'",
                      'last_promote_day': 'INTEGER NOT NULL DEFAULT 0',
@@ -1627,7 +1653,7 @@ def init_db():
                     'sender_label': "TEXT NOT NULL DEFAULT ''"},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
-        'game_state': {'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
+        'game_state': {'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
                        'reign_no': 'INTEGER NOT NULL DEFAULT 1',
                        'reign_start_day': 'INTEGER NOT NULL DEFAULT 1',
                        'emperor_start_age': 'INTEGER NOT NULL DEFAULT 20',
@@ -1690,6 +1716,8 @@ def init_db():
     migrate_pregnancy_clocks(db)
     migrate_drug_cooldowns(db)
     migrate_drug_balance(db)
+    migrate_new_arts_notice(db)
+    migrate_yinzhen_price(db)
     migrate_rank_scale(db)
     migrate_heir_born_ts(db)
     seed_npcs(db)
@@ -3612,6 +3640,7 @@ def do_chastise(c, cfg):
     add_affinity(c['id'], t['id'], CHASTISE_AFFINITY)
     run('UPDATE consorts SET influence=influence+? WHERE id=?', (CHASTISE_INFLUENCE, c['id']))
     notify(t['id'], f"{me}寻了个由头责罚你：{what}。{pen}。", 'bad')
+    if mode == 'kneel': gazette(f"{me}寻了个由头，罚{display_name(t)}在院中跪了半日。", 'news')
     return f"你寻了个由头责罚了{display_name(t)}（{what}），对方{pen}，双方好感 {CHASTISE_AFFINITY}，你势力 +{CHASTISE_INFLUENCE}。", 'info'
 
 
@@ -5453,7 +5482,7 @@ FEED_TEXT = {
     'aid':         lambda t: f"给{display_name(t)}送去了日常补养" if t else '给姐妹送去了日常补养',
     'attend':      lambda t: '去养心殿侍疾',
     'pizhe':       lambda t: '陪皇上批了折子',
-    'chastise':    lambda t: '责罚了低位的妃嫔',
+    'chastise':    lambda t: ((f"寻了个由头，罚{display_name(t)}跪了半日" if request.form.get('mode') == 'kneel' else f"寻了个由头，罚了{display_name(t)}的俸银" if request.form.get('mode') == 'fine' else f"寻了个由头，把{display_name(t)}禁了足") if t else '责罚了低位的妃嫔'),
     'shoukang':    lambda t: '去寿康宫给太妃请安',
 }
 
@@ -5464,7 +5493,7 @@ def feed_for_action(c, key):
     fn = FEED_TEXT.get(key)
     if not fn: return
     t = None
-    try: t = get_consort(int(request.form.get('target_id', 0))) if key in ('visit', 'plead', 'aid') else None
+    try: t = get_consort(int(request.form.get('target_id', 0))) if key in ('visit', 'plead', 'aid', 'chastise') else None
     except ValueError: t = None
     feed(c['id'], fn(t))
 
@@ -11249,6 +11278,7 @@ BANQUET_REWARDS = {   # 名次：(圣宠区间, 银子)
     1: ((20, 30), 80), 2: ((12, 18), 40), 3: ((6, 10), 20),
 }
 BANQUET_JOIN_SILVER = 15       # 参与奖：献了艺但没进前三的人拿这些（2026-10-07 起从 10 提到 15；比第三名的名次奖 20 少一点）；和名次奖不叠加，前三名只拿各自的名次奖
+BANQUET_STALE_PER_WIN, BANQUET_STALE_MAX = 4, 16      # 夺过魁的人再献艺容易让人看腻：每夺一次魁，得分暗中 −4，最多 −16（不在界面上提示）
 BANQUET_XP = 1          # 献艺本身也算一次练习
 
 # 戏装铺：宴服、头面、道具（按才艺分），买下就是自己的，开席时每类取最好的一件算加分
@@ -11305,6 +11335,7 @@ def banquet_score(c, art, rehearsed, tier=1, buff=0):
     s = min(n, 15) * 3 + c['talent'] * 0.4 + rehearsed * 8 + random.uniform(0, 20) + buff + gear_bonus(c['id'], art)
     s += BANQUET_TIER_BONUS[tier] if ok else -BANQUET_TIER_PENALTY[tier]
     if art == state()['emperor_pref']: s += 10
+    s -= min(BANQUET_STALE_MAX, (c['banquet_wins'] if 'banquet_wins' in c.keys() else 0) * BANQUET_STALE_PER_WIN)
     return round(s, 1), not ok
 
 
@@ -11576,6 +11607,7 @@ def run_banquet(date):
                 parts.append(f"圣宠 +{add_favor(c['id'], random.randint(*favor_rng))}")
             add_silver(c['id'], silver)
             parts.append(f"赏银 {silver} 两" + ('' if place <= 3 else '（参与奖）'))
+            if place == 1: run('UPDATE consorts SET banquet_wins=banquet_wins+1 WHERE id=?', (c['id'],))
             if place == 1 and c['user_id'] and family_row(c['user_id']):
                 add_prestige_uid(c['user_id'], 2, '新年宴会夺魁')
                 parts.append('名望 +2')

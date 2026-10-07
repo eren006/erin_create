@@ -78,6 +78,41 @@ class RaiseRankMiscTests(unittest.TestCase):
         self.client.post('/act/perform', data=dict(art='笛子'))
         self.assertEqual(game.get_consort(self.atk)['last_perform_art'], '笛子')
 
+    def test_banquet_winner_gets_harder_to_win_again(self):
+        from unittest.mock import patch
+        c = game.get_consort(self.atk)
+        with patch.object(game.random, 'uniform', return_value=10):
+            fresh = game.banquet_score(c, '琴', 0)[0]
+            game.run('UPDATE consorts SET banquet_wins=2 WHERE id=?', (self.atk,))
+            stale = game.banquet_score(game.get_consort(self.atk), '琴', 0)[0]
+            game.run('UPDATE consorts SET banquet_wins=9 WHERE id=?', (self.atk,))
+            capped = game.banquet_score(game.get_consort(self.atk), '琴', 0)[0]
+        self.assertEqual(fresh - stale, 2 * game.BANQUET_STALE_PER_WIN)
+        self.assertEqual(fresh - capped, game.BANQUET_STALE_MAX)
+
+    def test_arts_notice_once_and_kneel_gazette(self):
+        n = lambda: game.q("SELECT COUNT(*) n FROM gazette WHERE text LIKE '%才艺上新%'", one=True)['n']
+        game.gazette('占位')
+        game.run('UPDATE game_state SET arts_notice_version=0')
+        game.init_db(); game.init_db()
+        self.assertEqual(n(), 1)
+
+    def test_yinzhen_back_charge_once(self):
+        game.inv_add(self.atk, 'yinzhen', 2)
+        game.run('UPDATE consorts SET silver=1000 WHERE id=?', (self.atk,))
+        game.run('UPDATE game_state SET yinzhen_price_version=0')
+        game.init_db(); game.init_db()
+        self.assertEqual(game.get_consort(self.atk)['silver'], 1000 - 2 * (game.YINZHEN_PRICE - game.YINZHEN_OLD_PRICE))
+
+    def test_chastise_feed_names_the_victim(self):
+        low = self.player('小答应', rank=2)
+        game.run('UPDATE consorts SET energy=8 WHERE id=?', (self.atk,))
+        self.login(self.atk)
+        self.client.post('/act/chastise', data=dict(target_id=low, mode='kneel'))
+        txt = ' '.join(r['text'] for r in game.q('SELECT text FROM daily_feed'))
+        self.assertIn(game.display_name(game.get_consort(low)), txt)
+        self.assertIn('罚', txt)
+
 
 if __name__ == '__main__':
     unittest.main()
