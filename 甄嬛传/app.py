@@ -5513,7 +5513,7 @@ def daily_page():
 
 GOSSIP_WORDS = dict(greet='去景仁宫请了安', study='练了才艺', groom='梳妆打扮', garden='逛了御花园',
                     seek='往养心殿送了汤羹', rest='在宫里静养', reflect='闭门抄经', visit='四处串门',
-                    spy='派人打听别人的事', plead='去养心殿替人求情', letter='写了信', intrigue='私下里安排了什么事',
+                    spy='派人打听别人的事', plead='去养心殿替人求情', letter='写了信',
                     npc_visit='去各宫娘娘那儿走动')
 
 def maid_gossip(c, m):
