@@ -8263,6 +8263,11 @@ def resolve_births(day, include_legacy=True):
                 extra += f"母凭子贵，晋为{display_name(get_consort(c['id']))}。"
         else:
             add_favor(c['id'], BIRTH_FAVOR_PRINCESS, gain_mult=False)
+        if not state()['mourning']:      # 生子的圣宠加上之后，圣宠、德行、势力若已够下一级的标准，单独判定一次晋封（不用等下一轮晋封检查）
+            promoted = try_promote(c, day, quiet_full=True)
+            if promoted:
+                extra += f"生子圣宠加身，晋为{display_name(promoted)}。"
+                housing_sync()
         gift_line = '；'.join((f"{b[0]}：{b[1]}" if twins else b[1]) for b in born)
         gazette(f"{display_name(c)}诞下{label}。{extra}资质：{gift_line}。", 'birth')
         notify(c['id'], f"你诞下了{label}。{extra}", 'good')
@@ -8461,32 +8466,38 @@ def audience_weight(c, day):
     return 10 + c['trust'] * 0.3 + min(10, day - c['last_audience_day']) * 4
 
 @atomic
+def try_promote(c, day, quiet_full=False):
+    """单独判定一个人能不能晋一级：圣宠、德行、势力都够标准且名额有空才晋。返回晋封后的 consorts 行，没晋返回 None"""
+    c = get_consort(c['id'])
+    if not c['user_id'] or c['status'] != 'normal' or not 1 <= c['rank'] <= PLAYER_MAX_RANK - 1: return None
+    nxt = c['rank'] + 1
+    if c['favor'] < promote_favor_need(c, nxt) or c['virtue'] < promote_virtue_need(nxt) or c['influence'] < PROMOTE_INFLUENCE[nxt]: return None
+    if not slot_free(nxt, c['id']):
+        if not quiet_full and daily_count(c['id'], 'slot_full_notice') == 0:
+            notify(c['id'], f"论圣宠你已够得上{RANK_NAMES[nxt]}，可{RANK_NAMES[nxt]}的位子都满了。")
+            daily_inc(c['id'], 'slot_full_notice')
+        return None
+    quick = bool(c['last_promote_day']) and day - c['last_promote_day'] <= 4
+    old_title = c['title']
+    set_rank(c['id'], nxt)
+    if not old_title and nxt < 5 and random.random() < .30:
+        assign_title(c['id'])
+    c2 = get_consort(c['id'])
+    title_note = f"赐封号「{c2['title']}」，" if not old_title and c2['title'] else ''
+    gazette(f"圣旨：{title_note}{full_name(c2)}晋为{display_name(c2)}。", 'decree')
+    notify(c['id'], f"圣旨到：{title_note}晋你为{display_name(c2)}。", 'decree')
+    night_mark(c['id'], 'promoted', quick=quick, rank=RANK_NAMES[nxt])
+    return c2
+
+
 def resolve_promotions(day):
     """只处理晋封；每次最多一级，不推进年龄、收入或游戏日。"""
     if state()['mourning']: return []
     promoted = []
     for c in q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined')
                   AND rank BETWEEN 1 AND ? ORDER BY favor DESC""", (PLAYER_MAX_RANK - 1,)):
-        c = get_consort(c['id'])
-        nxt = c['rank'] + 1
-        if c['status'] != 'normal': continue
-        if c['favor'] < promote_favor_need(c, nxt) or c['virtue'] < promote_virtue_need(nxt) or c['influence'] < PROMOTE_INFLUENCE[nxt]: continue
-        if not slot_free(nxt, c['id']):
-            if daily_count(c['id'], 'slot_full_notice') == 0:
-                notify(c['id'], f"论圣宠你已够得上{RANK_NAMES[nxt]}，可{RANK_NAMES[nxt]}的位子都满了。")
-                daily_inc(c['id'], 'slot_full_notice')
-            continue
-        quick = bool(c['last_promote_day']) and day - c['last_promote_day'] <= 4
-        old_title = c['title']
-        set_rank(c['id'], nxt)
-        if not old_title and nxt < 5 and random.random() < .30:
-            assign_title(c['id'])
-        c2 = get_consort(c['id'])
-        title_note = f"赐封号「{c2['title']}」，" if not old_title and c2['title'] else ''
-        gazette(f"圣旨：{title_note}{full_name(c2)}晋为{display_name(c2)}。", 'decree')
-        notify(c['id'], f"圣旨到：{title_note}晋你为{display_name(c2)}。", 'decree')
-        night_mark(c['id'], 'promoted', quick=quick, rank=RANK_NAMES[nxt])
-        promoted.append(f"晋封：{display_name(c2)}")
+        c2 = try_promote(c, day)
+        if c2: promoted.append(f"晋封：{display_name(c2)}")
 
     housing_sync()
     return promoted

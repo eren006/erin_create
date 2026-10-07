@@ -42,6 +42,16 @@ class BirthCustodyTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.tgt)['rank'], 5)
         self.assertEqual(h['caretaker_id'], 0, '母凭子贵只晋到嫔位，嫔位养不了皇子，仍进养育所')
 
+    def test_birth_favor_triggers_single_promotion_check(self):
+        game.run('UPDATE consorts SET favor=0,virtue=80,influence=25 WHERE id=?', (self.tgt,))
+        game.run('UPDATE consorts SET favor=0 WHERE id!=? AND rank=5', (self.tgt,))
+        need = game.promote_favor_need(game.get_consort(self.tgt), 5)
+        game.run('UPDATE consorts SET favor=? WHERE id=?', (need - 10, self.tgt))      # 差一点：只有生子圣宠加上才够
+        with patch.object(game.random, 'choice', side_effect=lambda seq: '公主' if seq == ['皇子', '公主'] else __import__('random').Random(1).choice(seq)):
+            self.deliver(self.tgt)
+        self.assertEqual(game.get_consort(self.tgt)['rank'], 5)
+        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%圣旨到%'", (self.tgt,), one=True))
+
     def test_heirs_page_shows_the_nursery_and_offers_entrust(self):
         self.keep_low(self.tgt)
         with patch.object(game.random, 'choice', side_effect=lambda seq: '公主' if seq == ['皇子', '公主'] else seq[0]):
