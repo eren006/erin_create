@@ -287,9 +287,9 @@ class HousingTests(unittest.TestCase):
             game.run('UPDATE consorts SET palace=?,drugged_day=0 WHERE id=?',(palace,b))
             game.run("DELETE FROM daily_counters WHERE key='intrigue'")
             game.inv_add(a,'yanzhi')
-            self.client.post('/intrigue/submit',data=dict(method='drug',drug='yanzhi',target_id=b))
-            it=game.q('SELECT * FROM intrigues ORDER BY id DESC',one=True)
-            with patch.object(game.random,'random',return_value=.45):      # 自己动手 .42 → 失败；同宫 .50 → 成功
+            with patch.object(game.random,'random',return_value=.45):      # 自己动手 .42 → 失败；同宫 .50 → 成功（提交时就会实时结算，所以提交也要固定掷骰）
+                self.client.post('/intrigue/submit',data=dict(method='drug',drug='yanzhi',target_id=b))
+                it=game.q('SELECT * FROM intrigues ORDER BY id DESC',one=True)
                 self.assertEqual(game.resolve_drug(it)[0],expected)
 
     @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")

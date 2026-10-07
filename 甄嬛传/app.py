@@ -7834,15 +7834,17 @@ def heir_event_choose():
 
 # ── 每晚结算 ───────────────────────────────────────────────────────────────────
 
+INTRIGUE_CUT_RATIO = 0.6      # 2026-10-08 起：使计成功率里所有「对方防守」的减成只算六成
+
 def intrigue_success_p(atk, tgt, cfg, conspired=False):
     p = cfg['base'] + (atk['scheme'] - tgt['scheme']) * 0.008
     if atk['personality'] == 'deep': p += 0.05
-    if eyes_active(tgt): p -= 0.12
-    p -= min(0.15, 0.05 * active_sister_count(tgt['id']))
-    if tgt['personality'] == 'dignified': p -= 0.05
-    if tgt['virtue'] >= 70: p -= 0.05
-    if tgt['rank'] == PLAYER_MAX_RANK: p -= 0.15
-    p -= tgt['trust'] * 0.0015                      # 皇上信任的人难扳倒：信任 100 时 -15%
+    cut = 0.12 if eyes_active(tgt) else 0
+    cut += min(0.15, 0.05 * active_sister_count(tgt['id']))
+    if tgt['personality'] == 'dignified': cut += 0.05
+    if tgt['virtue'] >= 70: cut += 0.05
+    if tgt['rank'] == PLAYER_MAX_RANK: cut += 0.15
+    cut += tgt['trust'] * 0.0015                      # 皇上信任的人难扳倒：信任 100 时 -15%
     if cfg is INTRIGUES['expose']:
         p += (atk['trust'] - 40) * 0.005            # 告发看告发人自己的信任：信任 0 时 -20%，100 时 +30%
     if cfg is INTRIGUES['frame'] and same_palace(atk, tgt):
@@ -7850,10 +7852,11 @@ def intrigue_success_p(atk, tgt, cfg, conspired=False):
     if cfg is INTRIGUES['rumor'] and has_maid_trait(atk['id'], 'suizui'):
         p += 0.10                                   # 碎嘴的宫人替主子把话传出去
     if tgt['user_id']:
-        p -= maid_defense(tgt['id']) + watch_guard(tgt['id'])   # 宫人护主、泄密、守夜
+        cut += maid_defense(tgt['id']) + watch_guard(tgt['id'])   # 宫人护主、泄密、守夜
     if tgt['user_id']:                              # 交好 NPC 的护持（九点二十一节）
-        if bond(tgt['id'], 'huanghou') >= BOND_CLOSE: p -= BOND_HUANGHOU_GUARD
-        if bond(tgt['id'], 'huafei') >= BOND_INTIMATE: p -= BOND_HUAFEI_GUARD
+        if bond(tgt['id'], 'huanghou') >= BOND_CLOSE: cut += BOND_HUANGHOU_GUARD
+        if bond(tgt['id'], 'huafei') >= BOND_INTIMATE: cut += BOND_HUAFEI_GUARD
+    p -= cut * INTRIGUE_CUT_RATIO
     if atk['user_id'] and bond(atk['id'], 'caoguiren') >= BOND_INTIMATE: p += BOND_CAO_BOOST
     if conspired: p += CONSPIRE_BONUS
     return max(0.08, min(0.85, p))

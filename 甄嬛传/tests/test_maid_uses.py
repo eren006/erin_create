@@ -74,7 +74,7 @@ class MaidUseTests(unittest.TestCase):
         self.login(self.tgt)
         self.act('maid_watch')
         guarded = game.intrigue_success_p(atk, game.get_consort(self.tgt), cfg)
-        self.assertAlmostEqual(base - guarded, game.MAID_WATCH_GUARD)
+        self.assertAlmostEqual(base - guarded, game.MAID_WATCH_GUARD * game.INTRIGUE_CUT_RATIO)
 
     def test_gossip_returns_a_line_and_tancai_buys_a_second_one(self):
         self.player('丙')
@@ -122,7 +122,7 @@ class MaidUseTests(unittest.TestCase):
         atk = game.get_consort(self.atk)
         base = game.intrigue_success_p(atk, game.get_consort(self.tgt), cfg)
         self.maid(self.tgt, '甲', loyalty=70); self.maid(self.tgt, '乙', loyalty=70)
-        self.assertAlmostEqual(base - game.intrigue_success_p(atk, game.get_consort(self.tgt), cfg), 0.06)
+        self.assertAlmostEqual(base - game.intrigue_success_p(atk, game.get_consort(self.tgt), cfg), 0.06 * game.INTRIGUE_CUT_RATIO)
 
     def test_heart_maids_skip_wages(self):
         game.run('UPDATE consorts SET silver=100, status="normal" WHERE id=?', (self.atk,))
