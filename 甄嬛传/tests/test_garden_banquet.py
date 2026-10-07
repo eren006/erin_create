@@ -218,7 +218,7 @@ class KitchenTests(Base):
         game.run('UPDATE consorts SET energy=2 WHERE id=?', (self.me,))
         game.stock_add(self.me, 'd_baicaijiao', 4)
         for _ in range(4): self.client.post('/garden/eat', data=dict(dish='baicaijiao'))
-        self.assertEqual(self.me_row()['energy'], 8, '精力封顶')
+        self.assertEqual(self.me_row()['energy'], 2 + 2 * game.EAT_DAILY_MAX, '每天吃食回数有上限，精力只涨对应次数')
         self.assertEqual(game.stock_of(self.me)['d_baicaijiao'], 4 - game.EAT_DAILY_MAX)
 
     def test_banquet_dish_needs_entry_and_adds_buff(self):
