@@ -795,8 +795,8 @@ class FamilyTests(unittest.TestCase):
     def test_venture_outcomes_by_roll(self):
         self.fam(self.atk)
         game.run('UPDATE consorts SET silver=1000 WHERE id=?', (self.atk,))
-        for kind, roll, expect in (('salt', 0.0, 200), ('salt', 0.5, 100), ('salt', 0.8, 50), ('salt', 0.95, 0),
-                                   ('usury', 0.0, 300), ('usury', 0.5, 100), ('usury', 0.9, 0), ('silk', 0.99, 70)):
+        for kind, roll, expect in (('salt', 0.0, 200), ('salt', 0.5, 110), ('salt', 0.8, 50), ('salt', 0.95, 0),
+                                   ('usury', 0.0, 300), ('usury', 0.5, 110), ('usury', 0.9, 0), ('silk', 0.99, 70)):
             game.run('DELETE FROM family_ventures'); game.run('DELETE FROM daily_counters'); game.run('UPDATE consorts SET energy=5, silver=1000 WHERE id=?', (self.atk,))
             self.start_venture(kind, 100)
             v = game.q('SELECT * FROM family_ventures', one=True)
@@ -1262,3 +1262,8 @@ class EmpressRankTests(unittest.TestCase):
         game.create_family(uid, '沈', 'dali')
         self.promote(self.atk, prestige_top=9)   # 之前几级的名望已经拿过了，只看这一步新加的
         self.assertEqual(game.family_row(uid)['prestige'], game.PRESTIGE_RANK_GAIN[10])
+
+    def test_no_venture_outcome_is_break_even(self):
+        for k, v in game.VENTURES.items():
+            self.assertNotIn(0.0, [r for _, r in v['outcomes']], f'{k} 不该再有持平')
+            self.assertTrue(any(0 < r < 0.5 for _, r in v['outcomes']), f'{k} 要有「小赚」档')
