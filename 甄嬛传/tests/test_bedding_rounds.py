@@ -31,16 +31,16 @@ class BeddingRoundsTests(unittest.TestCase):
             self.assertEqual(c['energy'],before['energy'])
         self.assertEqual(game.cur_day(),1)
         with patch.object(game.random,'random',return_value=.99999):
-            self.assertEqual(len(game.bedding_round(2,'2026-10-06:02')),game.BED_PER_ROUND)
-        self.assertEqual(sum(game.get_consort(cid)['bedded_count'] for cid in (self.atk,self.tgt,self.third)),3*game.BED_DAILY_MAX+game.BED_PER_ROUND)
+            self.assertEqual(len(game.bedding_round(2,'2026-10-06:02')),2)
+        self.assertEqual(sum(game.get_consort(cid)['bedded_count'] for cid in (self.atk,self.tgt,self.third)),3*game.BED_DAILY_MAX+2)
 
     def test_round_key_is_persisted_and_idempotent(self):
         self.enable()
         with patch.object(game.random,'random',return_value=.99999):
-            self.assertEqual(len(game.bedding_round(1,'2026-10-05:02')),game.BED_PER_ROUND)
+            self.assertEqual(len(game.bedding_round(1,'2026-10-05:02')),2)
             self.assertEqual(game.bedding_round(1,'2026-10-05:02'),[])
         self.assertEqual(game.state()['last_bed_round_key'],'2026-10-05:02')
-        self.assertEqual(sum(game.get_consort(cid)['bedded_count'] for cid in (self.atk,self.tgt,self.third)),game.BED_PER_ROUND)
+        self.assertEqual(sum(game.get_consort(cid)['bedded_count'] for cid in (self.atk,self.tgt,self.third)),2)
 
     def test_paused_or_unstarted_round_does_not_consume_key(self):
         for field in ('maintenance','mourning'):
@@ -52,16 +52,16 @@ class BeddingRoundsTests(unittest.TestCase):
         game.run('UPDATE game_state SET event_started=0')
         self.assertEqual(game.bedding_round(1,'test'),[])
 
-    def test_schedule_every_two_hours_while_energy_and_promotion_stay_four(self):
-        self.assertEqual(game.BED_ROUND_HOURS,tuple(range(0,24,2)))
+    def test_schedule_every_hour_while_energy_and_promotion_stay_four(self):
+        self.assertEqual(game.BED_ROUND_HOURS,tuple(range(24)))
         self.assertEqual(game.PACE_ROUND_HOURS,(0,4,8,12,16,20))
         self.assertEqual(game.latest_pace_slot(datetime(2026,10,5,7,30,tzinfo=game.TZ)),'2026-10-05:04')
-        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,7,30,tzinfo=game.TZ)),'2026-10-05:06')
+        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,7,30,tzinfo=game.TZ)),'2026-10-05:07')
         for hour in game.BED_ROUND_HOURS:
             now=datetime(2026,10,5,hour,0,tzinfo=game.TZ)
             self.assertEqual(game.latest_bedding_slot(now),f'2026-10-05:{hour:02}')
         self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,0,30,tzinfo=game.TZ)),'2026-10-05:00')
-        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,23,30,tzinfo=game.TZ)),'2026-10-05:22')
+        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,23,30,tzinfo=game.TZ)),'2026-10-05:23')
 
     def test_direct_bedding_also_respects_cap(self):
         with patch.object(game.random,'random',return_value=.99999):

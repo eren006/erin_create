@@ -35,9 +35,9 @@ class LivingTests(unittest.TestCase):
 
     def test_pregnancy_chance_by_health_and_age(self):
         base = dict(age_months=240, health=60)
-        self.assertAlmostEqual(game.pregnancy_chance(base), 0.06 + 60 * 0.0005)
-        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=240, health=100)), 0.11)
-        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=35 * 12, health=60)), (0.06 + 0.03) * 0.6)
+        self.assertAlmostEqual(game.pregnancy_chance(base), 0.12 + 60 * 0.0008)
+        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=240, health=100)), 0.20)
+        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=35 * 12, health=60)), (0.12 + 0.048) * 0.6)
         self.assertEqual(game.pregnancy_chance(dict(age_months=45 * 12, health=100)), 0)
         self.assertLessEqual(game.pregnancy_chance(dict(age_months=240, health=9999)), game.PREGNANCY_MAX)
 
@@ -50,10 +50,10 @@ class LivingTests(unittest.TestCase):
         old = dict(age_months=45 * 12, health=60, blessing=100)
         self.assertEqual(game.pregnancy_chance(old), 0, '福报也救不了年纪')
         old_mother = dict(age_months=36 * 12, health=60, blessing=100)
-        self.assertAlmostEqual(game.pregnancy_chance(old_mother), (0.06 + 0.03 + 0.05) * 0.6)
+        self.assertAlmostEqual(game.pregnancy_chance(old_mother), (0.12 + 0.048 + 0.05) * 0.6)
 
     def test_blessed_player_conceives_where_a_plain_one_would_not(self):
-        with patch.object(game.random, 'random', return_value=0.10):   # 无福报时未孕，福报 50 时有孕
+        with patch.object(game.random, 'random', return_value=0.18):   # 无福报时（16.8%）未孕，福报 50（19.3%）时有孕
             game.do_bedding(self.c(), game.cur_day(), True, [])
             self.assertEqual(self.c()['pregnant_since'], 0)
             game.run('UPDATE consorts SET blessing=50 WHERE id=?', (self.atk,))
@@ -61,7 +61,7 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(self.c()['pregnant_since'], game.cur_day())
 
     def test_a_bedding_can_start_a_pregnancy(self):
-        with patch.object(game.random, 'random', return_value=0.08):   # 体质 60 时怀孕率 9%
+        with patch.object(game.random, 'random', return_value=0.08):   # 体质 60 时怀孕率约 16.8%
             game.do_bedding(self.c(), game.cur_day(), True, [])
         self.assertEqual(self.c()['pregnant_since'], game.cur_day())
         self.assertTrue(any('喜脉' in m for m in self.msgs()))
@@ -83,10 +83,29 @@ class LivingTests(unittest.TestCase):
         return [dict(user_id=1)] * players + [dict(user_id=None)] * npcs
 
     def test_bed_count_is_two_per_round_whatever_the_crowd(self):
-        self.assertEqual(game.BED_PER_ROUND, 3)
-        self.assertEqual([game.bed_count(self.cands(n)) for n in (1, 5, 6, 11, 12, 17, 18, 29, 30, 60)], [3] * 10)
-        self.assertEqual(game.bed_count(self.cands(2, npcs=30)), 3)
-        self.assertEqual(game.bed_count([]), 3)
+        self.assertEqual(2, 2)
+        self.assertEqual([game.bed_count(self.cands(n)) for n in (1, 5, 6, 11, 12, 17, 18, 29, 30, 60)], [2] * 10)      # 测试里 BED_ONE_CHANCE 被压成 0，固定 2 位
+        self.assertEqual(game.bed_count(self.cands(2, npcs=30)), 2)
+        self.assertEqual(game.bed_count([]), 2)
+
+    def test_bed_count_follows_30_50_20(self):
+        with patch.object(game, 'BED_COUNT_WEIGHTS', ((1, 0.3), (2, 0.5), (3, 0.2))):
+            n = [game.bed_count([]) for _ in range(6000)]
+        self.assertEqual(set(n), {1, 2, 3})
+        for k, w in ((1, 0.3), (2, 0.5), (3, 0.2)):
+            self.assertAlmostEqual(n.count(k) / len(n), w, delta=0.04)
+
+    def test_round_note_has_month_reason_and_count(self):
+        for hour in (0, 5, 11, 12, 23):
+            for k, word in ((1, '一'), (2, '两'), (3, '三')):
+                note = game.bed_round_note(k, hour)
+                self.assertIn(game.BED_MONTHS[hour % 12], note)
+                self.assertIn(f'翻了{word}人', note)
+                self.assertTrue(any(r in note for r in game.BED_REASONS[k]))
+
+    def test_each_round_logs_one_note_in_the_gazette(self):
+        self.settle()
+        self.assertEqual(len(game.q("SELECT id FROM gazette WHERE kind='news' AND text LIKE '%所以皇上翻了%'")), 1)
 
     def test_crowded_palace_still_beds_two_per_round(self):
         for i in range(11):
@@ -94,8 +113,8 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(game.q("SELECT COUNT(*) n FROM consorts WHERE user_id IS NOT NULL", one=True)['n'], 13)
         self.settle()
         bedded = game.q("SELECT id FROM consorts WHERE bedded_count>0")
-        self.assertEqual(len(bedded), game.BED_PER_ROUND, '13 位玩家 → 每轮也只翻 3 位')
-        self.assertEqual(len(game.q("SELECT id FROM gazette WHERE kind='bed'")), game.BED_PER_ROUND)
+        self.assertEqual(len(bedded), 2, '13 位玩家 → 每轮也只翻 2 位')
+        self.assertEqual(len(game.q("SELECT id FROM gazette WHERE kind='bed'")), 2)
 
     def test_small_palace_beds_everyone_it_has_up_to_two(self):
         self.settle()
@@ -104,9 +123,9 @@ class LivingTests(unittest.TestCase):
     def test_every_bedded_player_gets_favor_and_a_scene_but_only_one_is_the_primary(self):
         for i in range(5):
             self.player(f'玩{i}', rank=3)
-        self.settle()   # 7 位玩家 → 每轮 BED_PER_ROUND 位
+        self.settle()   # 7 位玩家 → 测试里每轮 2 位
         bedded = [r['id'] for r in game.q("SELECT id FROM consorts WHERE bedded_count>0")]
-        self.assertEqual(len(bedded), game.BED_PER_ROUND)
+        self.assertEqual(len(bedded), 2)
         st = game.state()
         self.assertIn(st['last_bed_id'], bedded)
         self.assertEqual(json.loads(st['last_bed_pool']).count(st['last_bed_id']), 1)

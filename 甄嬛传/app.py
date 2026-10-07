@@ -109,6 +109,7 @@ PROMOTE_FAVOR  = {2: 30, 3: 65, 4: 110, 5: 180, 6: 280, 7: 350, 8: 420, 9: 600, 
 PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 55, 8: 60, 9: 70, 10: 75}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
 RANK_SLOTS     = {4: 8, 5: 6, 6: 4, 7: 4, 8: 2, 9: 1, 10: 1}                     # 贵人以上有名额，含 NPC
 STIPEND = {1: 15, 2: 30, 3: 45, 4: 75, 5: 200, 6: 300, 7: 375, 8: 450, 9: 650, 10: 1000}  # 每日月例银（2026-10-07 起：嫔以下 ×3，嫔以上 ×5；原来 5/10/15/25/40/60/90/130/200）
+MOTHER_BY_SON_INFLUENCE = 6     # 母凭子贵已封顶（嫔以上）时，改为奖励的势力
 MOTHER_BY_SON_MAX_RANK = 5   # 母凭子贵最多晋到嫔位（rank 5），再往上要靠自己的圣宠、德行和名额
 PLAYER_MAX_RANK = 10   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[10]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
 
@@ -2048,7 +2049,7 @@ def admin_required(f):
 
 @app.context_processor
 def inject_globals():
-    ctx = dict(family_career_title=family_career_title, FAMILY_CAREER_TITLES=FAMILY_CAREER_TITLES,family_origin_options=family_origin_options, family_background=family_background,BED_DAILY_MAX=BED_DAILY_MAX, BED_PER_ROUND=BED_PER_ROUND,badge_name=badge_name, pregnancy_progress=pregnancy_progress, pregnancy_due_text=pregnancy_due_text, bed_chance_text=bed_chance_text, next_bedding_text=next_bedding_text, PROMOTE_INFLUENCE=PROMOTE_INFLUENCE, entry_stat_roll=entry_stat_roll, RANDOM_STAT_RANGES=RANDOM_STAT_RANGES, FAVOR_CARE=FAVOR_CARE, favor_care_tier=favor_care_tier, favor_stipend=favor_stipend, EAST_PALACE_CHANCE=EAST_PALACE_CHANCE, EAST_PALACE_FAVOR=EAST_PALACE_FAVOR, EAST_PALACE_TRUST=EAST_PALACE_TRUST, AGE_YEARS_PER_DAY=AGE_YEARS_PER_DAY, ENERGY_MAX=ENERGY_MAX, dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
+    ctx = dict(family_career_title=family_career_title, FAMILY_CAREER_TITLES=FAMILY_CAREER_TITLES,family_origin_options=family_origin_options, family_background=family_background,BED_DAILY_MAX=BED_DAILY_MAX, BED_COUNT_WEIGHTS=BED_COUNT_WEIGHTS,badge_name=badge_name, pregnancy_progress=pregnancy_progress, pregnancy_due_text=pregnancy_due_text, bed_chance_text=bed_chance_text, next_bedding_text=next_bedding_text, PROMOTE_INFLUENCE=PROMOTE_INFLUENCE, entry_stat_roll=entry_stat_roll, RANDOM_STAT_RANGES=RANDOM_STAT_RANGES, FAVOR_CARE=FAVOR_CARE, favor_care_tier=favor_care_tier, favor_stipend=favor_stipend, EAST_PALACE_CHANCE=EAST_PALACE_CHANCE, EAST_PALACE_FAVOR=EAST_PALACE_FAVOR, EAST_PALACE_TRUST=EAST_PALACE_TRUST, AGE_YEARS_PER_DAY=AGE_YEARS_PER_DAY, ENERGY_MAX=ENERGY_MAX, dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
                favor_word=favor_word, trust_word=trust_word, residence_name=residence_name, HALL_NAMES=HALL_NAMES, ITEMS=ITEMS, DRUGS=DRUGS, HOBBIES=HOBBIES, DISPLAY_SLOTS=DISPLAY_SLOTS,
                HOBBY_ENERGY=HOBBY_ENERGY, HOBBY_DAILY_MAX=HOBBY_DAILY_MAX, HOBBY_UNLOCK_ITEMS=HOBBY_UNLOCK_ITEMS, daily_count=daily_count, intrigue_label=intrigue_label, FAMILIES=FAMILIES, PERSONALITIES=PERSONALITIES, age_text=age_text, palace_date=palace_date,
                HEIR_STATS=HEIR_STATS, HEIR_PERSONALITIES=HEIR_PERSONALITIES, gift_word=gift_word, gift_text=gift_text, heir_age_days=heir_age_days,
@@ -7771,10 +7772,12 @@ def reigns():
 
 # ── 生育：侍寝人数、怀孕率、孕期 ─────────────────────────────────────────────────
 BED_TRUST_GAIN = 3      # 每次被翻牌侍寝（没被惊梦香搅黄）涨的信任
-BED_DAILY_MAX = 3      # 每人每游戏日最多被翻几次（原来 2，2026-10-06 放宽）
-BED_PER_ROUND = 3      # 2026-10-07 起：每轮翻 3 位（先改成 2 位，后又改成 3 位；最早按玩家数 1~6 位）
-PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.06, 0.0005, 0.0005   # 福报每 1 点再 +0.2%，攒满 100 点 +20%
-OLD_MOTHER_AGE, OLD_MOTHER_FACTOR, PREGNANCY_MAX = 35, 0.6, 0.15
+BED_DAILY_MAX = 4      # 每人每游戏日最多被翻几次（原来 2，2026-10-06 放宽到 3，2026-10-07 放宽到 4）
+BED_COUNT_WEIGHTS = ((1, 0.3), (2, 0.5), (3, 0.2))      # 2026-10-07 起：每轮 30% 翻 1 位、50% 翻 2 位、20% 翻 3 位（早先试过固定 2 位、3 位；最早按玩家数 1~6 位）
+BED_MAX_PER_ROUND = max(n for n, _ in BED_COUNT_WEIGHTS)
+_BED_RNG = random.SystemRandom()      # 翻几位、选哪句话单独掷骰，不占用全局随机序列
+PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.12, 0.0008, 0.0005   # 2026-10-07：底数 6% 升到 12%，体质每点 +0.08%（原 0.05%）；福报每 1 点 +0.05%
+OLD_MOTHER_AGE, OLD_MOTHER_FACTOR, PREGNANCY_MAX = 35, 0.6, 0.22      # 上限 15% 提到 20%，不然体质高的人都顶在上限上，体质就没差别了
 PRENATAL_ENERGY, PRENATAL_STAT_CAP = 1, 6
 PRENATAL = {
     'rest':   dict(name='安胎静养', line='你卧床静养，一步不出，体质 +5，难产的风险小了些。'),
@@ -7788,7 +7791,7 @@ LABOR_RISK_BASE, LABOR_RISK_PER_REST = 0.30, 0.10    # 体质不到 50 的人难
 
 
 def pregnancy_chance(c):
-    """一次侍寝怀上的概率：6% + 体质×0.05% + 福报×0.05%（体质 60 约 9%，上限 15%）；35 岁起打六折；45 岁起不再有孕"""
+    """一次侍寝怀上的概率：12% + 体质×0.08% + 福报×0.05%（体质 60 约 17%，体质 100 约 20%，上限 22%）；35 岁起打六折；45 岁起不再有孕"""
     if c['age_months'] >= FERTILE_BEFORE_AGE * 12: return 0.0
     if (c['pregnancy_misses'] if 'pregnancy_misses' in c.keys() else 0) >= PREGNANCY_PITY_ATTEMPTS: return 1.0
     p = PREGNANCY_BASE + c['health'] * PREGNANCY_PER_HEALTH + (c['blessing'] if 'blessing' in c.keys() else 0) * PREGNANCY_PER_BLESSING
@@ -7797,9 +7800,24 @@ def pregnancy_chance(c):
 
 
 def bed_count(cands):
-    """今晚翻几位：一晚只翻一位的话，人一多每个人几十天才轮得到一次，所以玩家每多 6 位加一位"""
-    players = sum(1 for c in cands if c['user_id'])
-    return BED_PER_ROUND
+    """这一轮翻几位：按 BED_COUNT_WEIGHTS 抽（30% 一位、50% 两位、20% 三位）"""
+    return _BED_RNG.choices([n for n, _ in BED_COUNT_WEIGHTS], weights=[w for _, w in BED_COUNT_WEIGHTS])[0]
+
+# 一小时 = 宫里一个月（一天 24 小时正好两年）：每轮翻牌的邸报按「几月」配时令，再配一句今天为什么翻这么多人
+BED_MONTHS = ['正月里新年伊始', '二月春寒料峭', '三月桃花正盛', '四月芳菲将尽', '五月端阳将近', '六月暑气蒸腾',
+              '七月流火未歇', '八月桂香满园', '九月重阳登高', '十月秋风渐紧', '冬月雪意初浓', '腊月岁末天寒']
+BED_REASONS = {
+    1: ['皇上批折子批到很晚，没什么心力', '皇上有些头疼，不愿多费心神', '皇上心里惦着一个人，别的懒得看', '太后嘱咐皇上保重龙体', '边关军报压着，皇上无心他顾', '皇上近来懒怠应酬'],
+    2: ['皇上心情平和，不偏不倚', '皇后劝皇上雨露均沾', '皇上想听两位的新曲', '敬事房呈上的牌子个个都不错', '皇上想着让后宫都沾沾恩泽', '政务刚好料理完，皇上有些闲暇'],
+    3: ['皇上今日兴致极高', '宫里添了喜事，皇上龙心大悦', '太后说后宫该热闹些', '前朝刚传来捷报，皇上满心欢喜', '皇上多饮了几杯，正在兴头上', '各宫姐妹都盼着，皇上索性都见了'],
+}
+BED_COUNT_WORDS = {1: '一', 2: '两', 3: '三'}
+
+def bed_round_note(n, hour):
+    """一轮翻牌的邸报：几月时令 + 为什么 + 翻了几人"""
+    month = BED_MONTHS[hour % 12]
+    reason = _BED_RNG.choice(BED_REASONS.get(n, BED_REASONS[2]))
+    return f"{month}，{reason}，所以皇上翻了{BED_COUNT_WORDS.get(n, n)}人。"
 
 
 def pregnancy_due_text(c):
@@ -7869,7 +7887,10 @@ def resolve_births(day, include_legacy=True):
         if '皇子' in genders:
             add_prestige(c, PRESTIGE_BORN_PRINCE, f"{full_name(c)}诞下皇子")
             add_favor(c['id'], 100, gain_mult=False)
-            if c['rank'] < MOTHER_BY_SON_MAX_RANK and slot_free(c['rank'] + 1, c['id']):      # 母凭子贵只看名额，不看势力门槛，最多晋到嫔（2026-10-07 起）
+            if c['rank'] >= MOTHER_BY_SON_MAX_RANK:      # 已经封顶，不再晋位，改加势力
+                run("UPDATE consorts SET influence=influence+? WHERE id=?", (MOTHER_BY_SON_INFLUENCE, c['id']))
+                extra += f"母凭子贵，势力 +{MOTHER_BY_SON_INFLUENCE}。"
+            elif slot_free(c['rank'] + 1, c['id']):      # 母凭子贵只看名额，不看势力门槛，最多晋到嫔（2026-10-07 起）
                 set_rank(c['id'], c['rank'] + 1)
                 extra += f"母凭子贵，晋为{display_name(get_consort(c['id']))}。"
         else:
@@ -7945,7 +7966,7 @@ def bed_weight(c, day):
     if c['npc_key']: w *= NPC_BED_MULT
     return max(1, w)
 
-BED_ROUND_HOURS = tuple(range(0, 24, 2))    # 翻牌（侍寝）每 2 小时一轮：0/2/4/…/22 点（2026-10-07 起，原来每 4 小时）
+BED_ROUND_HOURS = tuple(range(24))    # 翻牌（侍寝）每 1 小时一轮：0/1/2/…/23 点（2026-10-07 起；先前每 2 小时、最早每 4 小时）
 PACE_ROUND_HOURS = (0,4,8,12,16,20)         # 精力回复、晋封检查仍是每 4 小时一次，和翻牌轮分开
 
 
@@ -7968,6 +7989,10 @@ def bedding_round(day,key):
     run('UPDATE game_state SET last_bed_round_key=? WHERE id=1',(key,))
     cands=[c for c in q("SELECT * FROM consorts WHERE user_id IS NOT NULL") if eligible_bedding(c,day)]
     count=bed_count(cands); beds=[];used=set()
+    n_shown=min(count,len(cands))
+    if n_shown:
+        hour_part=str(key).rsplit(':',1)[-1]
+        gazette(bed_round_note(n_shown,int(hour_part) if hour_part.isdigit() else datetime.now(TZ).hour),'news')      # 一小时当一个月：邸报按几月配时令和理由
     for _ in range(count):
         pool=[get_consort(c['id']) for c in cands if c['id'] not in used]
         pool=[c for c in pool if eligible_bedding(c,day)]
@@ -7996,9 +8021,8 @@ def bed_chance_text(c):
     total = sum(bed_weight(x, day) for x in cands)
     if total <= 0: return '—'
     p = bed_weight(c, day) / total
-    n = bed_count(cands)
-    chance = 1 - (1 - p) ** n
-    return f"约 {chance * 100:.0f}%（本轮翻 {n} 位，牌子里共 {len(cands)} 人）"
+    chance = sum(w * (1 - (1 - p) ** n) for n, w in BED_COUNT_WEIGHTS)
+    return f"约 {chance * 100:.0f}%（每轮翻 1～{BED_MAX_PER_ROUND} 位，牌子里共 {len(cands)} 人）"
 
 
 def next_bedding_text():

@@ -34,6 +34,8 @@ class LifecycleTests(unittest.TestCase):
         # 开匾是按圣眷加权抽签，测试里默认让胜面最大的那位赢，免得用例时灵时不灵；要测抽签本身的用例自己 patch 回来
         self._pick_patch = patch.object(game, 'pick_weighted', lambda items, weights: items[max(range(len(items)), key=lambda i: weights[i])])
         self._pick_patch.start()
+        self._bed_one_patch = patch.object(game, 'BED_COUNT_WEIGHTS', ((2, 1.0),))      # 测试里每轮固定翻 2 位；要测 30/50/20 分布的用例自己改
+        self._bed_one_patch.start()
         self.atk = self.player('甲', rank=5)
         self.tgt = self.player('乙', rank=4)
         self.client = game.app.test_client()
@@ -41,6 +43,7 @@ class LifecycleTests(unittest.TestCase):
 
     def tearDown(self):
         self._pick_patch.stop()
+        self._bed_one_patch.stop()
         self.ctx.pop()
         self.temp.cleanup()
 
@@ -242,7 +245,7 @@ class EmperorTests(unittest.TestCase):
             game.settle_day()
         scenes = [game.get_scene(game.get_consort(i)) for i in (self.atk, self.tgt, c3)]
         kinds = sorted((s['key'], s.get('bed')) for s in scenes if s)
-        self.assertEqual(kinds, [('audience', 1), ('audience', 1), ('audience', 1)])   # 每轮 3 人侍寝，3 位玩家全都侍寝
+        self.assertEqual(kinds, [('audience', 0), ('audience', 1), ('audience', 1)])   # 每轮 2 人侍寝，剩下的 1 人被召见
         st = game.state()
         self.assertTrue(game.json.loads(st['last_bed_pool']))
         # 早上先进「昨夜宫中」，看完再去定夺场景
