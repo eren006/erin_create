@@ -1736,7 +1736,9 @@ def migrate_heir_born_ts(db):
         midnight = datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
         for hid, born_day in db.execute("SELECT id, born_day FROM heirs WHERE born_ts=0").fetchall():
             db.execute("UPDATE heirs SET born_ts=? WHERE id=?", (midnight - max(0, st[0] - born_day) * 86400, hid))
-        db.execute("UPDATE game_state SET last_noon_age_date=? WHERE id=1 AND last_noon_age_date=''", (datetime.now(TZ).date().isoformat(),))
+        # 新加的「按日期只做一次」记录：已有玩家的老库盖成昨天，当天的任务（比如中午涨岁）不会被这次迁移跳过；全新的库盖成今天
+        stamp = datetime.now(TZ).date() - timedelta(days=1 if db.execute('SELECT 1 FROM users LIMIT 1').fetchone() else 0)
+        db.execute("UPDATE game_state SET last_noon_age_date=? WHERE id=1 AND last_noon_age_date=''", (stamp.isoformat(),))
         db.execute("UPDATE consorts SET favor_mark=favor WHERE favor_mark<0")      # 圣宠骤降降位的基线：部署时先记一次
 
 def migrate_rank_scale(db):
