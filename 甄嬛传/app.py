@@ -113,7 +113,7 @@ MOTHER_BY_SON_INFLUENCE = 6     # 母凭子贵已封顶（嫔以上）时，改�
 MOTHER_BY_SON_MAX_RANK = 5   # 母凭子贵最多晋到嫔位（rank 5），再往上要靠自己的圣宠、德行和名额
 PLAYER_MAX_RANK = 10   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[10]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
 
-PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:45,7:70,8:100,9:140,10:180}      # 2026-10-08：四妃及以上各档调高（原 55/70/110/150）
+PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:50,7:70,8:100,9:140,10:180}      # 2026-10-08：四妃及以上各档调高（原 55/70/110/150）
 INFLUENCE_LOW_NIGHTS = 2          # 2026-10-07 起：势力连续这么多晚低于当前位分要求，降一级
 PROMOTE_INFLUENCE_REWARD = 3     # 第一次晋到嫔位及以上的每一级，额外奖励势力（2026-10-07 起）
 INFLUENCE_GAINS = dict(rumor=5,steal=1,frame=10,drug=10,expose=10,witch=18,punish=10)
