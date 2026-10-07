@@ -142,14 +142,16 @@ class HeirTests(unittest.TestCase):
         hid = self.heir(self.atk, born=8)
         day = 8 + game.ZHUAZHOU_AGE_DAYS
         before = dict(game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True))
-        game.heir_growth_tick(day)
+        with patch.object(game, 'heir_grow_stats'):      # 满 2 岁的长属性另有用例，这里只看抓周
+            game.heir_growth_tick(day)
         after = game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
         self.assertTrue(after['zhuazhou'])
         item = next(i for i in game.ZHUAZHOU_ITEMS if i['key'] == after['zhuazhou'])
         self.assertEqual(after[item['stat']], before[item['stat']] + game.ZHUAZHOU_GAIN)
         # 再跑一次不会重复抓
         snap = dict(after)
-        game.heir_growth_tick(day)
+        with patch.object(game, 'heir_grow_stats'):
+            game.heir_growth_tick(day)
         self.assertEqual(dict(game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)), snap)
 
     def test_zhuazhou_before_or_after_the_day_does_not_fire(self):
