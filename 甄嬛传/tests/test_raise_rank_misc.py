@@ -134,6 +134,14 @@ class RaiseRankMiscTests(unittest.TestCase):
         self.client.post('/garden/sell', data=dict(crop='all'))
         self.assertEqual(game.get_consort(self.atk)['silver'], 385)
 
+    def test_birth_gender_pref(self):
+        from unittest.mock import patch
+        game.run("UPDATE consorts SET birth_gender_pref='皇子' WHERE id=?", (self.atk,))
+        game.run("UPDATE consorts SET pregnant_since=?,pregnancy_started_ts=1,prenatal='{}' WHERE id=?", (game.cur_day(), self.atk))
+        with patch.object(game.random, 'choice', side_effect=lambda seq: '公主' if seq == ['皇子', '公主'] else __import__('random').Random(1).choice(seq)):
+            game.resolve_births(game.cur_day(), False)
+        self.assertTrue(all(h['gender'] == '皇子' for h in game.q('SELECT gender FROM heirs WHERE mother_id=?', (self.atk,))))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -1557,6 +1557,7 @@ def init_db():
                      'last_audience_day': 'INTEGER NOT NULL DEFAULT 0',
                      'pregnancy_misses': 'INTEGER NOT NULL DEFAULT 0',
                      'last_perform_art': "TEXT NOT NULL DEFAULT ''",
+                     'birth_gender_pref': "TEXT NOT NULL DEFAULT ''",
                      'banquet_wins': 'INTEGER NOT NULL DEFAULT 0',
                      'influence': 'INTEGER NOT NULL DEFAULT 0',
                      'pregnancy_started_ts': 'REAL NOT NULL DEFAULT 0', 'bed_daily_day': 'INTEGER NOT NULL DEFAULT 0', 'bed_daily_count': 'INTEGER NOT NULL DEFAULT 0', 'entry_origin': "TEXT NOT NULL DEFAULT 'new'",
@@ -3806,7 +3807,7 @@ def do_repair():
 
 
 PRAY_TIERS = {20: dict(blessing=1, chance=0.08), 60: dict(blessing=3, chance=0.15), 150: dict(blessing=8, chance=0.25)}
-BLESSING_CAP, QUIET_DAYS, LONGEVITY_MAX = 100, 5, 5   # 躺平要求 2026-10-06 从 10 天压到 5 天
+BLESSING_CAP, QUIET_DAYS, LONGEVITY_MAX = 100, 3, 5   # 躺平要求 2026-10-06 从 10 天压到 5 天，2026-10-07 再压到 3 天
 BLESSING_OLD_AGE_DIV, BLESSING_OLD_AGE_MAX = 200, 0.5     # 福报每 2 点，老死的概率少 1%，最多少一半
 BLESSING_SURVIVE_DIV, BLESSING_SURVIVE_MAX = 500, 0.15    # 福报每 5 点，病重、中毒时多 1% 的活路，最多多 15%
 
@@ -8208,7 +8209,8 @@ def resolve_births(day, include_legacy=True):
     resolve_realtime_drugs(day)
     for c in q("SELECT * FROM consorts WHERE status!='dead' AND pregnant_since>0 AND NOT EXISTS(SELECT 1 FROM afflictions a WHERE a.consort_id=consorts.id AND a.drug='chunxin' AND a.status='active') AND ((pregnancy_started_ts>0 AND pregnancy_started_ts<=?) OR (pregnancy_started_ts=0 AND ? AND ?-pregnant_since>=?))", (time.time()-PREGNANCY_MIN_SECONDS, int(include_legacy), day, PREGNANCY_DAYS)):
         twins = random.random() < TWIN_CHANCE
-        genders = [random.choice(['皇子', '公主']) for _ in range(2 if twins else 1)]
+        pref = c['birth_gender_pref'] if 'birth_gender_pref' in c.keys() else ''      # 管理员在库里给某人设的出生性别（界面和帮助页都不提）
+        genders = [pref if pref in ('皇子', '公主') else random.choice(['皇子', '公主']) for _ in range(2 if twins else 1)]
         pre = prenatal_state(c)
         prior_births = q('SELECT COUNT(*) n FROM heirs WHERE mother_id=?', (c['id'],), one=True)['n']
         born = []   # [(label, 资质文字)]
