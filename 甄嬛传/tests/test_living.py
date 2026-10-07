@@ -265,11 +265,14 @@ class LivingTests(unittest.TestCase):
         game.diet_tick(5)
         self.assertEqual(self.c()['silver'], 0, '一分没有就不扣，也不欠')
 
-    def test_frugal_wears_the_body_down_slowly(self):
+    def test_frugal_wears_the_body_down_every_night(self):
         game.run("UPDATE consorts SET diet='frugal', health=50 WHERE id=?", (self.atk,))
-        for d in (1, 2, 3, 4, 5, 6):
+        for d in (1, 2):
             game.diet_tick(d)
-        self.assertEqual(self.c()['health'], 48, '每 3 晚 −1')
+        self.assertEqual(self.c()['health'], 40, '每晚 −5')
+        game.run("UPDATE consorts SET health=22 WHERE id=?", (self.atk,))
+        game.diet_tick(3)
+        self.assertEqual(self.c()['health'], 20, '只扣到 20 为止，不会跨过去')
         game.run("UPDATE consorts SET health=20 WHERE id=?", (self.atk,))
         game.diet_tick(9)
         self.assertEqual(self.c()['health'], 20, '再穷也不会饿到 20 以下')

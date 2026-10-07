@@ -1506,7 +1506,7 @@ def init_db():
                      'repair': "TEXT NOT NULL DEFAULT ''",
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'personality': "TEXT NOT NULL DEFAULT ''",
@@ -3565,13 +3565,14 @@ def do_attend(c, cfg):
 
 DIET_RATIO = 0.4        # 普通饮食每晚花掉例银的四成，奢华 2.5 倍、节俭四成
 DIETS = {
-    'frugal': dict(name='节俭', mult=0.4, order=0, desc='清粥小菜，省钱，只是日子久了身子虚：每 3 晚体质 −1。'),
+    'frugal': dict(name='节俭', mult=0.4, order=0, desc='清粥小菜，省钱，只是身子扛不住：每晚体质 −5（最低到 20）。'),
     'normal': dict(name='普通', mult=1.0, order=1, desc='按位分的份例吃，不好不坏。'),
     'lavish': dict(name='奢华', mult=2.5, order=2, desc='燕窝鱼翅、四时鲜果：每 2 晚体质 +1、每 6 晚容貌 +1、翻牌权重 +8、宫人忠心 +1；'
                                                      '只是贵人以下摆这个排场，难免有人说你逾制。'),
 }
 LAVISH_ILL_FORM_CHANCE = 0.06     # 贵人以下吃奢华，每晚被人参「逾制」的概率
 LAVISH_BED_BONUS = 8
+FRUGAL_HEALTH_LOSS = 5     # 吃节俭每晚体质 -5，最低扣到 20
 
 
 def diet_cost(rank, tier):
@@ -3594,8 +3595,8 @@ def diet_tick(day):
         if eff != choice:
             notify(c['id'], f"银子不够，这几日的饮食只好从{DIETS[choice]['name']}降到{DIETS[eff]['name']}。", 'info')
         run("UPDATE consorts SET diet_eff=? WHERE id=?", (eff, c['id']))
-        if eff == 'frugal' and day % 3 == 0 and c['health'] > 20:
-            add_stat(c['id'], 'health', -1)
+        if eff == 'frugal' and c['health'] > 20:
+            add_stat(c['id'], 'health', -min(FRUGAL_HEALTH_LOSS, c['health'] - 20))
         elif eff == 'lavish':
             if day % 2 == 0 and c['health'] < 95: add_stat(c['id'], 'health', 1)
             if day % 6 == 0 and c['appearance'] < 95: add_stat(c['id'], 'appearance', 1)
@@ -5968,9 +5969,11 @@ HEIR_NURSE_WAGE = 30         # 乳母月钱：每个亲自抚养的孩子，每�
 HEIR_TUTOR_FEE = 50          # 师傅束脩：满 6 岁起换成请师傅，每个孩子每晚
 HEIR_TUTOR_AGE = 6
 HEIR_UNPAID_AFFINITY = -2    # 欠着不给，孩子跟抚养人的情分每晚 -2
+HEIR_UNPAID_NIGHTS = 2       # 连着欠这么多晚，孩子被抱去皇嗣养育所
 app.jinja_env.globals['HEIR_NURSE_WAGE'] = HEIR_NURSE_WAGE
 app.jinja_env.globals['HEIR_TUTOR_FEE'] = HEIR_TUTOR_FEE
 app.jinja_env.globals['HEIR_TUTOR_AGE'] = HEIR_TUTOR_AGE
+app.jinja_env.globals['HEIR_UNPAID_NIGHTS'] = HEIR_UNPAID_NIGHTS
 
 
 def heir_upkeep_cost(h, day=None):
@@ -5995,10 +5998,26 @@ def heir_upkeep(day):
                 owed.append(h)
         total = sum(x[1] for x in paid)
         if total: add_silver(c['id'], -total)
-        for h in owed: add_heir_affinity(h['id'], 'caretaker', HEIR_UNPAID_AFFINITY)
-        if owed:
-            notify(c['id'], f"银子不够，{'、'.join(heir_label(h) for h in owed)}的乳母月钱/师傅束脩发不出来，孩子对你的情分 {HEIR_UNPAID_AFFINITY}。" + (f"其余已付 {total} 两。" if total else ''), 'bad')
-        elif total:
+        for h in paid: run('UPDATE heirs SET unpaid_days=0 WHERE id=?', (h[0]['id'],))
+        taken, warned = [], []
+        for h in owed:
+            add_heir_affinity(h['id'], 'caretaker', HEIR_UNPAID_AFFINITY)
+            n = h['unpaid_days'] + 1
+            if n >= HEIR_UNPAID_NIGHTS:
+                run('UPDATE heirs SET caretaker_id=0, caretaker_affinity=50, visit_banned=0, concealed=0, unpaid_days=0 WHERE id=?', (h['id'],))
+                taken.append(h)
+                gazette(f"{display_name(c)}连欠乳母月钱、师傅束脩，{heir_label(h)}被抱去皇嗣养育所，由乳母与师傅照料，嫔位以上可申请领养。", 'decree')
+                mother = get_consort(h['mother_id']) if h['mother_id'] and h['mother_id'] != c['id'] else None
+                if mother and mother['user_id']:
+                    notify(mother['id'], f"{display_name(c)}连欠{heir_label(h)}的乳母月钱、师傅束脩，孩子被抱去皇嗣养育所了。", 'info')
+            else:
+                run('UPDATE heirs SET unpaid_days=? WHERE id=?', (n, h['id']))
+                warned.append(h)
+        if taken:
+            notify(c['id'], f"{'、'.join(heir_label(h) for h in taken)}连着 {HEIR_UNPAID_NIGHTS} 晚没付上乳母月钱/师傅束脩，被抱去皇嗣养育所了。" + (f"其余已付 {total} 两。" if total else ''), 'bad')
+        if warned:
+            notify(c['id'], f"银子不够，{'、'.join(heir_label(h) for h in warned)}的乳母月钱/师傅束脩发不出来，孩子对你的情分 {HEIR_UNPAID_AFFINITY}。再欠一晚，孩子就要被抱去皇嗣养育所。" + (f"其余已付 {total} 两。" if total else ''), 'bad')
+        elif total and not taken:
             notify(c['id'], f"今晚付了乳母月钱、师傅束脩共 {total} 两。", 'info')
 
 

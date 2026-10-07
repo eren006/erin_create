@@ -278,7 +278,8 @@ CREATE TABLE IF NOT EXISTS heirs (
     gift        TEXT NOT NULL DEFAULT '',            -- 万寿节备下的寿礼：calligraphy / fur / antique
     orphan_deadline_day INTEGER NOT NULL DEFAULT 0,  -- 没人要的皇子：这天还无人抚养，皇后就抱走
     reprimand_ready_day INTEGER NOT NULL DEFAULT 0,  -- 结党过多被当众训斥，这天之前不再训斥
-    forged      INTEGER NOT NULL DEFAULT 0           -- 矫诏成功：驾崩那晚匾后改成他
+    forged      INTEGER NOT NULL DEFAULT 0,          -- 矫诏成功：驾崩那晚匾后改成他
+    unpaid_days INTEGER NOT NULL DEFAULT 0           -- 连着几晚没付上乳母月钱/师傅束脩，满 2 晚抱去养育所
 );
 
 -- 站队：每人最多一个明站、一个暗站，7 天内不能改

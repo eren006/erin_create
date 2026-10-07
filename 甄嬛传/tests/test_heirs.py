@@ -58,6 +58,21 @@ class HeirTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['silver'], 0)
         for hid in (young, old):
             self.assertEqual(game.q('SELECT caretaker_affinity a FROM heirs WHERE id=?', (hid,), one=True)['a'], 50 + game.HEIR_UNPAID_AFFINITY)
+            self.assertEqual(game.q('SELECT caretaker_id c, unpaid_days u FROM heirs WHERE id=?', (hid,), one=True)['u'], 1)
+        game.run('UPDATE consorts SET silver=1000 WHERE id=?', (self.atk,))
+        game.heir_upkeep(day)      # 付上了，欠账清零
+        for hid in (young, old):
+            self.assertEqual(game.q('SELECT unpaid_days u FROM heirs WHERE id=?', (hid,), one=True)['u'], 0)
+
+    def test_two_unpaid_nights_sends_heir_to_orphanage(self):
+        day = game.cur_day()
+        hid = self.heir(self.atk, born=day)
+        game.run('UPDATE consorts SET silver=0 WHERE id=?', (self.atk,))
+        game.heir_upkeep(day)
+        self.assertEqual(game.get_heir(hid)['caretaker_id'], self.atk, '欠一晚还在')
+        game.heir_upkeep(day)
+        h = game.get_heir(hid)
+        self.assertEqual((h['caretaker_id'], h['unpaid_days']), (0, 0), '连欠两晚抱去养育所')
 
     def test_upkeep_skips_orphanage_and_adults(self):
         self.heir(self.atk, caretaker=0)
