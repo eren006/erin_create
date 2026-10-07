@@ -64,6 +64,12 @@
 </section>
 {% endmacro %}
 {% if c %}<p>势力：{{ c.influence }}{% if promo %} · 晋为{{ promo.rank }}需 {{ promo.influence }}{% endif %}</p>{% endif %}
+{% if c and c.status in ('normal','confined') and c.rank >= 2 and day - c.entered_day >= NEWCOMER_CARE_DAYS and c.influence < PROMOTE_INFLUENCE[c.rank] %}
+<section class="sheet" style="margin-top:18px;border-left:4px solid var(--bad)">
+  <b>势力不足，有降位风险</b>
+  <p class="muted" style="margin:6px 0">你的势力 {{ c.influence }}，{{ RANK_NAMES[c.rank] }}要求 {{ PROMOTE_INFLUENCE[c.rank] }}，还差 {{ PROMOTE_INFLUENCE[c.rank] - c.influence }}。{% if c.influence_low_days %}已经连着 {{ c.influence_low_days }} 晚不够，<b>今晚结算还不够就降为{{ RANK_NAMES[c.rank - 1] }}</b>。{% else %}每晚结算时若还不够，就记一晚；连着 {{ INFLUENCE_LOW_NIGHTS }} 晚不够就降为{{ RANK_NAMES[c.rank - 1] }}。{% endif %}协办宫务、使计成功都能攒势力。</p>
+</section>
+{% endif %}
 {% if c and c.status not in ('xiunv','dead') %}<p class="muted">当前{{ FAVOR_CARE[favor_care_tier(c)].name }}待遇 · 每晚月例与赏银 {{ favor_stipend(c) }} 两{% if c.ill_day %} · 已患病，{{ '已获治疗' if c.ill_treatment else '请及时请太医（可由姐妹代付）' }}{% endif %}</p>{% endif %}
 {% if guide %}
 <section class="sheet" style="margin:0 0 16px" aria-label="教引嬷嬷">

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS consorts (
     bed_daily_count INTEGER NOT NULL DEFAULT 0,
     influence        INTEGER NOT NULL DEFAULT 0,
     unfavored_days   INTEGER NOT NULL DEFAULT 0,
+    influence_low_days INTEGER NOT NULL DEFAULT 0,            -- 势力连续几晚低于当前位分要求，满 2 晚降一级
     skin             TEXT NOT NULL DEFAULT '',                -- 皮相：形象参照（女明星名字），全服不重复
     care_tier        TEXT NOT NULL DEFAULT '',                -- 圣宠排名待遇：每晚结算定，hot 前 25% / low 后 25% / 空 普通
     ill_care         TEXT NOT NULL DEFAULT 'normal',

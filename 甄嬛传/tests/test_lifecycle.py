@@ -21,6 +21,7 @@ class LifecycleTests(unittest.TestCase):
         game.DB_PATH = str(Path(self.temp.name) / 'test.db')
         game.app.config['TESTING'] = True
         game.ADVENTURE_ROAD_CHANCE = 0       # 奇遇是随机的，别让它打断别的测试
+        game.XINGGONG_CHANCE = 0             # 行宫随驾也是随机的，要测它的用例自己打开
         game.ADVENTURE_GARDEN_WEIGHT = 0
         game.TWIN_CHANCE = 0                 # 双胞胎是随机的，默认关掉；要测的用例自己打开
         game.MAID_CRAFT_MAX = 0              # 宫人闲时做东西也是随机的，默认关掉；要测的用例自己打开

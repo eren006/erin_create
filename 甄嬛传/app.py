@@ -114,6 +114,7 @@ MOTHER_BY_SON_MAX_RANK = 5   # 母凭子贵最多晋到嫔位（rank 5），再�
 PLAYER_MAX_RANK = 10   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[10]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
 
 PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:45,7:55,8:70,9:110,10:150}
+INFLUENCE_LOW_NIGHTS = 2          # 2026-10-07 起：势力连续这么多晚低于当前位分要求，降一级
 PROMOTE_INFLUENCE_REWARD = 3     # 第一次晋到嫔位及以上的每一级，额外奖励势力（2026-10-07 起）
 INFLUENCE_GAINS = dict(rumor=5,steal=1,frame=10,drug=10,expose=10,witch=18,punish=10)
 FIZZLE_INFLUENCE_FRACTION = 0.25    # 计谋没成但也没败露：照成功的四分之一给势力（至少 1 点）；败露、落空不给
@@ -203,6 +204,26 @@ def refresh_care_tiers():
 
 
 for _k in ('FAVOR_HOT_PCT', 'FAVOR_LOW_PCT', 'FAVOR_HOT_MIN', 'FAVOR_RANK_MIN_POP'): app.jinja_env.globals[_k] = globals()[_k]
+
+
+def influence_check(c, day):
+    """每晚结算：势力低于当前位分的晋位要求，连续 INFLUENCE_LOW_NIGHTS 晚就降一级（新人前 3 天、冷宫、官女子以下不查）"""
+    need = PROMOTE_INFLUENCE.get(c['rank'], 0)
+    if (not c['user_id'] or c['status'] not in ('normal', 'confined') or c['rank'] < 2
+            or day - c['entered_day'] < NEWCOMER_CARE_DAYS or c['influence'] >= need):
+        if c['influence_low_days']: run('UPDATE consorts SET influence_low_days=0 WHERE id=?', (c['id'],))
+        return
+    n = c['influence_low_days'] + 1
+    if n < INFLUENCE_LOW_NIGHTS:
+        run('UPDATE consorts SET influence_low_days=? WHERE id=?', (n, c['id']))
+        notify(c['id'], f"你的势力 {c['influence']}，{RANK_NAMES[c['rank']]}要求 {need}。再有 {INFLUENCE_LOW_NIGHTS - n} 晚还不够，就要降为{RANK_NAMES[c['rank'] - 1]}。去协办宫务、使计攒些势力。", 'bad')
+        return
+    old_name = display_name(c)
+    run('UPDATE consorts SET influence_low_days=0 WHERE id=?', (c['id'],))
+    demote_rank(c['id'])
+    now = get_consort(c['id'])
+    notify(c['id'], f"势力 {c['influence']} 连着 {INFLUENCE_LOW_NIGHTS} 晚不够{RANK_NAMES[c['rank']]}的 {need}，位分降为{display_name(now)}。", 'bad')
+    gazette(f"{old_name}势力不足、难以服众，皇上降其位分，今称{display_name(now)}。", 'decree')
 
 
 def favor_care_tier(c, day=None):
@@ -1523,6 +1544,7 @@ def init_db():
                      'unfavored_days': 'INTEGER NOT NULL DEFAULT 0',
                      'care_tier': "TEXT NOT NULL DEFAULT ''",
                      'skin': "TEXT NOT NULL DEFAULT ''",
+                     'influence_low_days': 'INTEGER NOT NULL DEFAULT 0',
                      'ill_care': "TEXT NOT NULL DEFAULT 'normal'",
                      'ill_day': 'INTEGER NOT NULL DEFAULT 0',
                      'ill_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -8168,6 +8190,8 @@ def prenatal_state(c):
 
 
 app.jinja_env.globals['prenatal_state'] = prenatal_state
+app.jinja_env.globals['INFLUENCE_LOW_NIGHTS'] = INFLUENCE_LOW_NIGHTS
+app.jinja_env.globals['NEWCOMER_CARE_DAYS'] = NEWCOMER_CARE_DAYS
 
 
 def do_bedding(bed, day, primary, tray, quiet=False):
@@ -8454,6 +8478,8 @@ def _settle_night():
         c = get_consort(c['id'])
         if not partial:      # 补结算不再算这几笔每晚一次的账
             run('UPDATE consorts SET age_months=age_months+? WHERE id=?', (AGE_MONTHS_PER_DAY // 2, c['id']))   # 一天 = 宫中两年：零点涨一岁，中午 12 点再涨一岁（见 age_noon_tick）
+            influence_check(c, day)
+            c = get_consort(c['id'])
             in_low = (c['id'] in zones[1]) if zones else c['favor'] < FAVOR_LOW
             streak = c['unfavored_days']+1 if in_low else 0
             run('UPDATE consorts SET unfavored_days=? WHERE id=?',(streak,c['id']))

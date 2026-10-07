@@ -160,3 +160,34 @@ class FavorCareTests(unittest.TestCase):
         html=self.client.get('/').get_data(as_text=True)
         self.assertGreater(html.index('name="skin"'),html.index('<section class="me-top">'))
         self.assertLess(html.index('name="skin"'),html.index('退出'))
+
+    def test_low_influence_demotes_after_two_nights_and_warns(self):
+        game.run('UPDATE consorts SET rank=4, influence=1, entered_day=1, influence_low_days=0, status=? WHERE id=?',('normal',self.atk))
+        html=self.client.get('/').get_data(as_text=True) if self.login(self.atk) is None or True else ''
+        self.assertIn('势力不足，有降位风险',html)
+        game.influence_check(game.get_consort(self.atk),10)
+        self.assertEqual(game.get_consort(self.atk)['rank'],4,'第一晚只记一晚')
+        self.assertEqual(game.get_consort(self.atk)['influence_low_days'],1)
+        self.assertIn('今晚结算还不够就降为',self.client.get('/').get_data(as_text=True))
+        game.influence_check(game.get_consort(self.atk),11)
+        self.assertEqual(game.get_consort(self.atk)['rank'],3,'连着两晚降一级')
+        self.assertEqual(game.get_consort(self.atk)['influence_low_days'],0)
+
+    def test_enough_influence_resets_counter_and_newcomers_exempt(self):
+        game.run('UPDATE consorts SET rank=4, influence=1, entered_day=1, influence_low_days=1 WHERE id=?',(self.atk,))
+        game.run('UPDATE consorts SET influence=50 WHERE id=?',(self.atk,))
+        game.influence_check(game.get_consort(self.atk),10)
+        self.assertEqual(game.get_consort(self.atk)['influence_low_days'],0)
+        game.run('UPDATE consorts SET influence=1, entered_day=9 WHERE id=?',(self.atk,))
+        for d in (10,11): game.influence_check(game.get_consort(self.atk),d)
+        self.assertEqual(game.get_consort(self.atk)['rank'],4,'新人前 3 天不查')
+
+    def test_influence_demotion_squeezes_worst_when_lower_rank_full(self):
+        game.run("UPDATE consorts SET status='cold' WHERE rank IN (4,5) AND id!=?", (self.atk,))
+        guis=[self.player(f'贵{i}',rank=4) for i in range(game.RANK_SLOTS[4])]
+        for i,cid in enumerate(guis): game.run('UPDATE consorts SET favor=?, influence=50 WHERE id=?',(50+i,cid))
+        game.run('UPDATE consorts SET rank=5, influence=0, entered_day=1, favor=500, influence_low_days=1 WHERE id=?',(self.atk,))
+        game.influence_check(game.get_consort(self.atk),20)
+        self.assertEqual(game.get_consort(self.atk)['rank'],4,'嫔降为贵人')
+        self.assertEqual(game.get_consort(guis[0])['rank'],3,'贵人满员，圣宠最低的被挤下去')
+        self.assertEqual(sum(1 for cid in guis+[self.atk] if game.get_consort(cid)['rank']==4),game.RANK_SLOTS[4])
