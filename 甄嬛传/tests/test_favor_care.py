@@ -126,3 +126,9 @@ class FavorCareTests(unittest.TestCase):
         html=r.get_data(as_text=True)
         self.assertIn('圣眷最隆',html)
         self.assertIn(game.display_name(game.get_consort(self.atk)),html)
+
+    def test_gazette_lists_todays_most_bedded(self):
+        game.run('UPDATE consorts SET bed_daily_day=?,bed_daily_count=3 WHERE id=?',(game.cur_day(),self.atk))
+        html=self.client.get('/gazette').get_data(as_text=True)
+        self.assertIn('今日最宠幸',html)
+        self.assertIn('3 次',html)

@@ -26,11 +26,26 @@
 {% block body %}
 <h2>邸报</h2>
 
+{% if favorites or bed_top %}
+<div style="display:flex;gap:32px;flex-wrap:wrap;align-items:flex-start;margin-bottom:8px">
 {% if favorites %}
-<h3>圣眷最隆</h3>
-<p class="muted" style="margin-top:0">眼下皇上最看重的几位，按圣眷高低排列。</p>
+<div>
+<h3 style="margin-top:12px">圣眷最隆</h3>
+<p class="muted" style="margin-top:0">皇上最看重的几位，按圣眷高低排列。</p>
 <div class="rack" style="margin-bottom:8px">
   {% for f in favorites %}<div><div class="pai {{ 'me' if me and me.id == f.id }}">{{ dn(f) }}</div><div class="muted" style="text-align:center;font-size:13px;margin-top:6px">{{ loop.index }}</div></div>{% endfor %}
+</div>
+</div>
+{% endif %}
+<div>
+<h3 style="margin-top:12px">今日最宠幸</h3>
+<p class="muted" style="margin-top:0">今天被翻牌最多的几位。</p>
+{% if bed_top %}
+<div class="rack" style="margin-bottom:8px">
+  {% for b in bed_top %}<div><div class="pai {{ 'me' if me and me.id == b.id }}">{{ dn(b) }}</div><div class="muted" style="text-align:center;font-size:13px;margin-top:6px">{{ b.bed_daily_count }} 次</div></div>{% endfor %}
+</div>
+{% else %}<p class="muted">今天皇上还没翻过牌子。</p>{% endif %}
+</div>
 </div>
 {% endif %}
 

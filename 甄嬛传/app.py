@@ -5584,6 +5584,8 @@ def gazette_page():
     last_beds = last_bed_consorts(st)
     favorites = sorted((x for x in rank_rows if x['status'] in ('normal', 'confined') and x['favor'] > 0),
                        key=lambda x: (-x['favor'], x['id']))[:GAZETTE_FAVORITES]
+    bed_top = sorted((x for x in rank_rows if x['bed_daily_day'] == day and x['bed_daily_count'] > 0),
+                     key=lambda x: (-x['bed_daily_count'], -x['favor'], x['id']))[:GAZETTE_FAVORITES]
     expecting = []
     for x in rank_rows:
         if x['pregnant_since'] and x['status'] != 'cold':
@@ -5591,7 +5593,7 @@ def gazette_page():
             expecting.append(dict(c=x, stage=pr['stage'], hours=pr['hours'], minutes=pr['minutes'], legacy=pr['legacy'],
                                   percent=pr['percent'], due=pregnancy_due_text(x)))
     return render_template('gazette.html', days=sorted(days.items(), reverse=True), day=day,
-                            groups=groups, cold=cold, last_beds=last_beds, expecting=expecting, favorites=favorites, me=g.me)
+                            groups=groups, cold=cold, last_beds=last_beds, expecting=expecting, favorites=favorites, bed_top=bed_top, me=g.me)
 
 CN_NUM = '零一二三四五六七八九十'
 
