@@ -7925,7 +7925,7 @@ def reigns():
 BED_TRUST_GAIN = 3      # 每次被翻牌侍寝（没被惊梦香搅黄）涨的信任
 BIRTH_FAVOR_PRINCE, BIRTH_FAVOR_PRINCESS = 40, 30      # 生下皇子 / 公主给的圣宠（2026-10-07 起：皇子 100→40，公主 60→30）
 BED_DAILY_MAX = 4      # 每人每游戏日最多被翻几次（原来 2，2026-10-06 放宽到 3，2026-10-07 放宽到 4）
-BED_COUNT_WEIGHTS = ((1, 0.3), (2, 0.5), (3, 0.2))      # 2026-10-07 起：每轮 30% 翻 1 位、50% 翻 2 位、20% 翻 3 位（早先试过固定 2 位、3 位；最早按玩家数 1~6 位）
+BED_COUNT_WEIGHTS = ((1, 0.1), (2, 0.6), (3, 0.3))      # 2026-10-07 起（后调为 10/60/30）：每轮 10% 翻 1 位、60% 翻 2 位、30% 翻 3 位（早先试过固定 2 位、3 位；最早按玩家数 1~6 位）
 BED_MAX_PER_ROUND = max(n for n, _ in BED_COUNT_WEIGHTS)
 _BED_RNG = random.SystemRandom()      # 翻几位、选哪句话单独掷骰，不占用全局随机序列
 PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.12, 0.0008, 0.0005   # 2026-10-07：底数 6% 升到 12%，体质每点 +0.08%（原 0.05%）；福报每 1 点 +0.05%
@@ -7952,7 +7952,7 @@ def pregnancy_chance(c):
 
 
 def bed_count(cands):
-    """这一轮翻几位：按 BED_COUNT_WEIGHTS 抽（30% 一位、50% 两位、20% 三位）"""
+    """这一轮翻几位：按 BED_COUNT_WEIGHTS 抽（10% 一位、60% 两位、30% 三位）"""
     return _BED_RNG.choices([n for n, _ in BED_COUNT_WEIGHTS], weights=[w for _, w in BED_COUNT_WEIGHTS])[0]
 
 # 一小时 = 宫里一个月（一天 24 小时正好两年）：每轮翻牌的邸报按「几月」配时令，再配一句今天为什么翻这么多人

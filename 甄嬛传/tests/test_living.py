@@ -88,11 +88,11 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(game.bed_count(self.cands(2, npcs=30)), 2)
         self.assertEqual(game.bed_count([]), 2)
 
-    def test_bed_count_follows_30_50_20(self):
-        with patch.object(game, 'BED_COUNT_WEIGHTS', ((1, 0.3), (2, 0.5), (3, 0.2))):
+    def test_bed_count_follows_10_60_30(self):
+        with patch.object(game, 'BED_COUNT_WEIGHTS', ((1, 0.1), (2, 0.6), (3, 0.3))):
             n = [game.bed_count([]) for _ in range(6000)]
         self.assertEqual(set(n), {1, 2, 3})
-        for k, w in ((1, 0.3), (2, 0.5), (3, 0.2)):
+        for k, w in ((1, 0.1), (2, 0.6), (3, 0.3)):
             self.assertAlmostEqual(n.count(k) / len(n), w, delta=0.04)
 
     def test_round_note_has_month_reason_and_count(self):
