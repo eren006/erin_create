@@ -40,6 +40,8 @@ class RaiseRankMiscTests(unittest.TestCase):
         c = game.get_consort(self.atk)
         self.assertEqual(c['contraception'], 1)
         self.assertEqual(game.pregnancy_chance(c), 0.0)
+        game.run('UPDATE consorts SET pregnancy_misses=11 WHERE id=?', (self.atk,))
+        self.assertEqual(game.pregnancy_chance(game.get_consort(self.atk)), 0.0, '避孕时保底也不生效')
 
     def test_own_grooming_caps_at_65(self):
         game.run('UPDATE consorts SET energy=8, silver=500, appearance=64 WHERE id=?', (self.atk,))
