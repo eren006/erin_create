@@ -2523,13 +2523,14 @@ SEND_PER_PRESTIGE = 100
 WITHDRAW_MAX, WITHDRAW_INTERVAL = 200, 3
 PETITION_COST, PETITION_WIN, PETITION_SCOLD, PETITION_INTERVAL = 150, 0.55, 0.20, 3   # 间隔 2026-09-28 从 7 压到 3
 VENTURE_MIN, VENTURE_MAX = 50, 400
+VENTURE_MAX_OPEN = 2      # 每个人同时最多开几笔生意（2026-10-07 起，原 1 笔）
 LETTER_SILVER = (20, 60)
 
 VENTURES = {
-    # 三种生意的期望收益按「每天」算：绸缎庄约 3%，盐引约 5%，印子钱约 6%，险越大、日子越长，赚头越大；
+    # 三种生意的期望收益按每笔（1 天）算：绸缎庄约 +16%（2026-10-07 起，原 +9%），盐引约 +25%，印子钱约 +42%，险越大赚头越大；
     # 险的两种还要另担御史参奏的风险，所以只有敢赌的人才会选
-    'silk':  dict(name='绸缎庄', days=1, scold=0.0, outcomes=[(0.70, 0.15), (0.25, 0.0), (0.05, -0.3)],
-                  desc='稳当：七成赚一成半，二成半持平，一成不到亏三成。不会惹上官司。'),
+    'silk':  dict(name='绸缎庄', days=1, scold=0.0, outcomes=[(0.70, 0.25), (0.25, 0.0), (0.05, -0.3)],
+                  desc='稳当：七成赚两成半，二成半持平，一成不到亏三成。不会惹上官司。'),
     'salt':  dict(name='漕运盐引', days=1, scold=0.12, outcomes=[(0.45, 1.0), (0.25, 0.0), (0.20, -0.5), (0.10, -1.0)],
                   desc='有赚头：近半赚一倍，两成亏一半，一成血本无归；一成二的可能被御史参一本（名望 −8，信任 −6）。'),
     'usury': dict(name='印子钱', days=1, scold=0.25, outcomes=[(0.42, 2.0), (0.16, 0.0), (0.42, -1.0)],
@@ -2790,7 +2791,7 @@ def family_page():
                            req_opts=[h for h in opts if h], rivals=rivals, backing=backing, ventures=ventures, history=history, log=log,
                            VENTURES=VENTURES, day=day, prestige_label=family_label(fam),
                            can_act=c is not None and c['status'] in ('normal', 'confined'), heir_standing=heir_standing,
-                           OFFICE_TITLES=OFFICE_TITLES, TIER_JOB=TIER_JOB, open_venture=any(v['consort_id'] == c['id'] for v in ventures),
+                           OFFICE_TITLES=OFFICE_TITLES, TIER_JOB=TIER_JOB, open_venture=sum(1 for v in ventures if v['consort_id'] == c['id']) >= VENTURE_MAX_OPEN,
                            SEND_MIN=SEND_MIN, SEND_MAX=SEND_MAX, SEND_PER_PRESTIGE=SEND_PER_PRESTIGE, WITHDRAW_MAX=WITHDRAW_MAX,
                            WITHDRAW_INTERVAL=WITHDRAW_INTERVAL, PETITION_COST=PETITION_COST, PETITION_INTERVAL=PETITION_INTERVAL,
                            BACKING_COST=BACKING_COST, BACKING_LOCK_DAYS=BACKING_LOCK_DAYS, VENTURE_MIN=VENTURE_MIN, VENTURE_MAX=VENTURE_MAX,
@@ -2862,7 +2863,7 @@ def family_venture():
     elif not VENTURE_MIN <= amt <= VENTURE_MAX: err = f'本金 {VENTURE_MIN}~{VENTURE_MAX} 两。'
     elif c['silver'] < amt: err = f'手头只有 {c["silver"]} 两。'
     elif c['energy'] < 1: err = '精力不够了。'
-    elif q("SELECT 1 FROM family_ventures WHERE consort_id=? AND status='open'", (c['id'],), one=True): err = '你已经有一笔生意在做了。'
+    elif q("SELECT COUNT(*) n FROM family_ventures WHERE consort_id=? AND status='open'", (c['id'],), one=True)['n'] >= VENTURE_MAX_OPEN: err = f'你已经有 {VENTURE_MAX_OPEN} 笔生意在做了。'
     if err:
         flash(err, 'bad'); return redirect(url_for('family_page'))
     run('UPDATE consorts SET energy=energy-1 WHERE id=?', (c['id'],))

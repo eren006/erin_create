@@ -764,15 +764,17 @@ class FamilyTests(unittest.TestCase):
         self.assertEqual(game.q('SELECT status FROM family_ventures', one=True)['status'], 'open')
         with patch.object(game.random, 'random', return_value=0.0):
             game.family_venture_tick(v['mature_day'])
-        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 15)
+        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 25)
         self.assertEqual(game.q('SELECT status FROM family_ventures', one=True)['status'], 'done')
         self.assertTrue(any('结账' in m for m in self.msgs(self.atk)))
 
-    def test_only_one_open_venture_and_limits(self):
+    def test_at_most_two_open_ventures_and_limits(self):
         self.fam(self.atk)
+        game.run('UPDATE consorts SET energy=5 WHERE id=?', (self.atk,))
         self.start_venture('silk', 100)
         self.start_venture('salt', 100)
-        self.assertEqual(game.q('SELECT COUNT(*) n FROM family_ventures', one=True)['n'], 1)
+        self.start_venture('usury', 100)
+        self.assertEqual(game.q('SELECT COUNT(*) n FROM family_ventures', one=True)['n'], game.VENTURE_MAX_OPEN)
         game.run("DELETE FROM family_ventures")
         for amt in (49, 401):
             self.start_venture('silk', amt)
@@ -810,7 +812,7 @@ class FamilyTests(unittest.TestCase):
         s0 = game.get_consort(self.atk)['silver']
         with patch.object(game.random, 'random', return_value=0.0):
             game.family_venture_tick(v['mature_day'])
-        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 100 + round(15 * 1.15))
+        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 100 + round(25 * 1.15))
 
     def test_risky_venture_can_get_the_family_scolded(self):
         uid = self.fam(self.atk, prestige=30)
@@ -852,7 +854,7 @@ class FamilyTests(unittest.TestCase):
         game.die(self.atk, '病逝')
         with patch.object(game.random, 'random', return_value=0.0):
             game.family_venture_tick(v['mature_day'])
-        self.assertEqual(self.frow(uid)['estate'], 10 + 115)
+        self.assertEqual(self.frow(uid)['estate'], 10 + 125)
 
     # ── 家里送钱 ─────────────────────────────────────────────────────────────
 
