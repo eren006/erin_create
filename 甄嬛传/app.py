@@ -291,11 +291,15 @@ OLD_AGE_BASE = 0.003          # 概率 = (年龄 - 50) × 0.3%，体质 ≥60 �
 OLD_AGE_REMINDER_START = 660  # 55 岁起，每满 5 岁提醒一句
 OLD_AGE_REMINDER_STEP = 60
 WEAK_SICK_DAYS = 2            # 连续体质 <25 这么多天，染病（2026-09-28 从 3 压到 2）
-COLD_SICK_CHANCE = 0.05       # 冷宫阴寒，每晚染病概率
+ILLNESS_ROLL_HOURS = (0, 6, 12, 18)   # 冷宫/产后/普通染病每 6 小时判一次（2026-10-08 起，原每晚一次）；体虚计数和时疫仍是每晚结算
+ILLNESS_ROLLS_PER_DAY = len(ILLNESS_ROLL_HOURS)   # 下面三个概率、普通染病概率都是「每天」的数，每轮按这个均分
+COLD_SICK_CHANCE = 0.05       # 冷宫阴寒，每天染病概率
 EPIDEMIC_INTERVAL = 5        # 全宫时疫，每隔这么多天可能来一次（2026-09-28 从 10 压到 5）
-EPIDEMIC_CHANCE = 0.3         # 到了日子，真发生时疫的概率
+EPIDEMIC_CHANCE = 0.3         # 到了日子，当天真发生时疫的概率（每 12 小时判一轮，每轮按此均分，见 epidemic_roll）
+EPIDEMIC_ROLL_HOURS = (0, 12) # 2026-10-08 起时疫每 12 小时判一次（原每晚结算）
+EPIDEMIC_ROLLS_PER_DAY = len(EPIDEMIC_ROLL_HOURS)
 POSTPARTUM_SICK_DAYS = 2      # 小产、难产后这么多天内（2026-09-28 从 3 压到 2）
-POSTPARTUM_SICK_CHANCE = 0.10 # ……每晚染病概率
+POSTPARTUM_SICK_CHANCE = 0.10 # ……每天染病概率
 SHI_WORDS = ['孝', '敬', '贞', '惠', '顺', '安', '静', '和']  # 老死时嫔以上追封的谥字
 
 TRUST_START = 20
@@ -1606,6 +1610,7 @@ def init_db():
                      'diet_eff': "TEXT NOT NULL DEFAULT 'normal'",
                      'repair': "TEXT NOT NULL DEFAULT ''",
                      'repair_date': "TEXT NOT NULL DEFAULT ''",
+                     'main_guard_day': 'INTEGER NOT NULL DEFAULT 0',
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
         'heirs': {'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
@@ -1656,7 +1661,7 @@ def init_db():
                     'sender_label': "TEXT NOT NULL DEFAULT ''"},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
-        'game_state': {'last_repair_key': "TEXT NOT NULL DEFAULT ''", 'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
+        'game_state': {'last_epidemic_key': "TEXT NOT NULL DEFAULT ''", 'last_illness_key': "TEXT NOT NULL DEFAULT ''", 'last_repair_key': "TEXT NOT NULL DEFAULT ''", 'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
                        'reign_no': 'INTEGER NOT NULL DEFAULT 1',
                        'reign_start_day': 'INTEGER NOT NULL DEFAULT 1',
                        'emperor_start_age': 'INTEGER NOT NULL DEFAULT 20',
@@ -1919,7 +1924,7 @@ FAVOR_LOSS = dict(
     frame=24, frame_trusted=12,             # 被栽赃陷害
     caught_rumor=12, caught_frame=18, caught_steal=18, caught_expose=18, mood_extra=12,   # 使计败露的自罚；皇上震怒再加
     dream=18,                               # 惊梦香发作
-    lavish=6, repair=2, usury=12,           # 逾制被参、屋子坏了没修、印子钱东窗事发
+    lavish=6, repair=2, usury=12, contend_lose=6,           # 逾制被参、屋子坏了没修、印子钱东窗事发
     secret_lover=60, secret_lover_confess=24, secret_fake_confess=36, secret_scar=24,   # 秘密被揭 / 主动坦白
     convicted=18, case_culprit=18,          # 定罪、旧案翻出真凶
 )
@@ -3105,8 +3110,8 @@ def do_shoukang(c, cfg):
 
 # ── 家族发达了，定期送钱来 ────────────────────────────────────────────────────────
 
-REMIT_INTERVAL = 3            # 每 3 天一次（2026-09-28 从 5 压到 3）
-REMIT_PER_OFFICE, REMIT_PRESTIGE_DIV, REMIT_MAX = 8, 10, 150
+REMIT_HOURS = 12              # 每 12 小时一次（零点结算 + 中午 12 点各一次；原来每 3 天一次）
+REMIT_PER_OFFICE, REMIT_PRESTIGE_DIV, REMIT_MAX = 15, 10, 300      # 每次上限 150→300
 REMIT_MIN_OFFICE, REMIT_MIN_PRESTIGE = 2, 30            # 家主至少七品，或名望够了，家里才有余钱
 
 
@@ -3119,7 +3124,6 @@ def remit_amount(fam):
 
 
 def family_remit_tick(day):
-    if day % REMIT_INTERVAL: return
     for fam in q("SELECT * FROM families"):
         amt = remit_amount(fam)
         mem = [m for m in alive_members(fam['user_id']) if m['status'] in ('normal', 'confined')]
@@ -8925,7 +8929,7 @@ def help_page():
                            FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, TWIN_CHANCE=TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS=TWIN_EXTRA_HEALTH_LOSS, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, CUISHENG_HOURS=CUISHENG_HOURS, INFLUENCE_DECAY=INFLUENCE_DECAY, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
                            HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, HEALTH_DYING_AT=HEALTH_DYING_AT, DYING_HOURS=DYING_HOURS, CONFINE_DAYS=CONFINE_DAYS, CONFINE_HOURS=CONFINE_HOURS,
                            COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, ADOPT_INFLUENCE=ADOPT_INFLUENCE, EAT_DAILY_MAX=EAT_DAILY_MAX, COOK_DAILY_MAX=COOK_DAILY_MAX, GARDEN_SELL_DAILY_CAP=GARDEN_SELL_DAILY_CAP, GARDEN_TAN_CHANCE=GARDEN_TAN_CHANCE, GARDEN_TAN_LOSS=GARDEN_TAN_LOSS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_MAX=PREGNANCY_MAX, PREGNANCY_PITY_ATTEMPTS=PREGNANCY_PITY_ATTEMPTS, PREGNANCY_DAYS=PREGNANCY_DAYS,
-                           settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,
+                           settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_HOURS=REMIT_HOURS, REMIT_MAX=REMIT_MAX,
                            HEIR_EXAM_INTERVAL=HEIR_EXAM_INTERVAL, HEIR_EXAM_MIN_AGE=HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE=HEIR_EXAM_MAX_AGE,
                            ERRAND_INTERVAL=ERRAND_INTERVAL, CROWN_INTERVAL=CROWN_INTERVAL, BIRTHDAY_INTERVAL=BIRTHDAY_INTERVAL,
                            HAZARD_AFTER_YEARS=HAZARD_AFTER_YEARS, MAX_REIGN_DAYS=MAX_REIGN_DAYS,
@@ -9022,6 +9026,7 @@ def age_noon_tick(now):
     if now.hour < 12 or state()['last_noon_age_date'] == today: return
     run("UPDATE game_state SET last_noon_age_date=? WHERE id=1", (today,))
     run("UPDATE consorts SET age_months=age_months+? WHERE status NOT IN ('xiunv','dead')", (AGE_MONTHS_PER_DAY // 2,))
+    family_remit_tick(state()['day'])      # 体己每 12 小时一次：中午这次和零点结算那次
 
 @atomic
 def maybe_settle():
@@ -9049,6 +9054,8 @@ def maybe_settle():
     if settle_due:
         settle_day(bed_key=key)
         for r in _player_rows():check_achievements(r['id'])
+    illness_roll_tick(now)
+    epidemic_roll_tick(now)
     if now.hour >= HEALTH_DECAY_HOUR and state()['last_decay_date'] != today:
         run("UPDATE game_state SET last_decay_date=? WHERE id=1", (today,))
         health_decay_tick()
@@ -9442,7 +9449,7 @@ def fall_ill(cid, day, cause):
     run('UPDATE consorts SET ill_day=?,ill_treatment=?,ill_care=?,weak_days=0,health=MAX(1,health-15) WHERE id=?',(day,treatment,tier,cid))
     cfg=FAVOR_CARE[tier]
     if c['user_id']:
-        care='皇上已命太医诊治，免付诊金。' if treatment else f'请在下一次结算前请太医（{treat_cost(c)} 两，可由姐妹代付）。'
+        care='皇上已命太医诊治，免付诊金。' if treatment else f"请在{'下一次结算' if settling() else '明晚结算（今晚那次不判）'}前请太医（{treat_cost(c)} 两，可由姐妹代付）。"
         notify(cid,f"你{cause}，体质 -15。{care}本次为{cfg['name']}待遇：治疗后存活率 {int(cfg['survive']*100)}%，未治疗 {int(cfg['untreated']*100)}%；治疗成功需 {cfg['recover_nights']} 次结算康复（福报另有加成）。",'bad')
         guide_tip(cid,'sick','「早请太医，姐妹也能替你垫诊金。」')
     ill_digest('sick', f'{display_name(c)}{cause}')
@@ -9472,26 +9479,57 @@ def resolve_illness_crises(day):
 
 
 def illness_onset_tick(day):
-    """每晚判定会不会染病：连续体虚、冷宫阴寒、全宫时疫、产后失调"""
-    epidemic = day % EPIDEMIC_INTERVAL == 0 and random.random() < EPIDEMIC_CHANCE
-    if epidemic: ill_digest('epidemic', '')
+    """每晚结算判定：连续体虚（按晚计数）。冷宫、产后、普通染病每 6 小时一轮（illness_roll），时疫每 12 小时一轮（epidemic_roll）"""
     for c in q("SELECT * FROM consorts WHERE status NOT IN ('dead','xiunv')"):
         if c['ill_day'] or c['poisoned_day']: continue
         if c['health'] < 25:
             weak = c['weak_days'] + 1
             run('UPDATE consorts SET weak_days=? WHERE id=?', (weak, c['id']))
             if weak >= WEAK_SICK_DAYS:
-                fall_ill(c['id'], day, '久病体虚'); continue
+                fall_ill(c['id'], day, '久病体虚')
         elif c['weak_days']:
             run('UPDATE consorts SET weak_days=0 WHERE id=?', (c['id'],))
-        if c['status'] == 'cold' and random.random() < COLD_SICK_CHANCE:
+
+
+def epidemic_roll(day):
+    """每 12 小时一轮：到了日子（每 EPIDEMIC_INTERVAL 天）先看时疫来不来，来了每人按体质判染病。
+    每天两轮，发生概率和个人染病概率都折成每轮的数，使一整天的总概率与原来每晚一次基本相当"""
+    n = EPIDEMIC_ROLLS_PER_DAY
+    if day % EPIDEMIC_INTERVAL != 0 or random.random() >= 1 - (1 - EPIDEMIC_CHANCE) ** (1 / n): return
+    ill_digest('epidemic', '')
+    for c in q("SELECT * FROM consorts WHERE status NOT IN ('dead','xiunv')"):
+        if c['ill_day'] or c['poisoned_day']: continue
+        if random.random() < (100 - c['health']) / 100 / n:
+            fall_ill(c['id'], day, '染上了时疫')
+
+
+def illness_roll(day):
+    """每 6 小时一轮：冷宫阴寒、产后失调、普通风寒。各概率是「每天」的数，每轮取 1/4（总概率与原来每晚一次基本相当）"""
+    n = ILLNESS_ROLLS_PER_DAY
+    for c in q("SELECT * FROM consorts WHERE status NOT IN ('dead','xiunv')"):
+        if c['ill_day'] or c['poisoned_day']: continue
+        if c['status'] == 'cold' and random.random() < COLD_SICK_CHANCE / n:
             fall_ill(c['id'], day, '在冷宫里冻着了'); continue
-        if c['postpartum_until'] >= day and random.random() < POSTPARTUM_SICK_CHANCE:
+        if c['postpartum_until'] >= day and random.random() < POSTPARTUM_SICK_CHANCE / n:
             fall_ill(c['id'], day, '产后没调养好'); continue
-        if epidemic and random.random() < (100 - c['health']) / 100:
-            fall_ill(c['id'], day, '染上了时疫'); continue
-        if ordinary_illness_chance(c,day)>0 and random.random()<ordinary_illness_chance(c,day):
-            fall_ill(c['id'],day,'偶感风寒')
+        p = ordinary_illness_chance(c, day)
+        if p > 0 and random.random() < p / n:
+            fall_ill(c['id'], day, '偶感风寒')
+
+
+def epidemic_roll_tick(now):
+    key = latest_slot(now, EPIDEMIC_ROLL_HOURS)
+    if state()['last_epidemic_key'] == key: return
+    run("UPDATE game_state SET last_epidemic_key=? WHERE id=1", (key,))
+    epidemic_roll(state()['day'])
+
+
+def illness_roll_tick(now):
+    """maybe_settle 每分钟调：到了 0/6/12/18 点的这一轮就判一次；0 点这轮排在日结算之后，用的是新的一天"""
+    key = latest_slot(now, ILLNESS_ROLL_HOURS)
+    if state()['last_illness_key'] == key: return
+    run("UPDATE game_state SET last_illness_key=? WHERE id=1", (key,))
+    illness_roll(state()['day'])
 
 
 def old_age_tick(day):
@@ -9664,6 +9702,7 @@ def place(key):
                            is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False, birth_count=birth_count, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, open_living=request.args.get('living') == '1',
                            household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
                            is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5,
+                           contend_targets=contend_targets(c) if key == 'home' else [], CONTEND_ENERGY=CONTEND_ENERGY, CONTEND_SILVER=CONTEND_SILVER,
                            gather_ev=gather_ev, GATHER_THEMES=GATHER_THEMES, active_festival=FESTIVALS.get(active_festival(day)),
                            festival_done=daily_count(c['id'], 'festival'))
 
@@ -10615,6 +10654,69 @@ def housing_sync(fill_main=True):
         if waiting and c['user_id']:
             text = '各处正殿尚有人居住，先安居眼下住处，待有空缺再奉旨迁宫。' if waiting == 'main' and c['hall'] else '各处屋舍暂满，内务府已记下，待腾出住处便来传话。'
             notify(c['id'], text)
+
+
+CONTEND_ENERGY, CONTEND_SILVER, CONTEND_JITTER = 1, 50, 0.15   # 争正殿：精力、银子，双方圣宠各乘 1±0.15 的随机再比
+MAIN_GUARD_DAYS = 1      # 刚坐上正殿的人，这一天（含当天）不能被人再挑战，免得来回倒腾
+
+
+def contend_error(c, t, day=None):
+    """能不能向 t 争正殿；能就返回 None，不能返回原因"""
+    day = cur_day() if day is None else day
+    if c['status'] != 'normal' or not has_residence(c) or c['rank'] < 5 or c['hall'] == 'main':
+        return '只有住在配殿的嫔位以上，才能向正殿的人争正殿。'
+    if c['pregnant_since']: return '有孕在身，不宜折腾。'
+    if not t or t['status'] != 'normal' or t['hall'] != 'main' or not has_residence(t):
+        return '她已经不在哪处正殿了。'
+    if t['rank'] > c['rank']: return '位分比你高的人，轮不到你去争。'
+    if t['pregnant_since']: return '她有孕在身，内务府不肯动她。'
+    if t['main_guard_day'] >= day: return '她才坐稳正殿，今天不好再挑。'
+    return None
+
+
+@atomic
+def contend_main(c, t):
+    """宠爱 PK：双方圣宠各乘一个随机，挑战的人高则两人换房——她住进正殿，对方搬去她原来的配殿"""
+    day = cur_day()
+    err = contend_error(c, t, day)
+    if err: raise Reject(err)
+    if c['energy'] < CONTEND_ENERGY: raise Reject('精力不够。')
+    if c['silver'] < CONTEND_SILVER: raise Reject(f'要 {CONTEND_SILVER} 两打点内务府。')
+    if daily_count(c['id'], 'contend'): raise Reject('今天已经争过一回了。')
+    charge(c, dict(energy=CONTEND_ENERGY, silver=CONTEND_SILVER))
+    daily_inc(c['id'], 'contend')
+    mine = c['favor'] * random.uniform(1 - CONTEND_JITTER, 1 + CONTEND_JITTER)
+    theirs = t['favor'] * random.uniform(1 - CONTEND_JITTER, 1 + CONTEND_JITTER)
+    if mine > theirs:
+        old = (c['palace'], c['hall'])
+        run("UPDATE consorts SET palace=?,hall='main',housing_waiting='',main_guard_day=? WHERE id=?",
+            (t['palace'], day + MAIN_GUARD_DAYS - 1, c['id']))
+        run("UPDATE consorts SET palace=?,hall=?,housing_waiting='main' WHERE id=?", (old[0], old[1], t['id']))
+        gazette(f"{display_name(c)}得皇上青眼，从{old[0]}{HALL_NAMES[old[1]]}迁入{t['palace']}正殿，{display_name(t)}移居{old[0]}{HALL_NAMES[old[1]]}。", 'decree')
+        if t['user_id']: notify(t['id'], f"{display_name(c)}圣宠压过了你，内务府把你挪去{old[0]}{HALL_NAMES[old[1]]}，正殿让给了她。圣宠高过她，你也可以争回来。", 'bad')
+        return f"圣宠胜过{display_name(t)}，你迁入{t['palace']}正殿。", 'good'
+    cut_favor(c['id'], FAVOR_LOSS['contend_lose'])
+    if t['user_id']: notify(t['id'], f"{display_name(c)}想来争你的正殿，圣宠却不及你，没争成。", 'info')
+    return f"圣宠没压过{display_name(t)}，正殿没争成，还折了些圣宠。", 'bad'
+
+
+@app.route('/contend', methods=['POST'])
+@login_required
+def do_contend():
+    c = g.me
+    try: t = get_consort(int(request.form.get('target_id', 0)))
+    except ValueError: t = None
+    try: msg, kind = contend_main(c, t)
+    except Reject as e: msg, kind = str(e), 'bad'
+    flash(msg, kind)
+    return redirect(url_for('place', key='home'))
+
+
+def contend_targets(c):
+    """配殿里的嫔位以上，列出能争的正殿主人（含不能争的，附原因）"""
+    if c['status'] != 'normal' or not has_residence(c) or c['rank'] < 5 or c['hall'] == 'main': return []
+    return [dict(t=t, err=contend_error(c, t)) for t in q(
+        "SELECT * FROM consorts WHERE hall='main' AND status='normal' AND id!=? ORDER BY favor DESC", (c['id'],))]
 
 
 def housing_visit(bed):

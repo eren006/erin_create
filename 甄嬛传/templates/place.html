@@ -119,6 +119,20 @@
 <p class="muted"><a href="{{ url_for('hobby') }}">暇趣</a>　<a href="{{ url_for('room') }}">寝宫陈设</a></p>
 {% endif %}
 
+{% if contend_targets %}
+<details class="sheet" style="margin:14px 0">
+  <summary style="cursor:pointer"><b>争正殿</b>　<span class="muted">你住{{ c.palace }}{{ {'east':'东配殿','west':'西配殿','back':'后殿'}[c.hall] }}，没有主位名分</span></summary>
+  <p class="muted">挑一位正殿的主人比圣宠：双方圣宠各乘一个 0.85~1.15 的随机，你高就换房，她搬去你现在的配殿；你低则折 6 点圣宠。每次 {{ CONTEND_ENERGY }} 精力、{{ CONTEND_SILVER }} 两，每天一回；只能挑位分不高过你的，有孕的、刚坐稳的不能挑。</p>
+  {% for x in contend_targets %}
+  <div class="act">
+    <div class="what">{{ x.t.palace }}正殿 · {{ dn(x.t) }}　<span class="muted">圣宠 {{ x.t.favor }}（你 {{ c.favor }}）</span>{% if x.err %}<br><span class="muted">{{ x.err }}</span>{% endif %}</div>
+    <form method="post" action="{{ url_for('do_contend') }}"><input type="hidden" name="target_id" value="{{ x.t.id }}">
+      <button {{ 'disabled' if x.err or c.energy < CONTEND_ENERGY or c.silver < CONTEND_SILVER or daily_count(c.id, 'contend') }}>争</button></form>
+  </div>
+  {% endfor %}
+</details>
+{% endif %}
+
 {% if request.view_args.key == 'home' %}
 <section aria-label="同宫">
 <h3>同宫</h3>

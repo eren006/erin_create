@@ -861,21 +861,19 @@ class FamilyTests(unittest.TestCase):
     def test_remit_amount_needs_a_prospering_family(self):
         base = dict(tier='dali', head_ill_day=0)
         self.assertEqual(game.remit_amount(dict(base, head_office=1, prestige=29)), 0)
-        self.assertEqual(game.remit_amount(dict(base, head_office=2, prestige=0)), 16)
-        self.assertEqual(game.remit_amount(dict(base, head_office=1, prestige=30)), 8 + 3)
-        self.assertEqual(game.remit_amount(dict(base, head_office=9, prestige=900)), game.REMIT_MAX)
-        self.assertEqual(game.remit_amount(dict(base, head_office=4, prestige=0, tier='merchant')), int(32 * 1.2))
-        self.assertEqual(game.remit_amount(dict(base, head_office=4, prestige=0, head_ill_day=3)), 16, '家主病着，减半')
+        self.assertEqual(game.remit_amount(dict(base, head_office=2, prestige=0)), 2 * game.REMIT_PER_OFFICE)
+        self.assertEqual(game.remit_amount(dict(base, head_office=1, prestige=30)), game.REMIT_PER_OFFICE + 3)
+        self.assertEqual(game.remit_amount(dict(base, head_office=9, prestige=5000)), game.REMIT_MAX)
+        self.assertEqual(game.remit_amount(dict(base, head_office=4, prestige=0, tier='merchant')), int(4 * game.REMIT_PER_OFFICE * 1.2))
+        self.assertEqual(game.remit_amount(dict(base, head_office=4, prestige=0, head_ill_day=3)), 4 * game.REMIT_PER_OFFICE // 2, '家主病着，减半')
 
     def test_remit_arrives_on_the_interval(self):
         uid = self.fam(self.atk, head_office=5, prestige=20)
         s0 = game.get_consort(self.atk)['silver']
-        off_day = game.REMIT_INTERVAL * 2 - 1
-        on_day = game.REMIT_INTERVAL * 2
-        game.family_remit_tick(off_day)
-        self.assertEqual(game.get_consort(self.atk)['silver'], s0)
-        game.family_remit_tick(on_day)
-        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 5 * 8 + 2)
+        game.family_remit_tick(game.cur_day())
+        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 5 * game.REMIT_PER_OFFICE + 2)
+        game.family_remit_tick(game.cur_day())      # 每 12 小时一次，不再按天数隔几天发
+        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 2 * (5 * game.REMIT_PER_OFFICE + 2))
         self.assertTrue(any('体己' in m for m in self.msgs(self.atk)))
 
     def test_no_remit_for_a_poor_family_or_an_empty_palace(self):
@@ -1136,7 +1134,7 @@ class FamilyTests(unittest.TestCase):
 
     def test_full_settle_runs_family_ticks(self):
         uid = self.fam(self.atk, head_office=5, prestige=30, head_age_months=50 * 12)
-        self.set_day(game.REMIT_INTERVAL * 3)
+        self.set_day(3)
         s0 = game.get_consort(self.atk)['silver']
         with patch.object(game, 'npc_schemes'):
             game.settle_day()

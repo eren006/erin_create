@@ -113,7 +113,7 @@ class IllnessOnsetTests(unittest.TestCase):
     def test_cold_palace_can_fall_ill(self):
         game.run("UPDATE consorts SET status='cold' WHERE id=?", (self.atk,))
         with patch.object(game.random, 'random', return_value=0.0):
-            game.illness_onset_tick(game.cur_day())
+            game.illness_roll(game.cur_day())
         self.assertTrue(game.get_consort(self.atk)['ill_day'])
 
     def test_postpartum_window_can_fall_ill_then_expires(self):
@@ -121,29 +121,57 @@ class IllnessOnsetTests(unittest.TestCase):
         day = game.cur_day()
         game.run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day, self.atk))
         with patch.object(game.random, 'random', return_value=0.0), patch.object(game,'ordinary_illness_chance',return_value=0):
-            game.illness_onset_tick(day)
+            game.illness_roll(day)
         self.assertTrue(game.get_consort(self.atk)['ill_day'])
 
         other = self.player('丙')
         game.run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day - 1, other))   # 窗口已过
         with patch.object(game.random, 'random', return_value=0.0), patch.object(game,'ordinary_illness_chance',return_value=0):
-            game.illness_onset_tick(day)
+            game.illness_roll(day)
         self.assertFalse(game.get_consort(other)['ill_day'])
 
     def test_epidemic_only_on_interval_days_and_skips_already_sick(self):
         game.run('UPDATE game_state SET day=?', (game.EPIDEMIC_INTERVAL - 1,))
-        with patch.object(game.random, 'random', return_value=0.0), patch.object(game,'ordinary_illness_chance',return_value=0):
-            game.illness_onset_tick(game.cur_day())
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.epidemic_roll(game.cur_day())
         self.assertFalse(game.get_consort(self.atk)['ill_day'], '不到间隔天数，不该发时疫')
         game.run('UPDATE game_state SET day=?', (game.EPIDEMIC_INTERVAL,))
-        with patch.object(game.random, 'random', return_value=0.0), patch.object(game,'ordinary_illness_chance',return_value=0):
-            game.illness_onset_tick(game.cur_day())
+        other = self.player('丙')
+        game.fall_ill(other, game.cur_day(), '久病体虚')
+        hp = game.get_consort(other)['health']
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.epidemic_roll(game.cur_day())
         self.assertTrue(game.get_consort(self.atk)['ill_day'])
+        self.assertEqual(game.get_consort(other)['health'], hp, '已经病着的不再染')
+
+    def test_epidemic_rolls_twice_a_day_each_with_half_the_chance(self):
+        game.run('UPDATE game_state SET day=?', (game.EPIDEMIC_INTERVAL,))
+        per_roll = 1 - (1 - game.EPIDEMIC_CHANCE) ** 0.5
+        with patch.object(game.random, 'random', return_value=per_roll + 0.001):
+            game.epidemic_roll(game.cur_day())
+        self.assertFalse(game.get_consort(self.atk)['ill_day'], '没抽中时疫')
+        game.run('UPDATE consorts SET health=0 WHERE id=?', (self.atk,))
+        seq = iter([per_roll - 0.001, 0.499])      # 时疫来了；体质 0 的人个人概率每轮 0.5
+        with patch.object(game.random, 'random', side_effect=lambda: next(seq, 0.99)):
+            game.epidemic_roll(game.cur_day())
+        self.assertTrue(game.get_consort(self.atk)['ill_day'])
+
+    def test_epidemic_ticks_at_noon_and_midnight_only(self):
+        from datetime import datetime
+        at = lambda h, m=0: datetime(2026, 10, 8, h, m, tzinfo=game.TZ)
+        calls = []
+        with patch.object(game, 'epidemic_roll', side_effect=lambda d: calls.append(d)):
+            game.epidemic_roll_tick(at(12, 0)); game.epidemic_roll_tick(at(18, 0)); game.epidemic_roll_tick(at(23, 59))
+            self.assertEqual(len(calls), 1)
+            game.epidemic_roll_tick(at(0, 0).replace(day=9))
+            self.assertEqual(len(calls), 2)
 
     def test_already_poisoned_does_not_also_fall_ill(self):
         game.run('UPDATE consorts SET poisoned_day=? WHERE id=?', (game.cur_day(), self.atk))
         with patch.object(game.random, 'random', return_value=0.0):
             game.illness_onset_tick(game.cur_day())
+            game.illness_roll(game.cur_day())
+            game.epidemic_roll(game.cur_day())
         self.assertFalse(game.get_consort(self.atk)['ill_day'])
 
     def test_already_ill_not_retriggered(self):
@@ -152,7 +180,33 @@ class IllnessOnsetTests(unittest.TestCase):
         health_after_first = game.get_consort(self.atk)['health']
         with patch.object(game.random, 'random', return_value=0.0):
             game.illness_onset_tick(day)
+            game.illness_roll(day)
         self.assertEqual(game.get_consort(self.atk)['health'], health_after_first, '已经病着，不会再扣一次体质')
+
+    def test_six_hour_rolls_use_a_quarter_of_the_daily_chance(self):
+        day = game.cur_day()
+        game.run("UPDATE consorts SET status='cold' WHERE id=?", (self.atk,))
+        just_over = game.COLD_SICK_CHANCE / game.ILLNESS_ROLLS_PER_DAY + 0.001
+        with patch.object(game.random, 'random', return_value=just_over), patch.object(game, 'ordinary_illness_chance', return_value=0):
+            game.illness_roll(day)
+        self.assertFalse(game.get_consort(self.atk)['ill_day'])
+        with patch.object(game.random, 'random', return_value=just_over - 0.002), patch.object(game, 'ordinary_illness_chance', return_value=0):
+            game.illness_roll(day)
+        self.assertTrue(game.get_consort(self.atk)['ill_day'])
+
+    def test_roll_runs_once_at_each_six_hour_mark(self):
+        from datetime import datetime
+        at = lambda h, m=0: datetime(2026, 10, 8, h, m, tzinfo=game.TZ)
+        calls = []
+        with patch.object(game, 'illness_roll', side_effect=lambda d: calls.append(d)):
+            game.illness_roll_tick(at(6, 0)); game.illness_roll_tick(at(6, 1)); game.illness_roll_tick(at(11, 59))
+            self.assertEqual(len(calls), 1)
+            game.illness_roll_tick(at(12, 0))
+            self.assertEqual(len(calls), 2)
+            game.illness_roll_tick(at(18, 5)); game.illness_roll_tick(at(23, 0))
+            self.assertEqual(len(calls), 3)
+            game.illness_roll_tick(at(0, 0).replace(day=9))
+            self.assertEqual(len(calls), 4)
 
 
 class IllnessCrisisTests(unittest.TestCase):

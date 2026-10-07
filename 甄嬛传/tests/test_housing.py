@@ -56,6 +56,70 @@ class HousingTests(unittest.TestCase):
         self.assertEqual(len(game.PALACES)-occupied, 7)
         self.assertFalse(game.q('SELECT * FROM messages'))
 
+    # ── 争正殿 ───────────────────────────────────────────────────────────────
+
+    def contenders(self, mine=300, theirs=100, my_rank=5, their_rank=5):
+        holder = self.housed('正殿', their_rank, '翊坤宫', 'main')
+        rival = self.housed('后来', my_rank, '永寿宫', 'west')
+        game.run('UPDATE consorts SET favor=?, energy=10, silver=500 WHERE id=?', (mine, rival))
+        game.run('UPDATE consorts SET favor=? WHERE id=?', (theirs, holder))
+        return rival, holder
+
+    def contend(self, rival, holder):
+        self.login(rival)
+        return self.client.post('/contend', data=dict(target_id=holder))
+
+    def where(self, cid):
+        c = game.get_consort(cid)
+        return c['palace'], c['hall']
+
+    def test_higher_favor_takes_the_main_hall_and_swaps_rooms(self):
+        rival, holder = self.contenders(300, 100)
+        with patch.object(game.random, 'uniform', return_value=1.0):
+            self.contend(rival, holder)
+        self.assertEqual(self.where(rival), ('翊坤宫', 'main'))
+        self.assertEqual(self.where(holder), ('永寿宫', 'west'))
+        c = game.get_consort(rival)
+        self.assertEqual((c['energy'], c['silver']), (10 - game.CONTEND_ENERGY, 500 - game.CONTEND_SILVER))
+        self.assertEqual(game.get_consort(holder)['housing_waiting'], 'main')
+
+    def test_losing_costs_favor_and_changes_no_rooms(self):
+        rival, holder = self.contenders(100, 300)
+        with patch.object(game.random, 'uniform', return_value=1.0):
+            self.contend(rival, holder)
+        self.assertEqual(self.where(rival), ('永寿宫', 'west'))
+        self.assertEqual(self.where(holder), ('翊坤宫', 'main'))
+        self.assertEqual(game.get_consort(rival)['favor'], 100 - game.FAVOR_LOSS['contend_lose'])
+
+    def test_once_a_day_and_new_holder_is_guarded(self):
+        rival, holder = self.contenders(300, 100)
+        with patch.object(game.random, 'uniform', return_value=1.0):
+            self.contend(rival, holder)
+            before = self.where(holder)
+            self.contend(holder, rival)          # 被挤的人想马上争回来：刚坐稳，不行
+        self.assertEqual(self.where(holder), before)
+        self.assertEqual(self.where(rival), ('翊坤宫', 'main'))
+
+    def test_cannot_contend_against_higher_rank_pregnant_or_when_already_main(self):
+        rival, holder = self.contenders(300, 100, my_rank=5, their_rank=6)
+        self.assertIn('位分', game.contend_error(game.get_consort(rival), game.get_consort(holder)))
+        game.run('UPDATE consorts SET rank=5 WHERE id=?', (holder,))
+        game.run('UPDATE consorts SET pregnant_since=1 WHERE id=?', (holder,))
+        self.assertIn('有孕', game.contend_error(game.get_consort(rival), game.get_consort(holder)))
+        game.run('UPDATE consorts SET pregnant_since=0 WHERE id=?', (holder,))
+        self.assertIsNone(game.contend_error(game.get_consort(rival), game.get_consort(holder)))
+        self.assertIsNotNone(game.contend_error(game.get_consort(holder), game.get_consort(rival)), '已经住正殿的不能争')
+        low = self.housed('贵人', 4, '储秀宫', 'east')
+        self.assertIsNotNone(game.contend_error(game.get_consort(low), game.get_consort(holder)), '没到嫔位不能争')
+
+    def test_home_page_lists_contend_targets_only_for_waiting_pins(self):
+        rival, holder = self.contenders()
+        self.login(rival)
+        page = self.client.get('/place/home').get_data(as_text=True)
+        self.assertIn('争正殿', page)
+        self.login(holder)
+        self.assertNotIn('争正殿', self.client.get('/place/home').get_data(as_text=True))
+
     def test_entry_random_annex_in_npc_palace_and_decree(self):
         cid = self.player('新')
         game.run("UPDATE consorts SET status='xiunv',rank=0 WHERE id=?", (cid,))
