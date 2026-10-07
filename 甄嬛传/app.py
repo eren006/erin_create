@@ -159,6 +159,7 @@ def gain_intrigue_influence(it, fraction=1.0, share=1.0, actor_id=None):
 
 FAVOR_HOT = 150
 FAVOR_LOW = 40
+FAVOR_DROP_DEMOTE = 50       # 一天之内圣宠净掉了这么多点以上（常在以上、入宫满 3 天的玩家），夜里结算降一级（2026-10-07 起）
 UNFAVORED_GRACE_DAYS = 2
 NEWCOMER_CARE_DAYS = 3
 FAVOR_CARE = {
@@ -541,6 +542,8 @@ INTRIGUES = {
                    desc='用手里的药，交给对方宫里的内应去下，或者自己动手'),
     'expose': dict(name='告发秘密', silver=50, energy=0, min_rank=1, base=0.70, npc_ok=False,
                    desc='需先探到对方的秘密。皇上信不信看你的信任。成：按秘密处罚对方，你信任 +5。不信：自己德行 -8，圣宠 -18，信任 -5'),
+    'impeach': dict(name='参奏降位', silver=250, energy=1, min_rank=5, base=0.40, npc_ok=False,
+                    desc='嫔位以上，要比对方高两级以上，对方得是常在以上，每 3 天一次，同一个人 3 天内只能被参一回。成：对方降一级，圣宠 -12。败露：自己德行 -8，圣宠 -18，信任 -8'),
     'witch':  dict(name='构陷巫蛊', silver=300, energy=1, min_rank=4, base=0.35, npc_ok=True,
                    desc='成：对方打入冷宫。败露：打入冷宫的是你'),
     'punish': dict(name='发落宫人', silver=50, energy=1, min_rank=5, base=0.50, npc_ok=False,
@@ -1446,7 +1449,7 @@ def init_db():
     migrations = {
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
         'banquet_entries': {'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'tier': 'INTEGER NOT NULL DEFAULT 1', 'buff': 'INTEGER NOT NULL DEFAULT 0', 'note': "TEXT NOT NULL DEFAULT ''"},
-        'consorts': {'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
+        'consorts': {'favor_mark': 'INTEGER NOT NULL DEFAULT -1', 'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
                      'age_months': 'INTEGER NOT NULL DEFAULT 240',
                      'poisoned_day': 'INTEGER NOT NULL DEFAULT 0',
                      'poison_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -1465,7 +1468,7 @@ def init_db():
                      'dianxuan_quote': "TEXT NOT NULL DEFAULT ''",
                      'maid_offer': "TEXT NOT NULL DEFAULT ''",
                      'maid_event': "TEXT NOT NULL DEFAULT ''",
-                     'punish_ready_day': 'INTEGER NOT NULL DEFAULT 0',
+                     'punish_ready_day': 'INTEGER NOT NULL DEFAULT 0', 'impeach_ready_day': 'INTEGER NOT NULL DEFAULT 0', 'impeached_day': 'INTEGER NOT NULL DEFAULT 0',
                      'maid_punished_day': 'INTEGER NOT NULL DEFAULT 0',
                      'drugged_until_day': 'INTEGER NOT NULL DEFAULT 0', 'drugged_day': 'INTEGER NOT NULL DEFAULT 0',
                      'drug_ledger': 'INTEGER NOT NULL DEFAULT 0',
@@ -1632,6 +1635,7 @@ def migrate_heir_born_ts(db):
         for hid, born_day in db.execute("SELECT id, born_day FROM heirs WHERE born_ts=0").fetchall():
             db.execute("UPDATE heirs SET born_ts=? WHERE id=?", (midnight - max(0, st[0] - born_day) * 86400, hid))
         db.execute("UPDATE game_state SET last_noon_age_date=? WHERE id=1 AND last_noon_age_date=''", (datetime.now(TZ).date().isoformat(),))
+        db.execute("UPDATE consorts SET favor_mark=favor WHERE favor_mark<0")      # 圣宠骤降降位的基线：部署时先记一次
 
 def migrate_rank_scale(db):
     """2026-10-07 在妃和贵妃之间加「四妃」档：旧档里贵妃(7)及以上全部顺延一位；占了淑德贤惠当封号的人换一个。只做一次"""
@@ -3133,6 +3137,11 @@ def index():
     if c['status'] not in ('cold',) and nxt <= PLAYER_MAX_RANK:
         promo = dict(influence=PROMOTE_INFLUENCE[nxt], rank=RANK_NAMES[nxt], favor=promote_favor_need(c, nxt), virtue=promote_virtue_need(nxt),
                      slot=slot_free(nxt, c['id']))
+        promo['met'] = c['favor'] >= promo['favor'] and c['virtue'] >= promo['virtue'] and c['influence'] >= promo['influence']
+        if promo['met'] and not promo['slot']:      # 条件都够了，只差名额：首页单独弹一条提示，列出现在占着名额的人
+            holders = q("SELECT * FROM consorts WHERE rank=? AND status NOT IN ('cold','xiunv','dead') AND id!=? ORDER BY favor DESC", (nxt, c['id']))
+            promo['holders'] = [display_name(x) for x in holders]
+            promo['cap'] = RANK_SLOTS.get(nxt)
     heirs = q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id", (c['id'],))
     maid_gap = 0 if c['status'] == 'cold' else maid_quota(c['rank']) - len(active_maids(c['id']))
     unnamed_heirs = [h for h in heirs if not h['name']]
@@ -4679,6 +4688,8 @@ def intrigue_submit():
         err = '她今晚本就侍不了寝。'
     elif method == 'punish':
         err = punish_block(c, t, day)
+    elif method == 'impeach':
+        err = impeach_block(c, t, day)
     if not err and pid:
         if method not in CONSPIRE_METHODS: err = '这件事不能合谋。'
         elif c['silver'] < conspire_cost(cfg): err = f"合谋每人要 {conspire_cost(cfg)} 两，你的银子不够。"
@@ -4702,6 +4713,8 @@ def intrigue_submit():
         run('UPDATE intrigues SET drug=?, item_used=?, agent_maid_id=? WHERE id=?', (drug, used, mid, iid))
     if method == 'punish':   # 和毒害一样，撤回也不重置冷却
         run('UPDATE consorts SET punish_ready_day=? WHERE id=?', (day + PUNISH_COOLDOWN, c['id']))
+    if method == 'impeach':
+        run('UPDATE consorts SET impeach_ready_day=? WHERE id=?', (day + IMPEACH_COOLDOWN, c['id']))
     daily_inc(c['id'], 'intrigue')
     result = resolve_now(iid)
     if result:
@@ -5053,6 +5066,20 @@ def maid_name_error(name):
 def punishable_maids(cid):
     day = cur_day()
     return [m for m in active_maids(cid) if day - m['joined_day'] >= MAID_NEW_SHIELD]
+
+IMPEACH_COOLDOWN = 3
+IMPEACH_FAVOR_LOSS = 12
+
+def impeach_block(c, t, day):
+    if c['rank'] < t['rank'] + 2:
+        return '要比她高两级以上，才参奏得动她。'
+    if t['rank'] < 3:
+        return '她位分太低，不值得参奏。'
+    if c['impeach_ready_day'] > day:
+        return f"你上次参奏还没过 {IMPEACH_COOLDOWN} 天，第 {c['impeach_ready_day']} 天才能再动手。"
+    if t['impeached_day'] and day - t['impeached_day'] < IMPEACH_COOLDOWN:
+        return '她前几天刚被参过，这会儿再参太扎眼。'
+    return None
 
 def punish_block(c, t, day):
     if c['rank'] < t['rank'] + 2:
@@ -7327,7 +7354,7 @@ def resolve_intrigue(it, bed_id=None):
     if it['method'] == 'punish' and (atk['status'] != 'normal' or not punishable_maids(tgt['id'])):
         if atk['user_id']: notify(atk['id'], f"你想发落{tn}的宫人，可眼下找不到由头，只好作罢。")
         return done('void')
-    tell_name = eyes_active(tgt) or it['method'] == 'steal'      # 截宠得手，对方一定知道是谁（人是在她眼皮底下顶上的）
+    tell_name = eyes_active(tgt) or it['method'] in ('steal', 'impeach')      # 截宠得手、参奏都是明面上的事，对方一定知道是谁
     if it['method'] == 'expose':
         success, caught = random.random() < intrigue_success_p(atk, tgt, cfg, conspired), True
     else:
@@ -7406,6 +7433,14 @@ def resolve_intrigue(it, bed_id=None):
                 # 发落是明面上的欺压：主子一定知道是谁，不看眼线
                 victim = f"{an}说你宫里的{maid['name']}冲撞了她，把人拖去慎刑司，杖毙了。宫里的人都吓坏了，全宫宫人忠心 -5。"
                 gz = f"{tgt['palace']}宫人{maid['name']}没了。"
+        elif m == 'impeach':
+            old_name = display_name(tgt)
+            run('UPDATE consorts SET impeached_day=? WHERE id=?', (cur_day(), tgt['id']))
+            lost = cut_favor(tgt['id'], IMPEACH_FAVOR_LOSS)
+            if tgt['rank'] > 1: set_rank(tgt['id'], tgt['rank'] - 1)
+            now_name = display_name(get_consort(tgt['id']))
+            victim = f"{an}上了一道折子参你，皇上准了：你降为{now_name}，圣宠 -{lost}。" + (f"眼线说，是{an}。" if tell_name else '')
+            gz = f"{old_name}被参奏失德，皇上降其位分，今称{now_name}。"
         elif m == 'witch':
             send_to_cold(tgt['id'])
             victim = f"你宫中搜出了写着皇上生辰八字的巫蛊人偶。百口莫辩，你被打入冷宫。" + \
@@ -7451,6 +7486,9 @@ def resolve_intrigue(it, bed_id=None):
             elif m == 'punish':
                 add_stat(a['id'], 'virtue', -8)
                 pen = '德行 -8'
+            elif m == 'impeach':
+                add_stat(a['id'], 'virtue', -8); lost = cut_favor(a['id'], FAVOR_LOSS['caught_expose'])
+                pen = f"德行 -8，圣宠 -{lost}"
             else:  # witch
                 send_to_cold(a['id'])
                 pen = '打入冷宫'
@@ -7480,6 +7518,9 @@ def resolve_intrigue(it, bed_id=None):
     if conspired: notify(partner['id'], f"你与{display_name(atk)}合谋对{tn}的「{cfg['name']}」没成，好在没人察觉。")
     if it['method'] == 'punish' and tgt['user_id']:
         notify(tgt['id'], f"{an}想找由头发落你宫里的人，被你挡了回去。")
+    if it['method'] == 'impeach':      # 参奏是递到御前的折子，成与不成都是公开的
+        gazette(f"{an}上折参奏{tn}，皇上留中不发。", 'scandal')
+        if tgt['user_id']: notify(tgt['id'], f"{an}上折子参你，皇上看过没有下旨，把折子压下了。", 'info')
     if conspired:
         gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION, share=CONSPIRE_INFLUENCE_SHARE)
         gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION, share=CONSPIRE_INFLUENCE_SHARE, actor_id=partner['id'])
@@ -7806,6 +7847,7 @@ def reigns():
 
 # ── 生育：侍寝人数、怀孕率、孕期 ─────────────────────────────────────────────────
 BED_TRUST_GAIN = 3      # 每次被翻牌侍寝（没被惊梦香搅黄）涨的信任
+BIRTH_FAVOR_PRINCE, BIRTH_FAVOR_PRINCESS = 40, 30      # 生下皇子 / 公主给的圣宠（2026-10-07 起：皇子 100→40，公主 60→30）
 BED_DAILY_MAX = 4      # 每人每游戏日最多被翻几次（原来 2，2026-10-06 放宽到 3，2026-10-07 放宽到 4）
 BED_COUNT_WEIGHTS = ((1, 0.3), (2, 0.5), (3, 0.2))      # 2026-10-07 起：每轮 30% 翻 1 位、50% 翻 2 位、20% 翻 3 位（早先试过固定 2 位、3 位；最早按玩家数 1~6 位）
 BED_MAX_PER_ROUND = max(n for n, _ in BED_COUNT_WEIGHTS)
@@ -7927,7 +7969,7 @@ def resolve_births(day, include_legacy=True):
             label = born[0][0]
         if '皇子' in genders:
             add_prestige(c, PRESTIGE_BORN_PRINCE, f"{full_name(c)}诞下皇子")
-            add_favor(c['id'], 100, gain_mult=False)
+            add_favor(c['id'], BIRTH_FAVOR_PRINCE, gain_mult=False)
             if c['rank'] >= MOTHER_BY_SON_MAX_RANK:      # 已经封顶，不再晋位，改加势力
                 run("UPDATE consorts SET influence=influence+? WHERE id=?", (MOTHER_BY_SON_INFLUENCE, c['id']))
                 extra += f"母凭子贵，势力 +{MOTHER_BY_SON_INFLUENCE}。"
@@ -7935,7 +7977,7 @@ def resolve_births(day, include_legacy=True):
                 set_rank(c['id'], c['rank'] + 1)
                 extra += f"母凭子贵，晋为{display_name(get_consort(c['id']))}。"
         else:
-            add_favor(c['id'], 60, gain_mult=False)
+            add_favor(c['id'], BIRTH_FAVOR_PRINCESS, gain_mult=False)
         gift_line = '；'.join((f"{b[0]}：{b[1]}" if twins else b[1]) for b in born)
         gazette(f"{display_name(c)}诞下{label}。{extra}资质：{gift_line}。", 'birth')
         notify(c['id'], f"你诞下了{label}。{extra}", 'good')
@@ -8227,6 +8269,13 @@ def _settle_night():
             streak = c['unfavored_days']+1 if c['favor']<FAVOR_LOW else 0
             run('UPDATE consorts SET unfavored_days=? WHERE id=?',(streak,c['id']))
             c=get_consort(c['id'])
+            drop = c['favor_mark'] - c['favor'] if c['favor_mark'] >= 0 else 0      # 比昨夜结算后的圣宠净掉了多少（含被使计、受罚、被截宠，扣掉当天涨的）
+            if c['user_id'] and not c['npc_key'] and c['status'] == 'normal' and c['rank'] >= 3 and drop >= FAVOR_DROP_DEMOTE and day - c['entered_day'] >= NEWCOMER_CARE_DAYS:
+                old_name = display_name(c)      # 一天之内圣宠大跌，皇上龙颜不悦：降一级
+                set_rank(c['id'], c['rank'] - 1)
+                c = get_consort(c['id'])
+                notify(c['id'], f"你这一天里圣宠一下子跌了 {drop} 点，皇上龙颜不悦，位分降为{display_name(c)}。", 'bad')
+                gazette(f"{old_name}圣眷骤衰，皇上降其位分，今称{display_name(c)}。", 'decree')
             if c['status'] != 'cold':
                 income=favor_stipend(c,day)
                 add_silver(c['id'],income)
@@ -8237,6 +8286,7 @@ def _settle_night():
                 run("UPDATE consorts SET favor=MAX(0, favor-?) WHERE id=?", (decay, c['id']))
             if c['npc_key'] and c['status'] == 'normal':
                 add_favor(c['id'], random.randint(0, 8), gain_mult=False)
+            run("UPDATE consorts SET favor_mark=favor WHERE id=?", (c['id'],))      # 记下今夜结算后的圣宠，明晚算「一天掉了多少」
         run("UPDATE consorts SET energy=?, seek_bonus=0 WHERE id=?", (ENERGY_MAX, c['id']))
         if c['status'] == 'confined' and c['status_until_day'] <= day:
             run("UPDATE consorts SET status='normal', status_until_day=0 WHERE id=?", (c['id'],))
@@ -8493,8 +8543,8 @@ def energy_tick(key):
 
 
 HEALTH_DECAY_HOUR = SETTLE_HOUR   # 和日结算同一时刻（0 点），所有人体质自然衰减一次
-HEALTH_DECAY_BASE = 10       # 20 岁时每晚平均掉这么多点体质，也是任何年龄每晚至少掉的数（2026-10-06 从 0.2 提到 0.5，2026-10-07 几次上调，最后到 10）
-HEALTH_DECAY_PER_YEAR = 0.5  # 20 岁以后每长一岁，每晚平均多掉这么多（原 0.03，后 0.08、0.12、0.25，2026-10-07 提到 0.5）
+HEALTH_DECAY_BASE = 15       # 20 岁时每晚平均掉这么多点体质，也是任何年龄每晚至少掉的数（2026-10-06 从 0.2 提到 0.5，2026-10-07 几次上调，最后到 15）
+HEALTH_DECAY_PER_YEAR = 0.75 # 20 岁以后每长一岁，每晚平均多掉这么多（原 0.03，后 0.08、0.12、0.25、0.5，2026-10-07 提到 0.75）
 HEALTH_DECAY_FLOOR = 1       # 自然衰减一直掉，最低到 1（2026-10-07 起不再停在 20；掉到 HEALTH_DYING_AT 以下就是濒死）
 HEALTH_DYING_AT = 10         # 体质掉到这个数及以下：濒死
 DYING_HOURS = 12             # 濒死状态撑过这么多小时还没好转（体质回到 HEALTH_DYING_AT 以上）就殒命

@@ -71,5 +71,19 @@ class Rank5PerkTests(unittest.TestCase):
         self.assertEqual(self.me(self.tgt)['silver'], 200)
 
 
+    def test_home_banner_when_conditions_met_but_slots_full(self):
+        game.run("UPDATE consorts SET rank=4, favor=?, virtue=?, influence=?, recap_seen_day=99 WHERE id=?",
+                 (game.PROMOTE_FAVOR[5] + 10, game.PROMOTE_VIRTUE[5] + 10, game.PROMOTE_INFLUENCE[5] + 5, self.tgt))
+        game.run("UPDATE consorts SET rank=5 WHERE id=?", (self.atk,))
+        with patch.dict(game.RANK_SLOTS, {5: 1}):
+            self.login(self.tgt)
+            html = self.client.get('/').get_data(as_text=True)
+        self.assertIn('只差名额', html)
+        self.assertIn(game.display_name(game.get_consort(self.atk)), html)
+        game.run("UPDATE consorts SET favor=0 WHERE id=?", (self.tgt,))
+        with patch.dict(game.RANK_SLOTS, {5: 1}):
+            self.assertNotIn('只差名额', self.client.get('/').get_data(as_text=True))
+
+
 if __name__ == '__main__':
     unittest.main()
