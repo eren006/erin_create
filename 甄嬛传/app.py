@@ -442,6 +442,7 @@ ITEMS = {
     'shuhen':   dict(name='舒痕胶', price=150, usable=True, desc='容貌 +3（每天限用一次）'),
     'shujin':   dict(name='蜀锦新衣', price=80, usable=True, desc='今晚翻牌子的机会大增'),
     'qinpu':    dict(name='前朝琴谱', price=50, usable=True, desc='才艺 +3'),
+    'cuisheng': dict(name='催产丹', price=150, usable=True, desc='有孕时服用：缩短孕期 6 小时，可连着吃'),
     'antai':    dict(name='安胎药', price=100, usable=False, desc='放在身边：有孕时若遭人下药，可保住胎儿一次'),
     'ruyi':     dict(name='玉如意', price=120, usable=False, desc='赠给别人，对方好感 +15'),
     'yinzhen':  dict(name='银针', price=60, usable=False, desc='放在身边：被人下药时成算 -15%，挡下一次就断一根'),
@@ -467,7 +468,7 @@ DRUGS = {
  'wuming':dict(name='无名',rank=6,price=800,case='none',eat=False,days=0,hours=0,desc='可配其他药（离魂草除外），24小时后线索浮现，仍可调查；成功后账号冷却1天'),
 }
 DRUG_ENERGY = 1
-DRUG_BASE = 0.35
+DRUG_BASE = 0.40
 CABINET_SLOTS = 3             # 暗柜每人每天刷几种
 LEDGER_CHANCE = 0.10          # 暗柜买药被内务府记一笔的概率
 NAMELESS_COOLDOWN = 1   # 无名成功后冷却1天
@@ -594,21 +595,21 @@ ACTIONS = {
 # ── 阴谋 ───────────────────────────────────────────────────────────────────────
 
 INTRIGUES = {
-    'rumor':  dict(name='散布流言', silver=30, energy=0, min_rank=1, base=0.55, npc_ok=True,
+    'rumor':  dict(name='散布流言', silver=30, energy=0, min_rank=1, base=0.60, npc_ok=True,
                    desc='成：对方圣宠 -18（皇上信任她则 -9），德行 -3。败露：自己德行 -5，圣宠 -12'),
-    'steal':  dict(name='截宠', silver=60, energy=0, min_rank=1, base=0.50, npc_ok=True,
+    'steal':  dict(name='截宠', silver=60, energy=0, min_rank=1, base=0.55, npc_ok=True,
                    desc='若今晚翻的是对方的牌子，由你顶上。得手：对方圣宠 -5，且一定知道是你。败露：不受处罚。落空（对方没被翻牌）退还一半银子'),
-    'frame':  dict(name='栽赃陷害', silver=100, energy=0, min_rank=2, base=0.45, npc_ok=True,
+    'frame':  dict(name='栽赃陷害', silver=100, energy=0, min_rank=2, base=0.50, npc_ok=True,
                    desc='成：对方禁足半天，圣宠 -24（皇上信任她则 -12）。败露：自己禁足半天，圣宠 -18'),
     'drug':   dict(name='下药', silver=0, energy=DRUG_ENERGY, min_rank=2, base=DRUG_BASE, npc_ok=False,
                    desc='用手里的药，交给对方宫里的内应去下，或者自己动手'),
-    'expose': dict(name='告发秘密', silver=50, energy=0, min_rank=1, base=0.70, npc_ok=False,
+    'expose': dict(name='告发秘密', silver=50, energy=0, min_rank=1, base=0.75, npc_ok=False,
                    desc='需先探到对方的秘密。皇上信不信看你的信任。成：按秘密处罚对方，你信任 +5。不信：自己德行 -8，圣宠 -18，信任 -5'),
-    'impeach': dict(name='参奏降位', silver=250, energy=1, min_rank=5, base=0.40, npc_ok=False,
+    'impeach': dict(name='参奏降位', silver=250, energy=1, min_rank=5, base=0.45, npc_ok=False,
                     desc='嫔位以上，要比对方高两级以上，对方得是常在以上，每 3 天一次，同一个人 3 天内只能被参一回。成：对方降一级，圣宠 -12。败露：自己德行 -8，圣宠 -18，信任 -8'),
-    'witch':  dict(name='构陷巫蛊', silver=300, energy=1, min_rank=4, base=0.35, npc_ok=True,
+    'witch':  dict(name='构陷巫蛊', silver=300, energy=1, min_rank=4, base=0.40, npc_ok=True,
                    desc='成：对方打入冷宫。败露：打入冷宫的是你'),
-    'punish': dict(name='发落宫人', silver=50, energy=1, min_rank=5, base=0.50, npc_ok=False,
+    'punish': dict(name='发落宫人', silver=50, energy=1, min_rank=5, base=0.55, npc_ok=False,
                    desc='找个由头，把对方宫里一个宫人拖去慎刑司。要比对方高两级以上，每 3 天一次；'
                         '对方会知道是你。成：那个宫人没了，对方全宫宫人忠心 -5。败露：德行 -8，信任 -5'),
 }
@@ -1527,6 +1528,7 @@ def init_db():
                      'influence': 'INTEGER NOT NULL DEFAULT 0',
                      'pregnancy_started_ts': 'REAL NOT NULL DEFAULT 0', 'bed_daily_day': 'INTEGER NOT NULL DEFAULT 0', 'bed_daily_count': 'INTEGER NOT NULL DEFAULT 0', 'entry_origin': "TEXT NOT NULL DEFAULT 'new'",
                      'last_promote_day': 'INTEGER NOT NULL DEFAULT 0',
+                     'contraception': 'INTEGER NOT NULL DEFAULT 0',
                      'dianxuan_quote': "TEXT NOT NULL DEFAULT ''",
                      'maid_offer': "TEXT NOT NULL DEFAULT ''",
                      'maid_event': "TEXT NOT NULL DEFAULT ''",
@@ -3673,6 +3675,21 @@ def diet_tick(day):
                 notify(c['id'], f"有人在皇后跟前说你吃穿用度逾了制。德行 −2，圣宠 −{FAVOR_LOSS['lavish']}。", 'bad')
 
 
+@app.route('/contraception', methods=['POST'])
+@login_required
+def set_contraception():
+    c = g.me
+    if birth_count(c['id']) < CONTRACEPTION_MIN_BIRTHS:
+        flash(f'要生过 {CONTRACEPTION_MIN_BIRTHS} 个孩子之后，才能选择避孕。', 'bad')
+    elif c['pregnant_since']:
+        flash('你正怀着身孕，等生产之后再说。', 'bad')
+    else:
+        on = 0 if c['contraception'] else 1
+        run('UPDATE consorts SET contraception=? WHERE id=?', (on, c['id']))
+        flash('已开始避孕，侍寝不会再怀上。' if on else '不再避孕，侍寝又有机会怀上。', 'good')
+    return redirect(url_for('place', key='home', living=1))
+
+
 @app.route('/diet', methods=['POST'])
 @login_required
 def set_diet():
@@ -4640,6 +4657,8 @@ def sister(action, tid):
             flash('你们从此不再是姐妹。好感 -30。', 'bad')
     return redirect(url_for('social'))
 
+CUISHENG_HOURS = 6      # 催产丹每颗缩短的孕期小时数
+
 # ── 内务府 ─────────────────────────────────────────────────────────────────────
 
 @app.route('/shop')
@@ -4687,6 +4706,12 @@ def shop_use(key):
         add_stat(c['id'], 'health', 15); msg = '体质 +15。'
     elif key == 'qinpu':
         add_stat(c['id'], 'talent', 3); msg = '才艺 +3。'
+    elif key == 'cuisheng':
+        if not c['pregnant_since'] or not c['pregnancy_started_ts'] or affliction(c['id'], 'chunxin', cur_day()):
+            flash('没有身孕，用不着催产丹。', 'bad')
+            return redirect(url_for('shop'))
+        run('UPDATE consorts SET pregnancy_started_ts=pregnancy_started_ts-? WHERE id=?', (CUISHENG_HOURS * 3600, c['id']))
+        msg = f'孕期缩短 {CUISHENG_HOURS} 小时，{pregnancy_due_text(get_consort(c["id"]))}。'
     elif key == 'dianxin':
         add_stat(c['id'], 'health', 2); msg = '体质 +2。'
     elif key == 'tiseng':
@@ -5858,7 +5883,7 @@ def heirs():
     acts = {}
     for h in rows:
         a = {}
-        if h['mother_id'] == c['id'] and h['caretaker_id'] in (c['id'], 0) and c['rank'] < 5 and c['status'] == 'normal' \
+        if h['mother_id'] == c['id'] and h['caretaker_id'] in (c['id'], 0) and c['rank'] < raise_min_rank(h) and c['status'] == 'normal' \
                 and not h['zhuazhou'] and heir_age_days(h, day) < zhuazhou_age_days(h):
             a['entrust'] = True
             if h['foster_request_to']: a['waiting_on'] = get_consort(h['foster_request_to'])
@@ -5870,10 +5895,10 @@ def heirs():
                                can_shift=bool(other_adult_princes(h)))
         if maternal_kin(c, h) and h['caretaker_id'] != c['id'] and c['status'] != 'dead' and not h['adult_day']:
             a['visit'] = True
-            if c['rank'] >= 5: a['reclaim'] = True
+            if c['rank'] >= raise_min_rank(h): a['reclaim'] = True
             a['reclaim_wait'] = max(0, h['reclaim_after_day'] - day)
         if h['caretaker_id'] == c['id'] and h['mother_id'] != c['id'] and not h['adult_day']: a['can_ban'] = True
-        if h['caretaker_id'] == 0 and not h['adult_day'] and heir_age_days(h, day) < HEIR_ADULT_AGE_DAYS and c['rank'] >= 5 and c['status'] == 'normal':
+        if h['caretaker_id'] == 0 and not h['adult_day'] and heir_age_days(h, day) < HEIR_ADULT_AGE_DAYS and c['rank'] >= raise_min_rank(h) and c['status'] == 'normal':
             a['adopt'] = not maternal_kin(c, h)
             a['adopt_pending'] = bool(q('SELECT 1 FROM heir_claims WHERE consort_id=? AND heir_id=?', (c['id'], h['id']), one=True))
         battle = q('SELECT * FROM custody_battles WHERE heir_id=?', (h['id'],), one=True)
@@ -5882,8 +5907,8 @@ def heirs():
             a['battle'] = battle
             a['battle_participant'] = c['id'] in (battle['challenger_id'],battle['defender_id'])
         if a: acts[h['id']] = a
-    targets = entrust_candidates(c) if any(a.get('entrust') for a in acts.values()) else []
-    return render_template('heirs.html', c=c, rows=rows, get_consort=get_consort, acts=acts, targets=targets, name_choice_view=name_choice_view, cur_gen={g_: gen_word_for(state()['reign_no'], g_) for g_ in NAME_GENERATIONS},
+    targets_for = {h['id']: entrust_candidates(c, raise_min_rank(h)) for h in rows if acts.get(h['id'], {}).get('entrust')}
+    return render_template('heirs.html', c=c, rows=rows, get_consort=get_consort, acts=acts, targets_for=targets_for, raise_rank_name=raise_rank_name, name_choice_view=name_choice_view, cur_gen={g_: gen_word_for(state()['reign_no'], g_) for g_ in NAME_GENERATIONS},
                            ERRAND_APPROACHES=ERRAND_APPROACHES, MONGOL_LETTER_INTERVAL=MONGOL_LETTER_INTERVAL, CUSTODY_ACTIONS=CUSTODY_ACTIONS)
 
 # ── 皇嗣成长（九点六节 A~D：还没做成年、抚养关系博弈、夺嫡） ─────────────────────
@@ -5984,6 +6009,7 @@ HEIR_RAISE = {
     'play':       dict(name='陪他玩', affinity=5),
     'grooming':   dict(name='梳洗仪容', silver=20, looks=2, looks_beauty=3),   # 2026-10-07：给孩子梳洗打扮、教仪容，容貌 +2；抚养人容貌 ≥70 时 +3
 }
+HEIR_GROOM_LOOKS_CAP = 65        # 梳洗打扮最多把孩子的容貌教到 65，再往上只能靠天生和自己长开
 HEIR_GROOM_BEAUTY_LINE = 70       # 抚养人容貌到这条线，教出来的仪容更好
 HEIR_LOOKS_GROW_CHANCE = 0.5      # 孩子每过一天（宫中长两岁）有这么大概率自己长开一点，容貌 +1，最高 100
 
@@ -6110,7 +6136,7 @@ def heir_upkeep(day):
             if n >= HEIR_UNPAID_NIGHTS:
                 run('UPDATE heirs SET caretaker_id=0, caretaker_affinity=50, visit_banned=0, concealed=0, unpaid_days=0 WHERE id=?', (h['id'],))
                 taken.append(h)
-                gazette(f"{display_name(c)}连欠乳母月钱、师傅束脩，{heir_label(h)}被抱去皇嗣养育所，由乳母与师傅照料，嫔位以上可申请领养。", 'decree')
+                gazette(f"{display_name(c)}连欠乳母月钱、师傅束脩，{heir_label(h)}被抱去皇嗣养育所，由乳母与师傅照料，{raise_rank_name(h)}位以上可申请领养。", 'decree')
                 mother = get_consort(h['mother_id']) if h['mother_id'] and h['mother_id'] != c['id'] else None
                 if mother and mother['user_id']:
                     notify(mother['id'], f"{display_name(c)}连欠{heir_label(h)}的乳母月钱、师傅束脩，孩子被抱去皇嗣养育所了。", 'info')
@@ -6237,12 +6263,22 @@ def add_heir_affinity(hid, which, delta):
         run(f'UPDATE heirs SET {other}=? WHERE id=?', (clamp(h[other] + delta), hid))
 
 
-def pick_foster(exclude=()):
-    """挑一位嫔以上、正在当差的妃嫔当养母：带孩子最少的优先，同样多时 NPC 在前"""
+RAISE_MIN_RANK_SON, RAISE_MIN_RANK_DAUGHTER = 6, 5     # 2026-10-07 起：妃位以上才能抚养皇子，嫔位以上抚养公主
+
+def raise_min_rank(h):
+    """抚养这个孩子至少要的位分：皇子 6（妃）、公主 5（嫔）"""
+    return RAISE_MIN_RANK_SON if h['gender'] == '皇子' else RAISE_MIN_RANK_DAUGHTER
+
+def raise_rank_name(h):
+    return RANK_NAMES[raise_min_rank(h)]
+
+
+def pick_foster(exclude=(), min_rank=RAISE_MIN_RANK_DAUGHTER):
+    """挑一位够位分、正在当差的妃嫔当养母：带孩子最少的优先，同样多时 NPC 在前"""
     marks = ','.join('?' * len(exclude)) or '-1'
     rows = q(f"""SELECT c.id, COUNT(h2.id) n FROM consorts c LEFT JOIN heirs h2 ON h2.caretaker_id=c.id
-                 WHERE c.rank>=5 AND c.status='normal' AND c.id NOT IN ({marks})
-                 GROUP BY c.id ORDER BY n, c.npc_key IS NULL, c.id""", tuple(exclude))
+                 WHERE c.rank>=? AND c.status='normal' AND c.id NOT IN ({marks})
+                 GROUP BY c.id ORDER BY n, c.npc_key IS NULL, c.id""", (min_rank,) + tuple(exclude))
     return get_consort(rows[0]['id']) if rows else None
 
 
@@ -6289,9 +6325,9 @@ def heir_age_events(day):
         mother = get_consort(h['mother_id'])
         label = heir_label(h)
         gazette(f"{label}周岁抓周，{item['line']}。", 'news')
-        if mother and h['caretaker_id'] == mother['id'] and (mother['rank'] < 5 or mother['status'] != 'normal'):
+        if mother and h['caretaker_id'] == mother['id'] and (mother['rank'] < raise_min_rank(h) or mother['status'] != 'normal'):
             run('UPDATE heirs SET caretaker_id=0,caretaker_affinity=50 WHERE id=?', (h['id'],))
-            gazette(f'{label}送入皇嗣养育所，由乳母与师傅照料，嫔位以上可申请领养。', 'decree')
+            gazette(f'{label}送入皇嗣养育所，由乳母与师傅照料，{raise_rank_name(h)}位以上可申请领养。', 'decree')
         if mother and mother['user_id']:
             notify(mother['id'], f"{label}今日抓周，{item['line']}。{HEIR_STATS[item['stat']]} +{ZHUAZHOU_GAIN}。", 'good')
 
@@ -6305,7 +6341,7 @@ def heir_rehome_tick(day):
         mother = get_consort(h['mother_id']) if h['mother_id'] else None
         label = heir_label(h)
         cur_gone = '进了冷宫' if cur['status'] == 'cold' else '薨逝了'
-        if mother and h['caretaker_id'] != h['mother_id'] and mother['status'] == 'normal' and mother['rank'] >= 5:
+        if mother and h['caretaker_id'] != h['mother_id'] and mother['status'] == 'normal' and mother['rank'] >= raise_min_rank(h):
             run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=mother_affinity WHERE id=?', (mother['id'], h['id']))
             gazette(f"{display_name(cur)}{cur_gone}，{label}由生母{display_name(mother)}领回抚养。", 'decree')
             if mother['user_id']:
@@ -6325,10 +6361,10 @@ HEIR_RECLAIM_COOLDOWN = 2
 HEIR_ENTRUST_MIN_AFFINITY = 40
 HEIR_EXPOSED_PENALTY = 20    # 养母瞒着身世，被生母探视时说破，孩子对养母的情分
 
-def entrust_candidates(c):
-    """能托付孩子的人：在线的、嫔以上、正当差、好感够"""
+def entrust_candidates(c, min_rank=RAISE_MIN_RANK_DAUGHTER):
+    """能托付孩子的人：在线的、位分够抚养这个孩子、正当差、好感够"""
     out = []
-    for t in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND rank>=5 AND id!=?", (c['id'],)):
+    for t in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND rank>=? AND id!=?", (min_rank, c['id'])):
         rel = relation(c['id'], t['id'])
         if rel and rel['affinity'] >= HEIR_ENTRUST_MIN_AFFINITY: out.append(t)
     return out
@@ -6345,10 +6381,10 @@ def heir_entrust(hid):
     err = None
     if not h or h['mother_id'] != c['id'] or h['caretaker_id'] not in (c['id'], 0): err = '这不是你亲自带着的孩子。'
     elif h['zhuazhou'] or heir_age_days(h) >= zhuazhou_age_days(h): err = '孩子已经周岁，祖制已定，托付不及了。'
-    elif c['rank'] >= 5: err = '你已是嫔位，本就可以亲自抚养，不必托付。'
+    elif c['rank'] >= raise_min_rank(h): err = f'你已是{raise_rank_name(h)}位，本就可以亲自抚养，不必托付。'
     elif c['status'] != 'normal': err = '眼下这个境况，托付不了人。'
-    elif not t or t['id'] not in {x['id'] for x in entrust_candidates(c)}:
-        err = f'要托付给嫔位以上、且与你好感不低于 {HEIR_ENTRUST_MIN_AFFINITY} 的姐妹。'
+    elif not t or t['id'] not in {x['id'] for x in entrust_candidates(c, raise_min_rank(h))}:
+        err = f'要托付给{raise_rank_name(h)}位以上、且与你好感不低于 {HEIR_ENTRUST_MIN_AFFINITY} 的姐妹。'
     if err:
         flash(err, 'bad'); return redirect(url_for('heirs'))
     label = heir_label(h)
@@ -6371,12 +6407,12 @@ def heir_entrust_reply(hid):
     if request.form.get('reply') != 'yes':
         if mother['user_id']: notify(mother['id'], f"{display_name(c)}婉拒了你托付{label}的请求。", 'bad')
         flash('已回绝。', 'good'); return redirect(url_for('heirs'))
-    if c['rank'] < 5 or c['status'] != 'normal' or h['zhuazhou'] or h['caretaker_id'] not in (0, h['mother_id']) or mother['status'] == 'dead':
+    if c['rank'] < raise_min_rank(h) or c['status'] != 'normal' or h['zhuazhou'] or h['caretaker_id'] not in (0, h['mother_id']) or mother['status'] == 'dead':
         flash('这桩托付已经办不成了。', 'bad'); return redirect(url_for('heirs'))
     run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (c['id'], hid))
     add_affinity(c['id'], mother['id'], 5)
     gazette(f"{display_name(mother)}将{label}托付给{display_name(c)}抚养。", 'news')
-    if mother['user_id']: notify(mother['id'], f"{display_name(c)}应下了，{label}往后由她抚养。晋到嫔位后可以去求皇上讨回。", 'good')
+    if mother['user_id']: notify(mother['id'], f"{display_name(c)}应下了，{label}往后由她抚养。晋到{raise_rank_name(h)}位后可以去求皇上讨回。", 'good')
     flash(f"{label}往后由你抚养，去本宫就能教养。", 'good')
     return redirect(url_for('heirs'))
 
@@ -6439,7 +6475,7 @@ def heir_reclaim(hid):
     err = None
     if not h or not maternal_kin(c, h) or h['caretaker_id'] == c['id']: err = '孩子本就在你身边。'
     elif h['adult_day'] or heir_age_days(h) >= HEIR_ADULT_AGE_DAYS: err = '孩子已经成年，不能再变更抚养。'
-    elif c['rank'] < 5: err = '嫔位以上才能求皇上把孩子还回来。'
+    elif c['rank'] < raise_min_rank(h): err = f'{raise_rank_name(h)}位以上才能求皇上把孩子还回来。'
     elif c['status'] != 'normal': err = '你现在去不了养心殿。'
     elif cur_day() < h['reclaim_after_day']: err = f"皇上刚驳回过，{h['reclaim_after_day'] - cur_day()} 天后才能再求。"
     elif c['energy'] < HEIR_RECLAIM_ENERGY: err = '精力不够了。'
@@ -6492,7 +6528,7 @@ def custody_battle_tick(day):
             run("UPDATE custody_battles SET status='void' WHERE heir_id=?",(b['heir_id'],))
             continue
         challenger, defender = get_consort(b['challenger_id']), get_consort(b['defender_id'])
-        if not challenger or challenger['status'] != 'normal' or challenger['rank'] < 5:
+        if not challenger or challenger['status'] != 'normal' or challenger['rank'] < raise_min_rank(h):
             finish_custody_battle(b,b['defender_id'],'申请人已失去抚养资格。')
         elif not defender or defender['status'] in ('dead','cold'):
             finish_custody_battle(b,b['challenger_id'],'原抚养人已无法继续照料。')
@@ -6515,7 +6551,7 @@ def custody_action(hid):
     if not h or h['adult_day'] or heir_age_days(h)>=HEIR_ADULT_AGE_DAYS or h['caretaker_id']!=b['defender_id']:
         custody_battle_tick(cur_day())
         flash('抚养状态已变化，请查看最新裁决。','info'); return redirect(url_for('heirs'))
-    if c['status']!='normal' or (c['id']==b['challenger_id'] and c['rank']<5):
+    if c['status']!='normal' or (c['id']==b['challenger_id'] and c['rank']<raise_min_rank(h)):
         flash('当前无法参与抚养权争夺。','bad'); return redirect(url_for('heirs'))
     side = 'challenger' if c['id']==b['challenger_id'] else 'defender'
     if key=='yield':
@@ -6919,7 +6955,7 @@ def sow_discord(target, source_label, attacker=None):
 def heir_orphan_tick(day):
     """养育所接受玩家孩子，申请在夜间统一抽签，无申请时持续照料。"""
     for h in q("SELECT * FROM heirs WHERE caretaker_id=0 AND adult_day=0"):
-        claims = q("SELECT c.* FROM heir_claims hc JOIN consorts c ON c.id=hc.consort_id WHERE hc.heir_id=? AND c.status='normal' AND c.user_id IS NOT NULL AND c.rank>=5 ORDER BY hc.day,c.id", (h['id'],))
+        claims = q("SELECT c.* FROM heir_claims hc JOIN consorts c ON c.id=hc.consort_id WHERE hc.heir_id=? AND c.status='normal' AND c.user_id IS NOT NULL AND c.rank>=? ORDER BY hc.day,c.id", (h['id'], raise_min_rank(h)))
         if claims:
             win = pick_weighted(claims, [max(1, c['trust'] + c['rank'] * 5) for c in claims])
             run('UPDATE heirs SET caretaker_id=?,caretaker_affinity=50,visit_banned=0,concealed=0 WHERE id=?', (win['id'], h['id']))
@@ -6928,7 +6964,7 @@ def heir_orphan_tick(day):
                 notify(c['id'], f"{heir_label(h)}由{display_name(win)}领养。", 'good' if c['id'] == win['id'] else 'info')
             mother = get_consort(h['mother_id'])
             if mother and mother['user_id'] and mother['id'] != win['id']:
-                notify(mother['id'], f"{heir_label(h)}已由{display_name(win)}领养，晋到嫔位后可申请领回。", 'info')
+                notify(mother['id'], f"{heir_label(h)}已由{display_name(win)}领养，晋到{raise_rank_name(h)}位后可申请领回。", 'info')
         else:
             run('UPDATE heirs SET study=MIN(100,study+2),riding=MIN(100,riding+2),virtue=MIN(100,virtue+2) WHERE id=?', (h['id'],))
         run('DELETE FROM heir_claims WHERE heir_id=?', (h['id'],))
@@ -7164,7 +7200,7 @@ def succession_claim(hid):
     h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
     err = None
     if not h or h['caretaker_id'] != 0 or h['adult_day'] or heir_age_days(h) >= HEIR_ADULT_AGE_DAYS: err = '这个孩子已经有人照管了。'
-    elif c['rank'] < 5: err = '嫔位以上才能领养皇嗣。'
+    elif c['rank'] < raise_min_rank(h): err = f'{raise_rank_name(h)}位以上才能领养这位{h["gender"]}。'
     elif c['status'] != 'normal': err = '你现在去不了养心殿。'
     elif q("SELECT 1 FROM heir_claims WHERE consort_id=? AND heir_id=?", (c['id'], hid), one=True): err = '你已经求过了，等皇上定夺。'
     elif c['energy'] < 1: err = '精力不够了。'
@@ -7341,7 +7377,7 @@ def heir_raise(hid):
     elif not cfg: err = '选一样教养的法子。'
     elif c['energy'] < HEIR_RAISE_ENERGY: err = '精力不够了。'
     elif c['silver'] < cfg.get('silver', 0): err = f"银子不够，需要 {cfg['silver']} 两。"
-    elif cfg.get('looks') and h['appearance'] >= 100: err = '孩子的容貌已经到头了，再梳洗也没有更多好处。'
+    elif cfg.get('looks') and h['appearance'] >= HEIR_GROOM_LOOKS_CAP: err = f'梳洗打扮最多只能把容貌教到 {HEIR_GROOM_LOOKS_CAP}，再往上要靠孩子自己长开。'
     elif daily_count(c['id'], f'raise:{hid}'): err = '今天已经教养过他了。'
     if err:
         flash(err, 'bad')
@@ -7351,7 +7387,7 @@ def heir_raise(hid):
     parts = []
     if cfg.get('looks'):
         amt = cfg['looks_beauty'] if c['appearance'] >= HEIR_GROOM_BEAUTY_LINE else cfg['looks']
-        parts.append(f"容貌 +{raise_looks(h, amt)}")
+        parts.append(f"容貌 +{raise_looks(h, min(amt, HEIR_GROOM_LOOKS_CAP - h['appearance']))}")
     for stat, amt in cfg.get('gain', {}).items():
         if h['personality'] == 'clever' and stat == 'study': amt = round(amt * 1.5)
         elif h['personality'] == 'honest' and stat == 'study': amt = round(amt * 0.7)
@@ -8056,9 +8092,19 @@ def labor_risk(c, prior_births, rests=0):
     return max(0.0, min(LABOR_RISK_CAP, base + LABOR_RISK_PER_PRIOR * prior_births - LABOR_RISK_PER_REST * rests))
 
 
+CONTRACEPTION_MIN_BIRTHS = 2    # 生过两次孩子之后，才能选择避孕
+
+def birth_count(cid):
+    return q('SELECT COUNT(*) n FROM heirs WHERE mother_id=?', (cid,), one=True)['n']
+
+def contraception_on(c):
+    return bool(c['contraception'] if 'contraception' in c.keys() else 0) and birth_count(c['id']) >= CONTRACEPTION_MIN_BIRTHS
+
+
 def pregnancy_chance(c):
     """一次侍寝怀上的概率：12% + 体质×0.08% + 福报×0.05%（体质 60 约 17%，体质 100 约 20%，上限 22%）；35 岁起打六折；45 岁起不再有孕"""
     if c['age_months'] >= FERTILE_BEFORE_AGE * 12: return 0.0
+    if contraception_on(c): return 0.0
     if (c['pregnancy_misses'] if 'pregnancy_misses' in c.keys() else 0) >= PREGNANCY_PITY_ATTEMPTS: return 1.0
     p = PREGNANCY_BASE + c['health'] * PREGNANCY_PER_HEALTH + (c['blessing'] if 'blessing' in c.keys() else 0) * PREGNANCY_PER_BLESSING
     if c['age_months'] >= OLD_MOTHER_AGE * 12: p *= OLD_MOTHER_FACTOR
@@ -8175,11 +8221,14 @@ def resolve_births(day, include_legacy=True):
         notify(c['id'], f"请嬷嬷看了孩子的根骨：{gift_line}。", 'info')
         notify(c['id'], "皇上为孩子点了几个字，去「子嗣」页挑一个定名，名字是本届字辈加你选的字。", 'info')
         night_mark(c['id'], 'birth', label=label, son='皇子' in genders)
-        mom = get_consort(c['id'])       # 母凭子贵晋位之后的位分才算数：晋到嫔位就能亲自抚养
-        if mom['rank'] < 5:       # 嫔位以下不能亲自抚养：一出生就由皇嗣养育所照料，抓周前还能托付、晋到嫔位还能领回
-            for hid_ in born_ids: run("UPDATE heirs SET caretaker_id=0, caretaker_affinity=50 WHERE id=?", (hid_,))
-            gazette(f"{label}按祖制送入皇嗣养育所，由乳母与师傅照料，嫔位以上可申请领养。", 'decree')
-            notify(c['id'], f"按祖制，{RANK_NAMES[mom['rank']]}不能亲自抚养孩子，{label}先由皇嗣养育所照料。周岁抓周前，你可以去「子嗣」页托付给好感不低于 {HEIR_ENTRUST_MIN_AFFINITY} 的嫔位以上姐妹，或者晋到嫔位后领回。", 'info')
+        mom = get_consort(c['id'])       # 母凭子贵晋位之后的位分才算数：位分够了就能亲自抚养（皇子要妃位，公主要嫔位）
+        sent = [hid_ for hid_ in born_ids if mom['rank'] < raise_min_rank(get_heir(hid_))]
+        if sent:       # 位分不够不能亲自抚养：一出生就由皇嗣养育所照料，抓周前还能托付、位分够了还能领回
+            for hid_ in sent: run("UPDATE heirs SET caretaker_id=0, caretaker_affinity=50 WHERE id=?", (hid_,))
+            need = '、'.join(sorted({raise_rank_name(get_heir(hid_)) for hid_ in sent}))
+            sent_label = label if len(sent) == len(born_ids) else '、'.join(heir_label(get_heir(hid_)) for hid_ in sent)
+            gazette(f"{sent_label}按祖制送入皇嗣养育所，由乳母与师傅照料，{need}位以上可申请领养。", 'decree')
+            notify(c['id'], f"按祖制，{RANK_NAMES[mom['rank']]}不能亲自抚养{sent_label}（皇子须妃位以上，公主须嫔位以上），先由皇嗣养育所照料。周岁抓周前，你可以去「子嗣」页托付给好感不低于 {HEIR_ENTRUST_MIN_AFFINITY} 的{need}位以上姐妹，或者晋位后领回。", 'info')
         if hard_labor and random.random() < LABOR_DEATH_CHANCE:      # 难产有小概率没挺过来：孩子保留，由后面的换人规则另派抚养人
             die(c['id'], '难产')
 
@@ -9431,7 +9480,7 @@ def place(key):
                            aid_targets=q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status IN ('normal','confined')", (c['id'],)), plead_targets=plead_targets, chastise_targets=chastise_targets(c) if key == 'jingren' else [], plead_p=int(plead_chance(c) * 100),
                            maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, heir_todo=heir_todo, HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, PRENATAL=PRENATAL,
                            DIETS=DIETS, PREGNANCY_DAYS=PREGNANCY_DAYS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS,
-                           is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False, open_living=request.args.get('living') == '1',
+                           is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False, birth_count=birth_count, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, HEIR_GROOM_LOOKS_CAP=HEIR_GROOM_LOOKS_CAP, open_living=request.args.get('living') == '1',
                            household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
                            is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5,
                            gather_ev=gather_ev, GATHER_THEMES=GATHER_THEMES, active_festival=FESTIVALS.get(active_festival(day)),

@@ -37,7 +37,7 @@ class LifecycleTests(unittest.TestCase):
         self._pick_patch.start()
         self._bed_one_patch = patch.object(game, 'BED_COUNT_WEIGHTS', ((2, 1.0),))      # 测试里每轮固定翻 2 位；要测 30/50/20 分布的用例自己改
         self._bed_one_patch.start()
-        self.atk = self.player('甲', rank=5)
+        self.atk = self.player('甲', rank=6)
         self.tgt = self.player('乙', rank=4)
         self.client = game.app.test_client()
         self.login(self.atk)

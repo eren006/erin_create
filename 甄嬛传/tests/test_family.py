@@ -376,7 +376,7 @@ class FamilyTests(unittest.TestCase):
         game.create_family(uid, '江', 'dali')
         sister = self.past_member(uid, status='dead', peak=3)
         game.run("UPDATE consorts SET reign_no=1")
-        aunt = self.player('姨', rank=5)
+        aunt = self.player('姨', rank=6)
         game.run("UPDATE consorts SET user_id=?, archived_user_id=NULL WHERE id=?", (uid, aunt))
         foster = self.player('丙', rank=6)
         hid = self.heir(sister, caretaker=foster, mother_affinity=30, caretaker_affinity=60, born=game.cur_day() - 6)

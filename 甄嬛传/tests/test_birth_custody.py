@@ -35,12 +35,12 @@ class BirthCustodyTests(unittest.TestCase):
         self.assertEqual(h['caretaker_id'], self.atk)
         self.assertFalse(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%不能亲自抚养%'", (self.atk,), one=True))
 
-    def test_mother_promoted_to_pin_by_the_birth_keeps_her_child(self):
+    def test_mother_promoted_to_pin_by_the_birth_still_cannot_raise_a_son(self):
         game.run("UPDATE consorts SET influence=200 WHERE id=?", (self.tgt,))
         with patch.object(game.random, 'choice', side_effect=lambda seq: '皇子' if seq == ['皇子', '公主'] else seq[0]):
             h = self.deliver(self.tgt)
         self.assertEqual(game.get_consort(self.tgt)['rank'], 5)
-        self.assertEqual(h['caretaker_id'], self.tgt)
+        self.assertEqual(h['caretaker_id'], 0, '母凭子贵只晋到嫔位，嫔位养不了皇子，仍进养育所')
 
     def test_heirs_page_shows_the_nursery_and_offers_entrust(self):
         self.keep_low(self.tgt)

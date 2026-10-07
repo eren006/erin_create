@@ -260,18 +260,18 @@ class LivingTests(unittest.TestCase):
     def test_nightly_diet_charge(self):
         game.run('UPDATE consorts SET silver=500 WHERE id=?', (self.atk,))
         game.diet_tick(5)
-        self.assertEqual(self.c()['silver'], 500 - game.diet_cost(5, 'normal'))
+        self.assertEqual(self.c()['silver'], 500 - game.diet_cost(6, 'normal'))
         game.run("UPDATE consorts SET diet='lavish', silver=500 WHERE id=?", (self.atk,))
         game.diet_tick(5)
-        self.assertEqual(self.c()['silver'], 500 - game.diet_cost(5, 'lavish'))
+        self.assertEqual(self.c()['silver'], 500 - game.diet_cost(6, 'lavish'))
         self.assertEqual(self.c()['diet_eff'], 'lavish')
 
     def test_diet_falls_back_when_broke(self):
-        game.run("UPDATE consorts SET diet='lavish', silver=? WHERE id=?", (game.diet_cost(5, 'lavish') - 1, self.atk))
+        game.run("UPDATE consorts SET diet='lavish', silver=? WHERE id=?", (game.diet_cost(6, 'lavish') - 1, self.atk))
         game.diet_tick(5)
         self.assertEqual(self.c()['diet_eff'], 'normal')
         self.assertTrue(any('降到普通' in m for m in self.msgs()))
-        game.run("UPDATE consorts SET silver=? WHERE id=?", (game.diet_cost(5, 'normal') - 1, self.atk))
+        game.run("UPDATE consorts SET silver=? WHERE id=?", (game.diet_cost(6, 'normal') - 1, self.atk))
         game.diet_tick(5)
         self.assertEqual(self.c()['diet_eff'], 'frugal')
         game.run("UPDATE consorts SET silver=0 WHERE id=?", (self.atk,))
@@ -335,9 +335,10 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(game.get_consort(npc['id'])['silver'], npc['silver'])
 
     def test_a_settlement_charges_the_diet_on_top_of_the_stipend(self):
-        game.run('UPDATE consorts SET silver=100, favor=0 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET silver=1000, favor=0 WHERE id=?', (self.atk,))
+        stipend = game.favor_stipend(self.c())
         self.settle()
-        self.assertEqual(self.c()['silver'], 100 + game.STIPEND[5] - game.diet_cost(5, 'normal'))
+        self.assertEqual(self.c()['silver'], 1000 + stipend - game.diet_cost(6, 'normal'))
 
     # ── 维修 ─────────────────────────────────────────────────────────────────
 
@@ -353,7 +354,7 @@ class LivingTests(unittest.TestCase):
             game.repair_tick(5)
         st = game.repair_state(self.c())
         self.assertIsNotNone(st)
-        self.assertEqual(st['cost'], game.repair_cost(st['kind'], 5))
+        self.assertEqual(st['cost'], game.repair_cost(st['kind'], 6))
         self.assertTrue(any('内务府' in m and str(st['cost']) in m for m in self.msgs()))
         with patch.object(game.random, 'random', return_value=0.99):
             game.repair_tick(6)

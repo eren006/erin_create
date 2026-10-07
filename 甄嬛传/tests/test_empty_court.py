@@ -58,7 +58,7 @@ class EmptyCourtTests(unittest.TestCase):
         game.run('UPDATE consorts SET rank=4 WHERE id=?', (self.atk,))
         self.client.post(f'/heirs/reclaim/{hid}')
         self.assertEqual(self.row(hid)['caretaker_id'], 0)
-        game.run('UPDATE consorts SET rank=5 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET rank=6 WHERE id=?', (self.atk,))
         with patch.object(game.random, 'random', return_value=.99):
             self.client.post(f'/heirs/reclaim/{hid}')
         self.assertEqual(self.row(hid)['caretaker_id'], self.atk)

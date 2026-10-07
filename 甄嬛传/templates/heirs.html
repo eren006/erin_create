@@ -25,10 +25,10 @@
     {% set a = acts.get(h.id) %}{% if a %}
       {% if a.entrust %}
         {% if a.waiting_on %}<div class="muted">已托付给{{ dn(a.waiting_on) }}，等她点头。</div>
-        {% elif targets %}<form method="post" action="{{ url_for('heir_entrust', hid=h.id) }}" class="row">
-          <select name="target_id" aria-label="托付给">{% for t in targets %}<option value="{{ t.id }}">{{ dn(t) }}</option>{% endfor %}</select>
-          <button class="plain" title="周岁抓周前，生母贵人以下的孩子要抱给嫔以上抚养。趁早托付给相熟的姐妹，否则进入皇嗣养育所。">托付</button></form>
-        {% else %}<div class="muted">周岁前可托付给相熟的嫔位以上姐妹（好感 ≥ 40）。</div>{% endif %}
+        {% elif targets_for.get(h.id) %}<form method="post" action="{{ url_for('heir_entrust', hid=h.id) }}" class="row">
+          <select name="target_id" aria-label="托付给">{% for t in targets_for.get(h.id) %}<option value="{{ t.id }}">{{ dn(t) }}</option>{% endfor %}</select>
+          <button class="plain" title="周岁抓周前，生母位分不够的，孩子要抱给{{ raise_rank_name(h) }}以上抚养（皇子须妃位以上，公主须嫔位以上）。趁早托付给相熟的姐妹，否则进入皇嗣养育所。">托付</button></form>
+        {% else %}<div class="muted">周岁前可托付给相熟的{{ raise_rank_name(h) }}位以上姐妹（好感 ≥ 40）。</div>{% endif %}
       {% endif %}
       {% if a.reply %}<form method="post" action="{{ url_for('heir_entrust_reply', hid=h.id) }}" class="row">
         <span>{{ dn(get_consort(h.mother_id)) }}想把孩子托付给你</span>
