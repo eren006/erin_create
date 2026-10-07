@@ -107,7 +107,7 @@ PROMOTE_FAVOR  = {2: 30, 3: 65, 4: 110, 5: 180, 6: 280, 7: 420, 8: 600, 9: 850} 
 PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 60, 8: 70, 9: 75}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
 RANK_SLOTS     = {4: 8, 5: 6, 6: 4, 7: 2, 8: 1, 9: 1}                     # 贵人以上有名额，含 NPC
 STIPEND = {1: 15, 2: 30, 3: 45, 4: 75, 5: 200, 6: 300, 7: 450, 8: 650, 9: 1000}  # 每日月例银（2026-10-07 起：嫔以下 ×3，嫔以上 ×5；原来 5/10/15/25/40/60/90/130/200）
-MOTHER_BY_SON_MAX_RANK = 6   # 母凭子贵最多晋到妃位（rank 6），再往上要靠自己的圣宠、德行和名额
+MOTHER_BY_SON_MAX_RANK = 5   # 母凭子贵最多晋到嫔位（rank 5），再往上要靠自己的圣宠、德行和名额
 PLAYER_MAX_RANK = 9   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[9]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
 
 PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:45,7:70,8:110,9:150}
@@ -7830,7 +7830,7 @@ def resolve_births(day, include_legacy=True):
         if '皇子' in genders:
             add_prestige(c, PRESTIGE_BORN_PRINCE, f"{full_name(c)}诞下皇子")
             add_favor(c['id'], 100, gain_mult=False)
-            if c['rank'] < MOTHER_BY_SON_MAX_RANK and slot_free(c['rank'] + 1, c['id']):      # 母凭子贵只看名额，不看势力门槛，最多晋到妃（2026-10-07 起）
+            if c['rank'] < MOTHER_BY_SON_MAX_RANK and slot_free(c['rank'] + 1, c['id']):      # 母凭子贵只看名额，不看势力门槛，最多晋到嫔（2026-10-07 起）
                 set_rank(c['id'], c['rank'] + 1)
                 extra += f"母凭子贵，晋为{display_name(get_consort(c['id']))}。"
         else:
