@@ -194,13 +194,16 @@ class HousingTests(unittest.TestCase):
         elsewhere=self.housed('别宫',2,'碎玉轩','east')
         game.daily_inc(side,'letter',2); game.daily_inc(side,'study'); game.daily_inc(side,'bribe:1')
         game.daily_inc(elsewhere,'garden')
-        game.housing_reports(10)
+        game.run('UPDATE consorts SET scheme=37, silver=123 WHERE id=?',(side,))
+        with patch.object(game.random,'randint',return_value=2): game.housing_reports(10)
         messages=game.q('SELECT * FROM messages WHERE consort_id=?',(head,))
         self.assertEqual(len(messages),1)
         text=messages[0]['text']
-        self.assertIn('写了信 2 回',text); self.assertIn('练了才艺',text)
-        self.assertIn('静居',text); self.assertIn('一步都没出宫门',text)
-        self.assertNotIn('别宫',text); self.assertNotIn('bribe',text)
+        self.assertIn('心计 37',text); self.assertIn('手头 123 两',text); self.assertIn('静居',text)
+        self.assertNotIn('写了信',text); self.assertNotIn('别宫',text); self.assertNotIn('bribe',text)
+        game.run('DELETE FROM messages WHERE consort_id=?',(head,))
+        with patch.object(game.random,'randint',return_value=1): game.housing_reports(10)
+        self.assertEqual(game.q('SELECT text FROM messages WHERE consort_id=?',(head,))[0]['text'].count('心计'),1)
         self.assertFalse(game.q('SELECT m.* FROM messages m JOIN consorts c ON c.id=m.consort_id WHERE c.user_id IS NULL'))
 
     def test_same_palace_frame_bonus_only(self):

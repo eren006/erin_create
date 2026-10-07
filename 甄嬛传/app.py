@@ -10559,6 +10559,7 @@ def apply_discipline(head, target, action, day):
 @app.route('/housing/discipline/<int:tid>', methods=['POST'])
 @login_required
 def housing_discipline(tid):
+            others = random.sample(list(others), min(len(others), random.randint(1, 2)))      # 每回只回话 1～2 个人
     head, target = g.me, get_consort(tid)
     action = request.form.get('action', '')
     err = discipline_error(head, target, action, cur_day())
