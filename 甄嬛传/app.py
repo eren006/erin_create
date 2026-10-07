@@ -8189,6 +8189,11 @@ def last_bed_consorts(st):
     if not ids and st['last_bed_id']: ids = [st['last_bed_id']]
     return [x for x in (get_consort(i) for i in ids) if x]
 
+XINGGONG_CHANCE = 0.03       # 每轮翻牌有这么大概率变成「皇上带妃子去行宫」，每个游戏日最多一次
+XINGGONG_COUNT = 6           # 随驾的人数；符合侍寝条件的人不到这个数就不触发
+XINGGONG_PLACES = ['畅春园', '汤泉行宫', '承德避暑山庄', '圆明园', '西苑行宫', '木兰围场行宫']
+
+
 @atomic
 def bedding_round(day,key):
     st=state()
@@ -8196,9 +8201,11 @@ def bedding_round(day,key):
     if st['last_bed_round_key']==key: return []
     run('UPDATE game_state SET last_bed_round_key=? WHERE id=1',(key,))
     cands=[c for c in q("SELECT * FROM consorts WHERE user_id IS NOT NULL") if eligible_bedding(c,day)]
-    count=bed_count(cands); beds=[];used=set()
+    trip=len(cands)>=XINGGONG_COUNT and not daily_count(0,'xinggong') and random.random()<XINGGONG_CHANCE
+    if trip: daily_inc(0,'xinggong')
+    count=XINGGONG_COUNT if trip else bed_count(cands); beds=[];used=set()
     n_shown=min(count,len(cands))
-    if n_shown:
+    if n_shown and not trip:
         hour_part=str(key).rsplit(':',1)[-1]
         gazette(bed_round_note(n_shown,int(hour_part) if hour_part.isdigit() else datetime.now(TZ).hour),'news')      # 一小时当一个月：邸报按几月配时令和理由
     for _ in range(count):
@@ -8218,6 +8225,12 @@ def bedding_round(day,key):
         if bed['id'] not in tray:tray.append(bed['id'])
         do_bedding(bed,day,not beds,tray)
         used.add(bed['id']);beds.append(get_consort(bed['id']))
+    if trip and beds:
+        place=random.choice(XINGGONG_PLACES)
+        names='、'.join(display_name(b) for b in beds)
+        gazette(f"皇上忽起游兴，驾幸{place}，随驾{len(beds)}人：{names}，均算侍寝一次。",'decree')
+        for b in beds:
+            if b['user_id']: notify(b['id'],f"皇上忽起游兴，驾幸{place}，点了你随驾，这一次算侍寝。",'good')
     return beds
 
 

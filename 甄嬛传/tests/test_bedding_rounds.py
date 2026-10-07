@@ -104,3 +104,22 @@ class BeddingRoundsTests(unittest.TestCase):
         self.assertTrue(game.eligible_bedding(game.get_consort(self.atk),10))
         game.run('UPDATE consorts SET pregnant_since=9 WHERE id=?',(self.atk,))
         self.assertFalse(game.eligible_bedding(game.get_consort(self.atk),10))
+
+    def test_xinggong_trip_beds_six_once_per_day(self):
+        self.enable()
+        extra=[self.player(f'随{i}',rank=3) for i in range(5)]       # 加上甲乙丙正好 8 个符合条件的人
+        with patch.object(game.random,'random',return_value=0.0):
+            beds=game.bedding_round(1,'2026-10-05:03')
+        self.assertEqual(len(beds),game.XINGGONG_COUNT)
+        self.assertEqual(len({b['id'] for b in beds}),game.XINGGONG_COUNT)
+        self.assertEqual(sum(game.get_consort(cid)['bed_daily_count'] for cid in [self.atk,self.tgt,self.third]+extra),game.XINGGONG_COUNT)
+        self.assertTrue(any('行宫' in r['text'] or '驾幸' in r['text'] for r in game.q("SELECT text FROM gazette")))
+        with patch.object(game.random,'random',return_value=0.0):
+            beds2=game.bedding_round(1,'2026-10-05:04')
+        self.assertLessEqual(len(beds2),game.BED_MAX_PER_ROUND,'同一游戏日不再触发第二次，回到普通的 1~3 位')
+
+    def test_xinggong_needs_enough_people(self):
+        self.enable()
+        with patch.object(game.random,'random',return_value=0.0):
+            beds=game.bedding_round(1,'2026-10-05:03')
+        self.assertLessEqual(len(beds),3)
