@@ -1522,6 +1522,7 @@ def init_db():
                      'guide_tips': "TEXT NOT NULL DEFAULT '[]'",
                      'unfavored_days': 'INTEGER NOT NULL DEFAULT 0',
                      'care_tier': "TEXT NOT NULL DEFAULT ''",
+                     'skin': "TEXT NOT NULL DEFAULT ''",
                      'ill_care': "TEXT NOT NULL DEFAULT 'normal'",
                      'ill_day': 'INTEGER NOT NULL DEFAULT 0',
                      'ill_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -5773,6 +5774,37 @@ def title_pick():
         gazette(f"{old}{RANK_NAMES[c['rank']]}改封号为「{pick}」，今称{pick}{RANK_NAMES[c['rank']]}。", 'decree')
         flash(f"皇上允了，你的封号改为「{pick}」。", 'good')
     return redirect(url_for('index'))
+
+SKIN_MAX_LEN = 12
+app.jinja_env.globals['SKIN_MAX_LEN'] = SKIN_MAX_LEN
+
+
+def skin_key(name):
+    return re.sub(r'[\s·•．.\-_]+', '', (name or '')).lower()
+
+
+@app.route('/skin', methods=['POST'])
+@login_required
+def set_skin():
+    """皮相：给自己定一个形象参照（比如某位女明星的名字），六宫榜上能看到；全服不能重复，留空表示清掉"""
+    c = g.me
+    if not c or c['status'] in ('xiunv', 'dead'):
+        return redirect(url_for('index'))
+    name = re.sub(r'\s+', '', request.form.get('skin', ''))
+    if not name:
+        run("UPDATE consorts SET skin='' WHERE id=?", (c['id'],))
+        flash('已清掉皮相。', 'info')
+    elif len(name) > SKIN_MAX_LEN:
+        flash(f'皮相最多 {SKIN_MAX_LEN} 个字。', 'bad')
+    elif blocked_hit('皮相', name):
+        flash(BLOCKED_MSG, 'bad')
+    elif any(skin_key(r['skin']) == skin_key(name) for r in q("SELECT skin FROM consorts WHERE skin!='' AND id!=? AND status!='dead'", (c['id'],))):
+        flash('这个皮相已经有人用了，换一个吧。', 'bad')
+    else:
+        run("UPDATE consorts SET skin=? WHERE id=?", (name, c['id']))
+        flash(f'皮相定为「{name}」。', 'good')
+    return redirect(url_for('index'))
+
 
 @app.route('/heirs', methods=['GET', 'POST'])
 @login_required

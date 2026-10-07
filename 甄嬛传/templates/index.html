@@ -90,6 +90,16 @@
   </form>
 </section>
 {% endif %}
+{% if c and c.status not in ('xiunv','dead') %}
+<section class="sheet" style="margin-top:18px">
+  <b>皮相</b>{% if c.skin %}　<span style="font-family:var(--kai);font-size:18px">{{ c.skin }}</span>{% endif %}
+  <p class="muted" style="margin:6px 0">给自己定一个形象参照，写一位女明星的名字，六宫榜上会挂在你的牌子下面。全宫不能重名，先到先得；留空提交可以清掉。</p>
+  <form method="post" action="{{ url_for('set_skin') }}" class="row">
+    <input name="skin" value="{{ c.skin }}" maxlength="{{ SKIN_MAX_LEN }}" placeholder="例如：某某某" aria-label="皮相" style="max-width:220px">
+    <button>{{ '更换' if c.skin else '设定' }}</button>
+  </form>
+</section>
+{% endif %}
 <section class="me-top">
   <div class="pai big {{ 'cold' if c.status=='cold' }}">{{ dn(c) }}</div>
   <div class="facts">
