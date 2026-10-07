@@ -103,6 +103,17 @@ class LivingTests(unittest.TestCase):
                 self.assertIn(f'翻了{word}人', note)
                 self.assertTrue(any(r in note for r in game.BED_REASONS[k]))
 
+    def test_round_note_year_counts_12_hour_years_from_the_epoch(self):
+        from datetime import datetime, timedelta
+        e = game.GAME_EPOCH
+        self.assertEqual(game.game_year(e), 1)
+        self.assertEqual(game.game_year(e + timedelta(hours=11, minutes=59)), 1)
+        self.assertEqual(game.game_year(e + timedelta(hours=12)), 2)
+        self.assertEqual(game.game_year(datetime(2026, 10, 7, 8, 30, tzinfo=game.TZ)), 3)      # 第 2 天上午是第三年
+        self.assertEqual(game.game_year(datetime(2026, 10, 7, 13, 0, tzinfo=game.TZ)), 4)      # 下午是第四年
+        note = game.bed_round_note(2, 8, datetime(2026, 10, 7, 8, 30, tzinfo=game.TZ))
+        self.assertTrue(note.startswith('第3年九月'))
+
     def test_each_round_logs_one_note_in_the_gazette(self):
         self.settle()
         self.assertEqual(len(game.q("SELECT id FROM gazette WHERE kind='news' AND text LIKE '%所以皇上翻了%'")), 1)

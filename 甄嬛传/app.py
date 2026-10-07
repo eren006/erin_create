@@ -7813,11 +7813,18 @@ BED_REASONS = {
 }
 BED_COUNT_WORDS = {1: '一', 2: '两', 3: '三'}
 
-def bed_round_note(n, hour):
-    """一轮翻牌的邸报：几月时令 + 为什么 + 翻了几人"""
+GAME_EPOCH = datetime(2026, 10, 6, 0, 0, tzinfo=TZ)      # 宫里的「第 1 年」从这一刻算起（开服那天零点）；天数计数器中间跳过天也不影响
+
+def game_year(now=None):
+    """宫里第几年：从 GAME_EPOCH 起每过 12 个小时就是一年（一小时一个月），按真实时间算，不看游戏天数计数器"""
+    now = now or datetime.now(TZ)
+    return int((now - GAME_EPOCH).total_seconds() // (12 * 3600)) + 1
+
+def bed_round_note(n, hour, now=None):
+    """一轮翻牌的邸报：第几年 + 几月时令 + 为什么 + 翻了几人"""
     month = BED_MONTHS[hour % 12]
     reason = _BED_RNG.choice(BED_REASONS.get(n, BED_REASONS[2]))
-    return f"{month}，{reason}，所以皇上翻了{BED_COUNT_WORDS.get(n, n)}人。"
+    return f"第{game_year(now)}年{month}，{reason}，所以皇上翻了{BED_COUNT_WORDS.get(n, n)}人。"
 
 
 def pregnancy_due_text(c):
