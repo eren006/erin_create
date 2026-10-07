@@ -5128,6 +5128,7 @@ def bot_do(c, key):
     if daily_count(c['id'], key) >= cfg['daily']: return False
     data = {}
     if key == 'study': data['art'] = random.choice(ARTS)
+    if key == 'perform': data['art'] = random.choice([a for a in ARTS if a != c['last_perform_art']])      # 连着两次不能献同一样才艺
     if key == 'visit':
         others = [x for x in q("""SELECT x.* FROM consorts x JOIN users u ON u.id=x.user_id WHERE u.managed=0 AND x.id!=?
                                  AND x.status='normal'""", (c['id'],)) if daily_count(c['id'], f"visit:{x['id']}") == 0]
