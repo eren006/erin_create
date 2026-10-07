@@ -52,6 +52,18 @@ class RaiseRankMiscTests(unittest.TestCase):
         game.do_groom(c, game.action_config(c, 'groom'))
         self.assertEqual(game.get_consort(self.atk)['appearance'], 65)
 
+    def test_influence_decays_only_above_rank_requirement(self):
+        need = game.PROMOTE_INFLUENCE.get(game.get_consort(self.atk)['rank'], 0)
+        game.run('UPDATE consorts SET influence=?, entered_day=-100 WHERE id=?', (need + 5, self.atk))
+        game.influence_check(game.get_consort(self.atk), game.cur_day())
+        self.assertEqual(game.get_consort(self.atk)['influence'], need + 4)
+        game.run('UPDATE consorts SET influence=? WHERE id=?', (need, self.atk))
+        game.influence_check(game.get_consort(self.atk), game.cur_day())
+        self.assertEqual(game.get_consort(self.atk)['influence'], need)
+        game.run("UPDATE consorts SET influence=?, status='cold' WHERE id=?", (need + 5, self.atk))
+        game.influence_check(game.get_consort(self.atk), game.cur_day())
+        self.assertEqual(game.get_consort(self.atk)['influence'], need + 5)
+
 
 if __name__ == '__main__':
     unittest.main()
