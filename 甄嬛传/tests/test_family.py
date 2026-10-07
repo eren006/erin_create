@@ -862,7 +862,7 @@ class FamilyTests(unittest.TestCase):
         base = dict(tier='dali', head_ill_day=0)
         self.assertEqual(game.remit_amount(dict(base, head_office=1, prestige=29)), 0)
         self.assertEqual(game.remit_amount(dict(base, head_office=2, prestige=0)), 2 * game.REMIT_PER_OFFICE)
-        self.assertEqual(game.remit_amount(dict(base, head_office=1, prestige=30)), game.REMIT_PER_OFFICE + 3)
+        self.assertEqual(game.remit_amount(dict(base, head_office=1, prestige=30)), game.REMIT_PER_OFFICE + 30 // game.REMIT_PRESTIGE_DIV)
         self.assertEqual(game.remit_amount(dict(base, head_office=9, prestige=5000)), game.REMIT_MAX)
         self.assertEqual(game.remit_amount(dict(base, head_office=4, prestige=0, tier='merchant')), int(4 * game.REMIT_PER_OFFICE * 1.2))
         self.assertEqual(game.remit_amount(dict(base, head_office=4, prestige=0, head_ill_day=3)), 4 * game.REMIT_PER_OFFICE // 2, '家主病着，减半')
@@ -871,9 +871,9 @@ class FamilyTests(unittest.TestCase):
         uid = self.fam(self.atk, head_office=5, prestige=20)
         s0 = game.get_consort(self.atk)['silver']
         game.family_remit_tick(game.cur_day())
-        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 5 * game.REMIT_PER_OFFICE + 2)
+        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 5 * game.REMIT_PER_OFFICE + 20 // game.REMIT_PRESTIGE_DIV)
         game.family_remit_tick(game.cur_day())      # 每 12 小时一次，不再按天数隔几天发
-        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 2 * (5 * game.REMIT_PER_OFFICE + 2))
+        self.assertEqual(game.get_consort(self.atk)['silver'], s0 + 2 * (5 * game.REMIT_PER_OFFICE + 20 // game.REMIT_PRESTIGE_DIV))
         self.assertTrue(any('体己' in m for m in self.msgs(self.atk)))
 
     def test_no_remit_for_a_poor_family_or_an_empty_palace(self):

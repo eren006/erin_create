@@ -3111,7 +3111,7 @@ def do_shoukang(c, cfg):
 # ── 家族发达了，定期送钱来 ────────────────────────────────────────────────────────
 
 REMIT_HOURS = 12              # 每 12 小时一次（零点结算 + 中午 12 点各一次；原来每 3 天一次）
-REMIT_PER_OFFICE, REMIT_PRESTIGE_DIV, REMIT_MAX = 15, 10, 300      # 每次上限 150→300
+REMIT_PER_OFFICE, REMIT_PRESTIGE_DIV, REMIT_MAX = 15, 8, 300      # 每次上限 150→300
 REMIT_MIN_OFFICE, REMIT_MIN_PRESTIGE = 2, 30            # 家主至少七品，或名望够了，家里才有余钱
 
 
