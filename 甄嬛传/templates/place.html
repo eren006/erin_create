@@ -97,6 +97,7 @@
 {% if my_heirs %}
 <div class="sheet" style="margin:14px 0">
   <h3 style="margin-top:0">教养</h3>
+  <p class="muted" style="margin:0 0 6px">每晚结算付乳母月钱 / 师傅束脩：{% for h in my_heirs %}{{ heir_label(h) }} {{ heir_upkeep_cost(h) }} 两{{ '、' if not loop.last }}{% endfor %}。</p>
   {% for h in my_heirs %}
   <div style="margin:10px 0;padding-bottom:10px;border-bottom:1px solid var(--line)">
     <p><b style="font-family:var(--kai)">{{ heir_label(h) }}</b>{% if h.name %}<span class="muted">（{{ heir_rank_title(h) }}）</span>{% endif %}　<span class="muted">{% set pe = heir_persona(h) %}{{ (pe.name ~ '·' ~ pe.tag) if pe else '' }}　{{ heir_age_years(h) }} 岁　学问 {{ h.study }}　骑射 {{ h.riding }}　品行 {{ h.virtue }}　体质 {{ h.health }}　容貌 {{ h.appearance }}{% if h.temperament %}　气质 {{ h.temperament }}{% endif %}　情分 {{ h.caretaker_affinity }}</span></p>

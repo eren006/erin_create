@@ -42,6 +42,54 @@ class HeirTests(unittest.TestCase):
         self.assertEqual(h['virtue'], 20 + 9, '德行 90 该加 9')
         self.assertEqual(h['health'], 60 + 9, '体质 90 该加 9')
 
+    # ── 乳母月钱 / 师傅束脩 ───────────────────────────────────────────────────
+
+    def test_upkeep_nurse_then_tutor_and_unpaid_hurts_affinity(self):
+        day = game.cur_day()
+        young = self.heir(self.atk, born=day)                       # 刚出生：乳母
+        old = self.heir(self.atk, born=day - 8 * game.HEIR_DAYS_PER_YEAR)  # 8 岁：师傅
+        self.assertEqual(game.heir_upkeep_cost(game.q('SELECT * FROM heirs WHERE id=?', (young,), one=True), day), game.HEIR_NURSE_WAGE)
+        self.assertEqual(game.heir_upkeep_cost(game.q('SELECT * FROM heirs WHERE id=?', (old,), one=True), day), game.HEIR_TUTOR_FEE)
+        game.run('UPDATE consorts SET silver=1000 WHERE id=?', (self.atk,))
+        game.heir_upkeep(day)
+        self.assertEqual(game.get_consort(self.atk)['silver'], 1000 - game.HEIR_NURSE_WAGE - game.HEIR_TUTOR_FEE)
+        game.run('UPDATE consorts SET silver=0 WHERE id=?', (self.atk,))
+        game.heir_upkeep(day)
+        self.assertEqual(game.get_consort(self.atk)['silver'], 0)
+        for hid in (young, old):
+            self.assertEqual(game.q('SELECT caretaker_affinity a FROM heirs WHERE id=?', (hid,), one=True)['a'], 50 + game.HEIR_UNPAID_AFFINITY)
+
+    def test_upkeep_skips_orphanage_and_adults(self):
+        self.heir(self.atk, caretaker=0)
+        self.heir(self.atk, adult_day=3)
+        game.run('UPDATE consorts SET silver=500 WHERE id=?', (self.atk,))
+        game.heir_upkeep(game.cur_day())
+        self.assertEqual(game.get_consort(self.atk)['silver'], 500)
+
+    # ── 降位挤位 ─────────────────────────────────────────────────────────────
+
+    def test_demote_cascades_when_lower_rank_full(self):
+        game.run("UPDATE consorts SET status='cold' WHERE rank IN (4,5) AND id!=?", (self.atk,))
+        cap = game.RANK_SLOTS[4]
+        low = [self.player(f'贵{i}', rank=4) for i in range(cap)]
+        for i, cid in enumerate(low): game.run('UPDATE consorts SET favor=? WHERE id=?', (50 + i, cid))
+        top = self.player('嫔甲', rank=5)
+        game.run('UPDATE consorts SET favor=200 WHERE id=?', (top,))
+        game.demote_rank(top)
+        ranks = {cid: game.get_consort(cid)['rank'] for cid in low + [top]}
+        self.assertEqual(ranks[low[0]], 3, '圣宠最低的贵人被挤下去')
+        self.assertEqual(ranks[top], 4)
+        self.assertEqual(sum(1 for r in ranks.values() if r == 4), cap, '贵人名额不超员')
+
+    def test_demote_target_pushed_further_if_worst(self):
+        game.run("UPDATE consorts SET status='cold' WHERE rank IN (4,5) AND id!=?", (self.atk,))
+        low = [self.player(f'贵{i}', rank=4) for i in range(game.RANK_SLOTS[4])]
+        for cid in low: game.run('UPDATE consorts SET favor=80 WHERE id=?', (cid,))
+        top = self.player('嫔乙', rank=5)
+        game.run('UPDATE consorts SET favor=0 WHERE id=?', (top,))
+        game.demote_rank(top)
+        self.assertEqual(game.get_consort(top)['rank'], 3)
+
     # ── 抓周 ─────────────────────────────────────────────────────────────────
 
     def test_zhuazhou_grants_stat_and_only_fires_once(self):

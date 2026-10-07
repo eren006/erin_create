@@ -1950,6 +1950,26 @@ def set_rank(cid, new_rank, reason_day=None):
             if gain: add_prestige(c, gain, f"{full_name(c)}晋为{RANK_NAMES[new_rank]}")
     housing_sync(fill_main=not settling())
 
+def demote_rank(cid):
+    """降一级。降到的那一级若已超员，就在这一级所有人里比：圣宠最低的再降一级（同圣宠的，晋这一级最晚的先下），一级一级挤下去，直到有空位。
+    被挤下去的别人会收到通知；被降者自己如果在新位分里排最末，同样继续往下。"""
+    c = get_consort(cid)
+    if not c or c['rank'] <= 1: return
+    set_rank(cid, c['rank'] - 1)
+    rank = c['rank'] - 1
+    while rank > 1 and rank in RANK_SLOTS:
+        members = list(q("SELECT * FROM consorts WHERE rank=? AND status NOT IN ('cold','xiunv','dead')", (rank,)))
+        if len(members) <= RANK_SLOTS[rank]: break
+        worst = min(members, key=lambda m: (m['favor'], -m['rank_since_day'], -m['id']))
+        old_name = display_name(worst)
+        set_rank(worst['id'], rank - 1)
+        if worst['id'] != cid:
+            now_name = display_name(get_consort(worst['id']))
+            if worst['user_id']:
+                notify(worst['id'], f"{RANK_NAMES[rank]}的位子满了，你在同位分里圣宠最低，被挤下一级，今称{now_name}。", 'bad')
+            gazette(f"{RANK_NAMES[rank]}名额已满，{old_name}圣宠最低，降为{now_name}。", 'decree')
+        rank -= 1
+
 def confine(cid, days=None):
     """禁足统一半天（CONFINE_HOURS 小时），days 只是沿用的旧参数，不再决定时长；到点由 release_confinements 每分钟检查放人"""
     c = get_consort(cid)
@@ -3736,7 +3756,7 @@ def apply_secret_penalty(cid, confessed):
             cut_favor(cid, FAVOR_LOSS['secret_lover']); add_stat(cid, 'virtue', -15)
     elif s == 'fake':
         if confessed: cut_favor(cid, FAVOR_LOSS['secret_fake_confess'])
-        elif c['rank'] > 1: set_rank(cid, c['rank'] - 1)
+        elif c['rank'] > 1: demote_rank(cid)
     elif s == 'book':
         confine(cid, 1 if confessed else 3)
     elif s == 'scar':
@@ -5944,6 +5964,43 @@ def heir_age_years(h, day=None):
 
 app.jinja_env.globals['heir_age_years'] = heir_age_years
 
+HEIR_NURSE_WAGE = 30         # 乳母月钱：每个亲自抚养的孩子，每晚
+HEIR_TUTOR_FEE = 50          # 师傅束脩：满 6 岁起换成请师傅，每个孩子每晚
+HEIR_TUTOR_AGE = 6
+HEIR_UNPAID_AFFINITY = -2    # 欠着不给，孩子跟抚养人的情分每晚 -2
+app.jinja_env.globals['HEIR_NURSE_WAGE'] = HEIR_NURSE_WAGE
+app.jinja_env.globals['HEIR_TUTOR_FEE'] = HEIR_TUTOR_FEE
+app.jinja_env.globals['HEIR_TUTOR_AGE'] = HEIR_TUTOR_AGE
+
+
+def heir_upkeep_cost(h, day=None):
+    return HEIR_TUTOR_FEE if heir_age_years(h, day) >= HEIR_TUTOR_AGE else HEIR_NURSE_WAGE
+
+
+app.jinja_env.globals['heir_upkeep_cost'] = heir_upkeep_cost
+
+
+def heir_upkeep(day):
+    """每晚：玩家抚养人给没成年的孩子付乳母月钱（6 岁前）/ 师傅束脩（6 岁起）。冷宫里管不了；银子不够就欠着，孩子情分 -2。养育所和 NPC 抚养人不算。"""
+    for c in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status NOT IN ('xiunv','dead','cold')"):
+        kids = list(q("SELECT * FROM heirs WHERE caretaker_id=? AND adult_day=0 AND COALESCE(npc_key,'')=''", (c['id'],)))
+        if not kids: continue
+        bal = get_consort(c['id'])['silver']
+        paid, owed = [], []
+        for h in kids:
+            cost = heir_upkeep_cost(h, day)
+            if bal >= cost:
+                bal -= cost; paid.append((h, cost))
+            else:
+                owed.append(h)
+        total = sum(x[1] for x in paid)
+        if total: add_silver(c['id'], -total)
+        for h in owed: add_heir_affinity(h['id'], 'caretaker', HEIR_UNPAID_AFFINITY)
+        if owed:
+            notify(c['id'], f"银子不够，{'、'.join(heir_label(h) for h in owed)}的乳母月钱/师傅束脩发不出来，孩子对你的情分 {HEIR_UNPAID_AFFINITY}。" + (f"其余已付 {total} 两。" if total else ''), 'bad')
+        elif total:
+            notify(c['id'], f"今晚付了乳母月钱、师傅束脩共 {total} 两。", 'info')
+
 
 # ── 皇上考校 / 随驾秋狝 ──────────────────────────────────────────────────────
 
@@ -6794,7 +6851,7 @@ def depose_crown(h):
     gazette(f"皇上下旨废黜太子{label}，圈禁高墙。", 'decree')
     care = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
     if care and care['user_id'] and care['status'] != 'dead' and care['rank'] > 1:
-        set_rank(care['id'], care['rank'] - 1)
+        demote_rank(care['id'])
     for par in heir_parents(h):
         notify(par['id'], f"太子{label}被废，圈禁。" + ('你受牵连，降了一级。' if par['id'] == h['caretaker_id'] else ''), 'bad')
 
@@ -7053,7 +7110,7 @@ def succession_move():
             gazette(f"慎刑司查实{label}结交外臣、图谋不轨，圈禁高墙，逐出储位人选。", 'decree')
             care = get_consort(target['caretaker_id']) if target['caretaker_id'] else None
             if care and care['status'] != 'dead' and care['rank'] > 1:
-                set_rank(care['id'], care['rank'] - 1)
+                demote_rank(care['id'])
             for par in heir_parents(target):
                 notify(par['id'], f"{label}被查出结交外臣，圈禁出局。" + ('你受牵连，降了一级。' if care and par['id'] == care['id'] else ''), 'bad')
             flash(f"构陷成了，{label}被圈禁出局。", 'good')
@@ -7437,7 +7494,7 @@ def resolve_intrigue(it, bed_id=None):
             old_name = display_name(tgt)
             run('UPDATE consorts SET impeached_day=? WHERE id=?', (cur_day(), tgt['id']))
             lost = cut_favor(tgt['id'], IMPEACH_FAVOR_LOSS)
-            if tgt['rank'] > 1: set_rank(tgt['id'], tgt['rank'] - 1)
+            if tgt['rank'] > 1: demote_rank(tgt['id'])
             now_name = display_name(get_consort(tgt['id']))
             victim = f"{an}上了一道折子参你，皇上准了：你降为{now_name}，圣宠 -{lost}。" + (f"眼线说，是{an}。" if tell_name else '')
             gz = f"{old_name}被参奏失德，皇上降其位分，今称{now_name}。"
@@ -7474,7 +7531,7 @@ def resolve_intrigue(it, bed_id=None):
                 confine(a['id']); cut_favor(a['id'], FAVOR_LOSS['caught_frame'])
                 pen = f"禁足半天，圣宠 -{FAVOR_LOSS['caught_frame']}"
             elif m == 'poison':
-                if a['rank'] > 1: set_rank(a['id'], a['rank'] - 1)
+                if a['rank'] > 1: demote_rank(a['id'])
                 confine(a['id'], 3)
                 pen = '降一级位分，禁足半天'
             elif m == 'steal':
@@ -8272,7 +8329,7 @@ def _settle_night():
             drop = c['favor_mark'] - c['favor'] if c['favor_mark'] >= 0 else 0      # 比昨夜结算后的圣宠净掉了多少（含被使计、受罚、被截宠，扣掉当天涨的）
             if c['user_id'] and not c['npc_key'] and c['status'] == 'normal' and c['rank'] >= 3 and drop >= FAVOR_DROP_DEMOTE and day - c['entered_day'] >= NEWCOMER_CARE_DAYS:
                 old_name = display_name(c)      # 一天之内圣宠大跌，皇上龙颜不悦：降一级
-                set_rank(c['id'], c['rank'] - 1)
+                demote_rank(c['id'])
                 c = get_consort(c['id'])
                 notify(c['id'], f"你这一天里圣宠一下子跌了 {drop} 点，皇上龙颜不悦，位分降为{display_name(c)}。", 'bad')
                 gazette(f"{old_name}圣眷骤衰，皇上降其位分，今称{display_name(c)}。", 'decree')
@@ -8311,6 +8368,7 @@ def _settle_night():
     if not partial:
         drug_gifts(day)
         maid_upkeep(day)
+        heir_upkeep(day)
 
     # 6. 口谕：根据每个人这一夜的真实经历挑一句，没什么可说的就不说
     issue_edicts(day)
@@ -9951,7 +10009,7 @@ def resolve_drug_cases(day):
             if c['status']!='dead':
                 if case['drug']=='lihun': send_to_cold(convicted)
                 elif case['drug']=='hanshui':
-                    if c['rank']>1: set_rank(convicted,c['rank']-1)
+                    if c['rank']>1: demote_rank(convicted)
                     confine(convicted,3)
                 else: confine(convicted,2); cut_favor(convicted,FAVOR_LOSS['convicted'])
                 add_trust(convicted,-15)
