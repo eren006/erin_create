@@ -124,6 +124,16 @@ class RaiseRankMiscTests(unittest.TestCase):
             self.client.post('/garden/plant', data=dict(crop='baicai', slot=1))
         self.assertEqual(game.get_consort(self.atk)['appearance'], 50 - game.GARDEN_TAN_LOSS)
 
+    def test_garden_sell_daily_cap(self):
+        game.run('UPDATE consorts SET silver=0 WHERE id=?', (self.atk,))
+        game.stock_add(self.atk, 'lingzhi', 20)      # 35 两一个，共 700
+        self.login(self.atk)
+        self.client.post('/garden/sell', data=dict(crop='all'))
+        self.assertEqual(game.get_consort(self.atk)['silver'], 385)      # 11 个，再多一个就超 400
+        self.assertEqual(game.stock_of(self.atk)['lingzhi'], 9)
+        self.client.post('/garden/sell', data=dict(crop='all'))
+        self.assertEqual(game.get_consort(self.atk)['silver'], 385)
+
 
 if __name__ == '__main__':
     unittest.main()

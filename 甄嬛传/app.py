@@ -8806,7 +8806,7 @@ def help_page():
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
                            FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, TWIN_CHANCE=TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS=TWIN_EXTRA_HEALTH_LOSS, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, CUISHENG_HOURS=CUISHENG_HOURS, INFLUENCE_DECAY=INFLUENCE_DECAY, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
                            HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, HEALTH_DYING_AT=HEALTH_DYING_AT, DYING_HOURS=DYING_HOURS, CONFINE_DAYS=CONFINE_DAYS, CONFINE_HOURS=CONFINE_HOURS,
-                           COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, GARDEN_TAN_CHANCE=GARDEN_TAN_CHANCE, GARDEN_TAN_LOSS=GARDEN_TAN_LOSS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_MAX=PREGNANCY_MAX, PREGNANCY_PITY_ATTEMPTS=PREGNANCY_PITY_ATTEMPTS, PREGNANCY_DAYS=PREGNANCY_DAYS,
+                           COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, GARDEN_SELL_DAILY_CAP=GARDEN_SELL_DAILY_CAP, GARDEN_TAN_CHANCE=GARDEN_TAN_CHANCE, GARDEN_TAN_LOSS=GARDEN_TAN_LOSS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_MAX=PREGNANCY_MAX, PREGNANCY_PITY_ATTEMPTS=PREGNANCY_PITY_ATTEMPTS, PREGNANCY_DAYS=PREGNANCY_DAYS,
                            settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,
                            HEIR_EXAM_INTERVAL=HEIR_EXAM_INTERVAL, HEIR_EXAM_MIN_AGE=HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE=HEIR_EXAM_MAX_AGE,
                            ERRAND_INTERVAL=ERRAND_INTERVAL, CROWN_INTERVAL=CROWN_INTERVAL, BIRTHDAY_INTERVAL=BIRTHDAY_INTERVAL,
@@ -11095,6 +11095,9 @@ def garden_harvest():
     return _garden_redirect()
 
 
+GARDEN_SELL_DAILY_CAP = 400      # 每人每个游戏日靠卖生菜、熟菜（吃食）最多赚这么多两
+
+
 @app.route('/garden/sell', methods=['POST'])
 @login_required
 def garden_sell():
@@ -11107,11 +11110,21 @@ def garden_sell():
         elif produce_cfg(crop or '') and have.get(crop): picks = {crop: have[crop]}
         else: raise Reject('没有可卖的。')
         if not picks: raise Reject('库里没有可以全卖的生菜。')
-        total = sum(produce_cfg(k)['sell'] * n for k, n in picks.items())
-        for k, n in picks.items(): stock_add(c['id'], k, -n)
+        room = GARDEN_SELL_DAILY_CAP - daily_count(c['id'], 'g_sell_silver')
+        if room <= 0: raise Reject(f'内务府今天收你的菜已经收满 {GARDEN_SELL_DAILY_CAP} 两了，明天再来。')
+        total, left = 0, False
+        for k, n in sorted(picks.items(), key=lambda kv: -produce_cfg(kv[0])['sell']):      # 额度不够时先收贵的
+            price = produce_cfg(k)['sell']
+            take = min(n, room // price)
+            if take < n: left = True
+            if take <= 0: continue
+            stock_add(c['id'], k, -take)
+            total += price * take; room -= price * take
+        if total <= 0: raise Reject(f'今天还能卖的额度只剩 {room} 两，不够收一件。')
         add_silver(c['id'], total)
+        daily_inc(c['id'], 'g_sell_silver', total)
         daily_inc(c['id'], 'g_sell')
-        flash(f"内务府收了东西，到手 {total} 两。", 'good')
+        flash(f"内务府收了东西，到手 {total} 两。" + (f"今天卖菜的额度（{GARDEN_SELL_DAILY_CAP} 两）用满了，剩下的留着明天卖。" if left else ''), 'good')
     except Reject as e:
         flash(str(e), 'bad')
     return _garden_redirect()
