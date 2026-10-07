@@ -553,7 +553,7 @@ ACTIONS = {
     'palace_work': dict(name='协办宫务', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True, desc='协助整理宫务，势力 +3、德行 +1'),
     'aid': dict(name='帮助姐妹', energy=1, silver=20, daily=1, when={'normal'}, sick_block=True, target=True, desc='送去日常补养，势力 +3、德行 +1，对方体质 +3；每天一次'),
     'groom':   dict(name='梳妆保养', energy=1, silver=15, daily=2, when={'normal', 'confined'},
-                    desc='容貌 +1~2，体质 +3'),
+                    desc='容貌 +1~2（梳妆最多养到 65），体质 +3'),
     'garden':  dict(name='去御花园走走', energy=1, silver=0, daily=2, when={'normal'}, sick_block=True,
                     desc='说不定能遇见皇上，也说不定撞见不该看的'),
     'seek':    dict(name='送汤羹去养心殿', energy=1, silver=20, daily=2, when={'normal'}, sick_block=True,
@@ -3404,12 +3404,16 @@ def do_aid(c, cfg):
     return '你为姐妹送去补养，势力 +3、德行 +1，对方体质 +3。', 'good'
 
 
+GROOM_LOOKS_CAP = 65     # 梳妆保养能把自己的容貌养到的上限
+
 def do_groom(c, cfg):
     charge(c, cfg)
     gain = 2 if c['appearance'] < 70 else 1
     if has_maid_trait(c['id'], 'shouqiao'): gain += 1       # 手巧的宫人帮着梳妆
-    add_stat(c['id'], 'appearance', gain)
+    gain = max(0, min(gain, GROOM_LOOKS_CAP - c['appearance']))     # 自己梳妆打扮最多把容貌养到 65
+    if gain: add_stat(c['id'], 'appearance', gain)
     add_stat(c['id'], 'health', 3)
+    if not gain: return f"你细细梳妆，只是这张脸光靠打扮已经到头了（容貌最多养到 {GROOM_LOOKS_CAP}）。体质 +3。", 'good'
     return f"你细细梳妆，敷了珍珠粉。容貌 +{gain}，体质 +3。", 'good'
 
 def do_rest(c, cfg):
@@ -6009,7 +6013,6 @@ HEIR_RAISE = {
     'play':       dict(name='陪他玩', affinity=5),
     'grooming':   dict(name='梳洗仪容', silver=20, looks=2, looks_beauty=3),   # 2026-10-07：给孩子梳洗打扮、教仪容，容貌 +2；抚养人容貌 ≥70 时 +3
 }
-HEIR_GROOM_LOOKS_CAP = 65        # 梳洗打扮最多把孩子的容貌教到 65，再往上只能靠天生和自己长开
 HEIR_GROOM_BEAUTY_LINE = 70       # 抚养人容貌到这条线，教出来的仪容更好
 HEIR_LOOKS_GROW_CHANCE = 0.5      # 孩子每过一天（宫中长两岁）有这么大概率自己长开一点，容貌 +1，最高 100
 
@@ -7377,7 +7380,7 @@ def heir_raise(hid):
     elif not cfg: err = '选一样教养的法子。'
     elif c['energy'] < HEIR_RAISE_ENERGY: err = '精力不够了。'
     elif c['silver'] < cfg.get('silver', 0): err = f"银子不够，需要 {cfg['silver']} 两。"
-    elif cfg.get('looks') and h['appearance'] >= HEIR_GROOM_LOOKS_CAP: err = f'梳洗打扮最多只能把容貌教到 {HEIR_GROOM_LOOKS_CAP}，再往上要靠孩子自己长开。'
+    elif cfg.get('looks') and h['appearance'] >= 100: err = '孩子的容貌已经到头了，再梳洗也没有更多好处。'
     elif daily_count(c['id'], f'raise:{hid}'): err = '今天已经教养过他了。'
     if err:
         flash(err, 'bad')
@@ -7387,7 +7390,7 @@ def heir_raise(hid):
     parts = []
     if cfg.get('looks'):
         amt = cfg['looks_beauty'] if c['appearance'] >= HEIR_GROOM_BEAUTY_LINE else cfg['looks']
-        parts.append(f"容貌 +{raise_looks(h, min(amt, HEIR_GROOM_LOOKS_CAP - h['appearance']))}")
+        parts.append(f"容貌 +{raise_looks(h, amt)}")
     for stat, amt in cfg.get('gain', {}).items():
         if h['personality'] == 'clever' and stat == 'study': amt = round(amt * 1.5)
         elif h['personality'] == 'honest' and stat == 'study': amt = round(amt * 0.7)
@@ -9480,7 +9483,7 @@ def place(key):
                            aid_targets=q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status IN ('normal','confined')", (c['id'],)), plead_targets=plead_targets, chastise_targets=chastise_targets(c) if key == 'jingren' else [], plead_p=int(plead_chance(c) * 100),
                            maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, heir_todo=heir_todo, HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, PRENATAL=PRENATAL,
                            DIETS=DIETS, PREGNANCY_DAYS=PREGNANCY_DAYS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS,
-                           is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False, birth_count=birth_count, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, HEIR_GROOM_LOOKS_CAP=HEIR_GROOM_LOOKS_CAP, open_living=request.args.get('living') == '1',
+                           is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False, birth_count=birth_count, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, open_living=request.args.get('living') == '1',
                            household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
                            is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5,
                            gather_ev=gather_ev, GATHER_THEMES=GATHER_THEMES, active_festival=FESTIVALS.get(active_festival(day)),

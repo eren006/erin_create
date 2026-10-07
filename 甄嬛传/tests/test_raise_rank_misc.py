@@ -41,15 +41,14 @@ class RaiseRankMiscTests(unittest.TestCase):
         self.assertEqual(c['contraception'], 1)
         self.assertEqual(game.pregnancy_chance(c), 0.0)
 
-    def test_grooming_caps_at_65(self):
-        hid = self.heir(self.atk, appearance=64)
-        game.run('UPDATE consorts SET energy=8, silver=500, appearance=10 WHERE id=?', (self.atk,))
-        self.login(self.atk)
-        self.client.post(f'/heirs/raise/{hid}', data=dict(opt='grooming'))
-        self.assertEqual(game.get_heir(hid)['appearance'], 65)
-        game.run("DELETE FROM daily_counters")
-        self.client.post(f'/heirs/raise/{hid}', data=dict(opt='grooming'))
-        self.assertEqual(game.get_heir(hid)['appearance'], 65)
+    def test_own_grooming_caps_at_65(self):
+        game.run('UPDATE consorts SET energy=8, silver=500, appearance=64 WHERE id=?', (self.atk,))
+        c = game.get_consort(self.atk)
+        game.do_groom(c, game.action_config(c, 'groom'))
+        self.assertEqual(game.get_consort(self.atk)['appearance'], 65)
+        c = game.get_consort(self.atk)
+        game.do_groom(c, game.action_config(c, 'groom'))
+        self.assertEqual(game.get_consort(self.atk)['appearance'], 65)
 
 
 if __name__ == '__main__':
