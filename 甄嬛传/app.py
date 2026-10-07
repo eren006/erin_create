@@ -484,9 +484,12 @@ DRUGS = {
  'qingsi':dict(name='青丝引',rank=4,price=250,case='diag',eat=True,days=3,hours=0,desc='慢毒：第一次发作体质-10，之后每次日结算体质-4，直到解毒；诊脉可解毒；体质耗尽就转成中毒，生死各凭天命'),
  'chunxin':dict(name='春信丹',rank=4,price=300,case='due',eat=True,days=0,hours=24,desc='假孕24小时后揭穿，不会生出孩子；信任不足50时禁足半天、信任-5'),
  'lihun':dict(name='离魂草',rank=5,price=444,case='now',eat=True,days=0,hours=0,desc='致死毒：下次结算判断生死，需及时请太医；离魂草毒性猛烈，治疗后基础存活率25%～45%，不治疗5%～15%，待遇与福报影响存活率'),
+ 'honghua':dict(name='红花',rank=3,price=220,case='now',eat=True,days=1,hours=1,desc='专对孕妇：体质-15，60%概率小产，没小产也会提高早产概率；没有身孕用不上，安胎药可挡一次；眼线查不出是谁下的手；暗柜常备、不限购'),
+ 'musk':dict(name='麝香',rank=4,price=380,case='now',eat=True,days=1,hours=1,desc='专对孕妇：体质-25，90%概率小产，没小产也会提高早产概率；没有身孕用不上，安胎药可挡一次；眼线查不出是谁下的手；暗柜常备、不限购'),
  'wuming':dict(name='无名',rank=6,price=800,case='none',eat=False,days=0,hours=0,desc='可配其他药（离魂草除外），24小时后线索浮现，仍可调查；成功后账号冷却1天'),
 }
 DRUG_ENERGY = 1
+PREGNANCY_DRUGS = {'honghua': dict(health=15, miscarry=0.60, preterm=0.06), 'musk': dict(health=25, miscarry=0.90, preterm=0.10)}   # 专对孕妇的药；眼线也查不出是谁（open_drug_case 里不通报）
 DRUG_BASE = 0.40
 CABINET_SLOTS = 3             # 暗柜每人每天刷几种
 LEDGER_CHANCE = 0.10          # 暗柜买药被内务府记一笔的概率
@@ -498,7 +501,8 @@ NEEDLE_BLOCK = 0.15
 TASTER_LOYALTY = 80           # 忠心到这里的宫人会替主子试毒
 TASTER_CHANCE = 0.20
 GIFT_DRUG_CHANCE = 0.05       # 手巧、忠心 ≥80 的宫人每晚献药
-DIAGNOSE_CHANCE = 0.70
+DIAGNOSE_CHANCE = 0.35   # 2026-10-08 从 0.70 压到 0.35
+DIAGNOSE_COST = 20       # 诊金不变
 SLOW_POISON_FIRST, SLOW_POISON_TICK = 10, 4   # 青丝引：第一次发作体质 -10，之后每次日结算 -4，直到被诊出（2026-10-07 改，原为 3 次、每次 -4）
 
 # ── 雅趣 ───────────────────────────────────────────────────────────────────────
@@ -1598,7 +1602,7 @@ def init_db():
     migrations = {
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
         'banquet_entries': {'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'tier': 'INTEGER NOT NULL DEFAULT 1', 'buff': 'INTEGER NOT NULL DEFAULT 0', 'note': "TEXT NOT NULL DEFAULT ''"},
-        'consorts': {'mood': 'INTEGER NOT NULL DEFAULT 50', 'pregnancy_secret': 'INTEGER NOT NULL DEFAULT 0', 'tryst_count': 'INTEGER NOT NULL DEFAULT 0', 'favor_mark': 'INTEGER NOT NULL DEFAULT -1', 'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
+        'consorts': {'health_max': 'INTEGER NOT NULL DEFAULT 100', 'birth_crisis': 'INTEGER NOT NULL DEFAULT 0', 'mood': 'INTEGER NOT NULL DEFAULT 50', 'pregnancy_secret': 'INTEGER NOT NULL DEFAULT 0', 'tryst_count': 'INTEGER NOT NULL DEFAULT 0', 'favor_mark': 'INTEGER NOT NULL DEFAULT -1', 'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
                      'age_months': 'INTEGER NOT NULL DEFAULT 240',
                      'poisoned_day': 'INTEGER NOT NULL DEFAULT 0',
                      'poison_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -1665,7 +1669,7 @@ def init_db():
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'life_loss_months': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'attr_years': 'INTEGER NOT NULL DEFAULT 0',
@@ -1762,6 +1766,10 @@ def init_db():
     db.execute("DELETE FROM heir_claims WHERE heir_id NOT IN (SELECT id FROM heirs) OR consort_id NOT IN (SELECT id FROM consorts)")
     db.execute("DELETE FROM knife_debts")
     db.execute("DELETE FROM custody_battles WHERE heir_id NOT IN (SELECT id FROM heirs)")
+    for table in ('consorts', 'heirs'):
+        for operation in ('INSERT', 'UPDATE'):
+            ceiling = 'MIN(NEW.health_max,CASE WHEN NEW.birth_crisis=1 THEN 10 ELSE NEW.health_max END)' if table == 'consorts' else 'NEW.health_max'
+            db.execute(f"CREATE TRIGGER IF NOT EXISTS {table}_health_cap_{operation.lower()} AFTER {operation} ON {table} WHEN NEW.health>{ceiling} BEGIN UPDATE {table} SET health={ceiling} WHERE id=NEW.id; END")
     retire_musk(db)
     migrate_families(db)
     if not db.execute("SELECT 1 FROM game_state WHERE id=1").fetchone():
@@ -2355,7 +2363,13 @@ DOWAGER_DX_BONUS = 10           # 太后的侄女殿选加分
 TRUST_DOWAGER, TRUST_DISGRACED = 30, 10
 DOWAGER_AUDIENCE_INTERVAL, DOWAGER_AUDIENCE_FAVOR = 3, 10   # 2026-09-28 从 7 压到 3
 SHOUKANG_INTERVAL = 3   # 2026-09-28 从 7 压到 3
-DOWRY_RATIO, DOWRY_MAX = 0.10, 200
+DOWRY_RATIO, DOWRY_MAX = 0.30, 500      # 2026-10-08 从 一成/200 提到 三成/500
+STAT_INHERIT_RATIO, STAT_INHERIT_MAX = 0.05, 5      # 新人的五项属性，各继承上一位的 5%，每项最多 +5
+LEGACY_INFLUENCE = {5: 5, 6: 10}                     # 上一位最高到过嫔位 / 妃位及以上：新人起步势力 +5 / +10
+INHERIT_STATS = ('appearance', 'talent', 'scheme', 'virtue', 'health')
+
+def legacy_influence(peak_rank):
+    return max((v for r, v in LEGACY_INFLUENCE.items() if peak_rank >= r), default=0)
 FELLOW_AFFINITY = 20
 HEIRLOOM_MAID_LOYALTY = 80
 PRESTIGE_DX_STEP, PRESTIGE_DX_MAX = 20, 10         # 每 20 点名望殿选 +1，最多 +10
@@ -2531,6 +2545,14 @@ def apply_inheritance(c):
     try: inh = json.loads(c['inherit'] or '{}')
     except ValueError: inh = {}
     pred = get_consort(inh['from']) if inh.get('from') else None
+    if inh.get('influence'):
+        run("UPDATE consorts SET influence=influence+? WHERE id=?", (inh['influence'], c['id']))
+        notify(c['id'], f"姐姐生前位至{RANK_NAMES[pred['peak_rank']] if pred else '高位'}，余荫犹在，你起步势力 +{inh['influence']}。", 'good')
+    if inh.get('dowry'):
+        notify(c['id'], f"姐姐留下的家私里，{inh['dowry']} 两作为嫁妆带了进来。", 'info')
+    gained = {k: v for k, v in (inh.get('stats') or {}).items() if v}
+    if gained:
+        notify(c['id'], '姐姐的底子在你身上留了痕：' + '、'.join(f"{STAT_NAMES[k]} +{v}" for k, v in gained.items()) + '。', 'info')
     if pred:
         for sid in sisters_of(pred['id']):
             s_ = get_consort(sid)
@@ -2632,14 +2654,16 @@ def create():
         for k in stats:
             modifier=FAMILIES[tier]['mods'].get(k,0)+PERSONALITIES[per]['mods'].get(k,0)
             stats[k]+=max(-10,min(10,modifier))
-        stats = {k: clamp(v, 5, 100) for k, v in stats.items()}
         pred = members[-1] if members and members[-1]['status'] == 'dead' else None
+        stat_bonus = {k: min(STAT_INHERIT_MAX, int(pred[k] * STAT_INHERIT_RATIO)) for k in INHERIT_STATS} if pred else {}
+        for k, v in stat_bonus.items(): stats[k] += v
+        stats = {k: clamp(v, 5, 100) for k, v in stats.items()}
         dowry = 0
         if pred and pred['silver'] > 0:
             dowry = min(DOWRY_MAX, int(pred['silver'] * DOWRY_RATIO))
             run("UPDATE consorts SET silver=0 WHERE id=?", (pred['id'],))
         silver = FAMILIES[tier]['silver'] + min(PRESTIGE_SILVER_MAX, fam['prestige']) + dowry
-        inherit = dict(dowry=dowry, **({'from': pred['id']} if pred else {}))
+        inherit = dict(dowry=dowry, stats=stat_bonus, influence=legacy_influence(pred['peak_rank']) if pred else 0, **({'from': pred['id']} if pred else {}))
         run("""INSERT INTO consorts (user_id, surname, given, family, personality,
                appearance, talent, scheme, virtue, health, silver, secret, status, created_ts,
                reign_no, seq, entry_age, lineage, patron, inherit, heirloom_maid_id)
@@ -6168,7 +6192,7 @@ def heirs():
             a['battle_participant'] = c['id'] in (battle['challenger_id'],battle['defender_id'])
         if a: acts[h['id']] = a
     targets_for = {h['id']: entrust_candidates(c, raise_min_rank(h)) for h in rows if acts.get(h['id'], {}).get('entrust')}
-    return render_template('heirs.html', HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, c=c, rows=rows, get_consort=get_consort, acts=acts, targets_for=targets_for, raise_rank_name=raise_rank_name, name_choice_view=name_choice_view, cur_gen={g_: gen_word_for(state()['reign_no'], g_) for g_ in NAME_GENERATIONS},
+    return render_template('heirs.html', losses=q('SELECT * FROM birth_losses WHERE mother_id=? ORDER BY id DESC', (c['id'],)), HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, c=c, rows=rows, get_consort=get_consort, acts=acts, targets_for=targets_for, raise_rank_name=raise_rank_name, name_choice_view=name_choice_view, cur_gen={g_: gen_word_for(state()['reign_no'], g_) for g_ in NAME_GENERATIONS},
                            ERRAND_APPROACHES=ERRAND_APPROACHES, MONGOL_LETTER_INTERVAL=MONGOL_LETTER_INTERVAL, CUSTODY_ACTIONS=CUSTODY_ACTIONS)
 
 # ── 皇嗣成长（九点六节 A~D：还没做成年、抚养关系博弈、夺嫡） ─────────────────────
@@ -6623,7 +6647,7 @@ def heir_grow_stats(day):
         if years <= done: continue
         gain = dict.fromkeys(HEIR_STATS, 0)
         for _ in range((years - done) * HEIR_GROW_POINTS):
-            open_ = [k for k in HEIR_STATS if h[k] + gain[k] < 100]
+            open_ = [k for k in HEIR_STATS if h[k] + gain[k] < (h['health_max'] if k == 'health' else 100)]
             if not open_: break
             gain[random.choice(open_)] += 1
         run("UPDATE heirs SET attr_years=?, study=study+?, riding=riding+?, virtue=virtue+?, health=health+? WHERE id=?",
@@ -8328,7 +8352,7 @@ def end_reign(day):
     run("DELETE FROM consorts WHERE npc_key IS NOT NULL")
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims', 'custody_battles',
-              'tribute_items', 'tribute_turns', 'tribute_events', 'princess_suitors', 'princess_courtships', 'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
+              'birth_losses', 'tribute_items', 'tribute_turns', 'tribute_events', 'princess_suitors', 'princess_courtships', 'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
               'garden_plots', 'garden_stock', 'banquet_entries', 'banquet_invites', 'banquet_gear', 'achievements'):
         run(f"DELETE FROM {t}")
     run('UPDATE users SET lethal_ready_day=0, nameless_ready_day=0, forge_used=0')
@@ -8406,10 +8430,71 @@ def labor_risk(c, prior_births, rests=0):
     return max(0.0, min(LABOR_RISK_CAP, base + LABOR_RISK_PER_PRIOR * prior_births - LABOR_RISK_PER_REST * rests))
 
 
+PRETERM_START_HOURS = 18
+PRETERM_BASE, PRETERM_MAX = .10, .20      # 2026-10-08 从 2%/8% 提到 10%/20%
+
+
+PRETERM_DRUG_MAX = .40
+
+
+def add_drug_preterm(cid, delta):
+    c = get_consort(cid)
+    st = prenatal_state(c)
+    st['drug_preterm'] = round(st.get('drug_preterm', 0) + delta, 3)
+    run("UPDATE consorts SET prenatal=? WHERE id=?", (json.dumps(st), cid))
+
+
+def preterm_chance(c):
+    risk = PRETERM_BASE + (.03 if c['health'] < 40 else 0) + (.03 if c['poisoned_day'] or affliction(c['id'], 'hanshui') else 0) + (.02 if is_sick(c) else 0)
+    risk -= min(.03, prenatal_state(c).get('rest', 0) * .01)
+    if inv_qty(c['id'], 'antai'): risk -= .01
+    risk = max(.005, min(PRETERM_MAX, risk))
+    return min(PRETERM_DRUG_MAX, risk + prenatal_state(c).get('drug_preterm', 0))      # 红花、麝香没害成胎，也伤了胎气：早产概率叠加，可超过普通上限
+
+
+def preterm_crisis_chance(c):
+    risk = .08 + (.04 if c['health'] < 40 else 0) + (.04 if c['poisoned_day'] else 0)
+    risk -= min(.04, prenatal_state(c).get('rest', 0) * .02)
+    if inv_qty(c['id'], 'antai'): risk -= .02
+    return max(.02, min(.16, risk))
+
+
+def preterm_child_death_chance(c):
+    return preterm_crisis_chance(c)  # 早产儿基础8%，体虚/中毒可升至16%，安胎可降至2%
+
+
+BIRTH_RESCUE_COST = 500
+
+
+def enter_birth_crisis(cid):
+    run('UPDATE consorts SET birth_crisis=1,health=MIN(health,10),dying_since_ts=? WHERE id=?', (now_ts(), cid))
+    notify(cid, f'早产后出血不止，你已濒死！12小时内须花{BIRTH_RESCUE_COST}两请太医抢救；普通补养无法脱险。救回后体质上限永久降低15点，可叠加。', 'bad')
+    feed(cid, '早产后性命垂危，急需请太医抢救。')
+
+
+@app.route('/birth/rescue', methods=['POST'])
+@login_required
+@atomic
+def birth_rescue():
+    dying_tick()
+    c = get_consort(g.me['id'])
+    if c['status'] == 'dead' or not c['birth_crisis']:
+        flash('当前不需要早产抢救。', 'bad')
+    elif c['silver'] < BIRTH_RESCUE_COST:
+        flash(f'抢救需要{BIRTH_RESCUE_COST}两银子。', 'bad')
+    else:
+        maximum = max(1, c['health_max'] - 15)
+        run('UPDATE consorts SET silver=silver-?,health_max=?,birth_crisis=0,dying_since_ts=0,health=? WHERE id=?', (BIRTH_RESCUE_COST, maximum, min(35, maximum), c['id']))
+        flash(f'太医救回了你，体质上限永久降低15点，现在上限{maximum}。', 'good')
+        notify(c['id'], f'早产抢救成功，花费{BIRTH_RESCUE_COST}两；体质上限永久减少15，现为{maximum}。', 'info')
+        feed(c['id'], f'花{BIRTH_RESCUE_COST}两抢救脱险，体质上限降至{maximum}。')
+    return redirect(url_for('index'))
+
+
 CONTRACEPTION_MIN_BIRTHS = 2    # 生过两次孩子之后，才能选择避孕
 
 def birth_count(cid):
-    return q('SELECT COUNT(*) n FROM heirs WHERE mother_id=?', (cid,), one=True)['n']
+    return q('SELECT (SELECT COUNT(*) FROM heirs WHERE mother_id=?) + (SELECT COUNT(*) FROM birth_losses WHERE mother_id=?) n', (cid, cid), one=True)['n']
 
 def contraception_on(c):
     return bool(c['contraception'] if 'contraception' in c.keys() else 0) and birth_count(c['id']) >= CONTRACEPTION_MIN_BIRTHS
@@ -8474,15 +8559,38 @@ def pregnancy_progress(c):
 @atomic
 def resolve_births(day, include_legacy=True):
     resolve_realtime_drugs(day)
-    for c in q("SELECT * FROM consorts WHERE status!='dead' AND pregnant_since>0 AND NOT EXISTS(SELECT 1 FROM afflictions a WHERE a.consort_id=consorts.id AND a.drug='chunxin' AND a.status='active') AND ((pregnancy_started_ts>0 AND pregnancy_started_ts<=?) OR (pregnancy_started_ts=0 AND ? AND ?-pregnant_since>=?))", (time.time()-PREGNANCY_MIN_SECONDS, int(include_legacy), day, PREGNANCY_DAYS)):
+    now = time.time()
+    for c in q("SELECT * FROM consorts WHERE status!='dead' AND pregnant_since>0 AND NOT EXISTS(SELECT 1 FROM afflictions a WHERE a.consort_id=consorts.id AND a.drug='chunxin' AND a.status='active')"):
+        premature = False
+        if c['pregnancy_started_ts']:
+            elapsed = now - c['pregnancy_started_ts']
+            if elapsed < PREGNANCY_MIN_SECONDS:
+                if elapsed < PRETERM_START_HOURS * 3600: continue
+                slot = int(elapsed // 3600)
+                checked = prenatal_state(c)
+                if checked.get('_preterm_hour', 0) >= slot: continue
+                checked['_preterm_hour'] = slot
+                run('UPDATE consorts SET prenatal=? WHERE id=?', (json.dumps(checked), c['id']))
+                if random.random() >= preterm_chance(c): continue
+                premature = True
+        elif not include_legacy or day - c['pregnant_since'] < PREGNANCY_DAYS:
+            continue
+        crisis = premature and random.random() < preterm_crisis_chance(c)
         twins = random.random() < TWIN_CHANCE
         pref = c['birth_gender_pref'] if 'birth_gender_pref' in c.keys() else ''      # 管理员在库里给某人设的出生性别（界面和帮助页都不提）
         genders = [pref if pref in ('皇子', '公主') else random.choice(['皇子', '公主']) for _ in range(2 if twins else 1)]
         pre = prenatal_state(c)
-        prior_births = q('SELECT COUNT(*) n FROM heirs WHERE mother_id=?', (c['id'],), one=True)['n']
+        prior_births = birth_count(c['id'])
+        lost = []
+        live_genders = []
         born = []   # [(label, 资质文字)]
         born_ids = []
         for gender in genders:
+            if premature and random.random() < preterm_child_death_chance(c):
+                run('INSERT INTO birth_losses(mother_id,gender,day,created_ts,reason) VALUES(?,?,?,?,?)', (c['id'], gender, day, now_ts(), '早产出生时夭折'))
+                lost.append('小阿哥' if gender == '皇子' else '小公主')
+                continue
+            live_genders.append(gender)
             # 排行按本届、同性别已有的最大排行往下数（不再从 6、3 起跳；换届后重新从「大」排起）
             top = q("SELECT COALESCE(MAX(ordinal),0) m FROM heirs WHERE gender=? AND (born_day>=? OR COALESCE(npc_key,'')!='')", (gender, state()['reign_start_day']), one=True)['m']
             ordinal = top + 1
@@ -8498,6 +8606,9 @@ def resolve_births(day, include_legacy=True):
                  clamp(60 + c['health'] * 0.1, 0, 100),
                  gifts['study'], gifts['riding'], gifts['virtue']))
             hid = q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id']
+            if premature:
+                loss = random.randint(5, 10)
+                run('UPDATE heirs SET premature=1,preterm_health_loss=?,health_max=MAX(1,health_max-?),health=MAX(1,health-?) WHERE id=?', (loss, loss, loss, hid))
             ensure_name_choices(hid)
             hid_new = q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id']
             born_ids.append(hid_new)
@@ -8516,16 +8627,24 @@ def resolve_births(day, include_legacy=True):
         if birth_loss > 0: add_stat(c['id'], 'health', -birth_loss)
         run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day + POSTPARTUM_SICK_DAYS, c['id']))
         extra = f'生产耗去元气，体质 -{birth_loss}。' if birth_loss > 0 else ''
+        if premature:
+            extra += '孕期未满便临盆，孩子基础体质较弱，体质上限永久降低5～10点。'
+        if lost:
+            extra += f"早产的{'、'.join(lost)}出生时夭折。"
+            feed(c['id'], f"早产临盆，{'、'.join(lost)}不幸夭折。")
+            notify(c['id'], f"早产的{'、'.join(lost)}出生时未能救活。", 'bad')
         hard_labor = random.random() < labor_risk(c, prior_births, pre.get('rest', 0))
         if hard_labor:
             add_stat(c['id'], 'health', -20); extra += '难产了一整夜，元气大伤，体质再 -20。'
-        if twins:
+        if not born:
+            label = '早产胎儿（未能存活）'
+        elif twins:
             label = '、'.join(b[0] for b in born)
             kind = '龙凤胎' if len(set(genders)) == 2 else ('双生阿哥' if genders[0] == '皇子' else '双生公主')
             label = f"{kind}（{label}）"
         else:
             label = born[0][0]
-        if '皇子' in genders:
+        if '皇子' in live_genders:
             add_prestige(c, PRESTIGE_BORN_PRINCE, f"{full_name(c)}诞下皇子")
             add_favor(c['id'], BIRTH_FAVOR_PRINCE, gain_mult=False)
             if c['rank'] >= MOTHER_BY_SON_MAX_RANK:      # 已经封顶，不再晋位，改加势力
@@ -8534,7 +8653,7 @@ def resolve_births(day, include_legacy=True):
             elif slot_free(c['rank'] + 1, c['id']):      # 母凭子贵只看名额，不看势力门槛，最多晋到嫔（2026-10-07 起）
                 set_rank(c['id'], c['rank'] + 1)
                 extra += f"母凭子贵，晋为{display_name(get_consort(c['id']))}。"
-        else:
+        elif live_genders:
             add_favor(c['id'], BIRTH_FAVOR_PRINCESS, gain_mult=False)
         if not state()['mourning']:      # 生子的圣宠加上之后，圣宠、德行、势力若已够下一级的标准，单独判定一次晋封（不用等下一轮晋封检查）
             promoted = try_promote(c, day, quiet_full=True)
@@ -8542,11 +8661,13 @@ def resolve_births(day, include_legacy=True):
                 extra += f"生子圣宠加身，晋为{display_name(promoted)}。"
                 housing_sync()
         gift_line = '；'.join((f"{b[0]}：{b[1]}" if twins else b[1]) for b in born)
+        if premature: feed(c['id'], f'提前临盆，诞下{label}。{extra}')
         gazette(f"{display_name(c)}诞下{label}。{extra}资质：{gift_line}。", 'birth')
         notify(c['id'], f"你诞下了{label}。{extra}", 'good')
-        notify(c['id'], f"请嬷嬷看了孩子的根骨：{gift_line}。", 'info')
-        notify(c['id'], "皇上为孩子点了几个字，去「子嗣」页挑一个定名，名字是本届字辈加你选的字。", 'info')
-        night_mark(c['id'], 'birth', label=label, son='皇子' in genders)
+        if born:
+            notify(c['id'], f"请嬷嬷看了孩子的根骨：{gift_line}。", 'info')
+            notify(c['id'], "皇上为孩子点了几个字，去「子嗣」页挑一个定名，名字是本届字辈加你选的字。", 'info')
+        night_mark(c['id'], 'birth', label=label, son='皇子' in live_genders)
         mom = get_consort(c['id'])       # 母凭子贵晋位之后的位分才算数：位分够了就能亲自抚养（皇子要妃位，公主要嫔位）
         sent = [hid_ for hid_ in born_ids if mom['rank'] < raise_min_rank(get_heir(hid_))]
         if sent:       # 位分不够不能亲自抚养：一出生就由皇嗣养育所照料，抓周前还能托付、位分够了还能领回
@@ -8557,8 +8678,11 @@ def resolve_births(day, include_legacy=True):
             notify(c['id'], f"按祖制，{RANK_NAMES[mom['rank']]}不能亲自抚养{sent_label}（皇子须妃位以上，公主须嫔位以上），先由皇嗣养育所照料。周岁抓周前，你可以去「子嗣」页托付给好感不低于 {HEIR_ENTRUST_MIN_AFFINITY} 的{need}位以上姐妹，或者晋位后领回。", 'info')
         for hid_ in born_ids:
             if hid_ not in sent: adopt_bonus_grant(c['id'], hid_)      # 自己养的孩子，势力 +15
-        if hard_labor and random.random() < LABOR_DEATH_CHANCE:      # 难产有小概率没挺过来：孩子保留，由后面的换人规则另派抚养人
-            die(c['id'], '难产')
+        if crisis:
+            enter_birth_crisis(c['id'])
+        elif hard_labor and random.random() < LABOR_DEATH_CHANCE:      # 难产有小概率没挺过来：孩子保留，由后面的换人规则另派抚养人
+            if premature: enter_birth_crisis(c['id'])
+            else: die(c['id'], '难产')
 
 
 def prenatal_state(c):
@@ -9239,7 +9363,7 @@ def dying_tick():
                 if c['user_id']: notify(c['id'], f"你的体质只剩 {c['health']} 点，已经濒死了。{DYING_HOURS} 小时内再不好转就要殒命：快去「本宫」静养、梳妆，或者请姐妹送补养，把体质养回 {HEALTH_DYING_AT + 1} 点以上。", 'bad')
                 gazette(f"{display_name(c)}病入膏肓，太医说怕是撑不过{DYING_HOURS}个时辰。", 'news')
             elif now - c['dying_since_ts'] >= DYING_HOURS * 3600:
-                die(c['id'], '体弱衰竭，久未调养，不治身亡')
+                die(c['id'], '早产抢救不及' if c['birth_crisis'] else '体弱衰竭，久未调养，不治身亡')
         else:
             run("UPDATE consorts SET dying_since_ts=0 WHERE id=?", (c['id'],))
             if c['user_id']: notify(c['id'], f"你的体质回到了 {c['health']} 点，总算从鬼门关前缓了过来。", 'good')
@@ -9559,7 +9683,7 @@ def admin_reset():
         return redirect(url_for('admin'))
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars', 'reports', 'maids',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims', 'custody_battles',
-              'tribute_items', 'tribute_turns', 'tribute_events', 'princess_suitors', 'princess_courtships', 'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
+              'birth_losses', 'tribute_items', 'tribute_turns', 'tribute_events', 'princess_suitors', 'princess_courtships', 'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
               'garden_plots', 'garden_stock', 'banquet_entries', 'banquet_invites', 'banquet_gear', 'achievements', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
@@ -10366,7 +10490,8 @@ def report():
 
 def cabinet_stock(cid, day):
     # 独立随机源，刷新页面和重启都不会换货，也不影响结算掷骰。
-    return random.Random(f'cabinet:{cid}:{day}').sample(list(DRUGS), CABINET_SLOTS)
+    rotating = [k for k in DRUGS if k not in PREGNANCY_DRUGS]      # 红花、麝香是常备货，每天都有，不占轮换名额
+    return list(PREGNANCY_DRUGS) + random.Random(f'cabinet:{cid}:{day}').sample(rotating, CABINET_SLOTS)
 
 
 def drug_agents(cid, tid=None):
@@ -10387,6 +10512,7 @@ def drug_block(c, t, drug, used, mid, day, submitting=True):
     if max(t['drugged_until_day'], t['drugged_day'] + DRUGGED_SHIELD if t['drugged_day'] else 0) > day: return '她刚遭过下药，仍在保护期内。'
     if drug == 'lihun' and (t['poisoned_day'] or t['protected_until_day'] >= day): return '她正中毒或刚获救，动不得。'
     if drug == 'chunxin' and t['pregnant_since']: return '她已有喜脉，春信丹用不上。'
+    if drug in PREGNANCY_DRUGS and not t['pregnant_since']: return '她没有身孕，这味药用不上。'
     if mid and not any(m['id'] == mid for m in drug_agents(c['id'], t['id'])): return '这名宫人现在不能替你办事。'
     if submitting:
         if c['rank'] < DRUGS[used]['rank']: return '你的位分还使不得这种药。'
@@ -10404,7 +10530,7 @@ def buy_drug(key):
     cfg = DRUGS.get(key)
     if not cfg or key not in cabinet_stock(c['id'], day): msg = '今日暗柜没有这份药。'
     elif c['status'] == 'cold' or c['rank'] < cfg['rank']: msg = '内务府不肯把这份药交给你。'
-    elif daily_count(c['id'], 'cabinet:' + key): msg = '今日这一份已经买过了。'
+    elif key not in PREGNANCY_DRUGS and daily_count(c['id'], 'cabinet:' + key): msg = '今日这一份已经买过了。'      # 红花、麝香不限购
     elif c['silver'] < cfg['price']: msg = '银子不够。'
     else:
         add_silver(c['id'], -cfg['price'])
@@ -10493,7 +10619,7 @@ def open_drug_case(it, punished=0, force=False):
     for cid in {victim['id'], *(s['consort_id'] for s in suspects)}:
         notify(cid, f'你被卷进了第 {case_id} 桩案子，请去慎刑司陈情，下一次结算定案。', 'bad')
         guide_tip(cid, 'case', '「案子上了身，别慌。该喊冤喊冤，该打点打点，慎刑司认的是嫌疑，不是脾气。」')
-    if eyes_active(victim):
+    if eyes_active(victim) and it['drug'] not in PREGNANCY_DRUGS:      # 红花、麝香：眼线也查不出是谁
         notify(victim['id'], f'眼线回报：这回下手的是{display_name(culprit)}。')
         run("UPDATE consorts SET culprit_id=? WHERE id=?", (culprit['id'], victim['id']))
     return case_id
@@ -10567,6 +10693,21 @@ def resolve_drug(it):
                 run("UPDATE afflictions SET status='done' WHERE consort_id=? AND drug='chunxin'",(t['id'],))
                 night_mark(t['id'],'miscarriage');notify(t['id'],'寒水散使你小产了。','bad')
             else:notify(t['id'],'寒水散伤了身子，但胎儿暂时保住了。','info')
+    elif drug in PREGNANCY_DRUGS:
+        pcfg=PREGNANCY_DRUGS[drug]
+        add_stat(t['id'],'health',-pcfg['health'])
+        if t['pregnant_since']:
+            if inv_qty(t['id'],'antai'):
+                inv_add(t['id'],'antai',-1);notify(t['id'],f"饮食里被人下了{DRUGS[drug]['name']}，安胎药保住了胎儿，只是胎气受了惊扰，临盆前更要当心早产。",'info')
+                add_drug_preterm(t['id'],pcfg['preterm']/2)
+            elif random.random()<pcfg['miscarry']:
+                run('UPDATE consorts SET pregnant_since=0,pregnancy_started_ts=0,postpartum_until=? WHERE id=?',(day+POSTPARTUM_SICK_DAYS,t['id']))
+                run("UPDATE afflictions SET status='done' WHERE consort_id=? AND drug='chunxin'",(t['id'],))
+                night_mark(t['id'],'miscarriage');notify(t['id'],f"{DRUGS[drug]['name']}使你小产了。",'bad')
+                gazette(f"{display_name(t)}不幸小产，皇上痛惜不已。",'scandal')
+            else:
+                add_drug_preterm(t['id'],pcfg['preterm'])
+                notify(t['id'],f"{DRUGS[drug]['name']}伤了身子，胎儿暂时保住了，只是胎气大伤，早产的风险明显升高。",'bad')
     elif drug=='lihun': poison_player(t['id'],day)
     elif drug=='chunxin':
         run('UPDATE consorts SET pregnant_since=?,pregnancy_started_ts=?,pregnancy_secret=0 WHERE id=?',(day,time.time(),t['id']))
@@ -10588,10 +10729,10 @@ def diagnose_slow(a):
 @login_required
 def diagnose():
     c = g.me
-    if c['silver']<20: flash('请太医诊脉要 20 两。','bad')
+    if c['silver']<DIAGNOSE_COST: flash(f'请太医诊脉要 {DIAGNOSE_COST} 两。','bad')
     elif daily_count(c['id'],'diagnose'): flash('今日已经诊过脉了。','bad')
     else:
-        add_silver(c['id'],-20)
+        add_silver(c['id'],-DIAGNOSE_COST)
         daily_inc(c['id'],'diagnose')
         a = affliction(c['id'],'qingsi')
         if a and random.random()<DIAGNOSE_CHANCE:

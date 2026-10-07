@@ -282,7 +282,7 @@ class FamilyTests(unittest.TestCase):
 
     # ── 姐姐留下的东西 ───────────────────────────────────────────────────────
 
-    def test_dowry_is_a_tenth_up_to_cap_and_taken_once(self):
+    def test_dowry_is_thirty_percent_up_to_cap_and_taken_once(self):
         uid = self.new_user()
         game.create_family(uid, '江', 'dali')
         prev = self.past_member(uid, silver=5000, death_day=1)
@@ -293,6 +293,24 @@ class FamilyTests(unittest.TestCase):
         self.assertEqual(game.get_consort(prev)['silver'], 0)
         self.assertEqual(json.loads(c['inherit'])['from'], prev)
 
+    def test_stats_and_legacy_influence_are_inherited(self):
+        uid = self.new_user()
+        game.create_family(uid, '沈', 'dali')
+        prev = self.past_member(uid, silver=100, death_day=1)
+        game.run("UPDATE consorts SET appearance=100,talent=40,scheme=10,virtue=60,health=80,peak_rank=6 WHERE id=?", (prev,))
+        self.set_day(10)
+        self.create_member('云')
+        c = game.q('SELECT * FROM consorts WHERE user_id=?', (uid,), one=True)
+        inh = json.loads(c['inherit'])
+        self.assertEqual(inh['stats'], dict(appearance=5, talent=2, scheme=0, virtue=3, health=4))      # 5%，每项最多 +5
+        self.assertEqual(inh['influence'], 10)
+        self.assertEqual(game.legacy_influence(4), 0)
+        self.assertEqual(game.legacy_influence(5), 5)
+        self.assertEqual(game.legacy_influence(9), 10)
+        before = game.get_consort(c['id'])['influence']
+        game.apply_inheritance(game.get_consort(c['id']))
+        self.assertEqual(game.get_consort(c['id'])['influence'], before + 10)
+
     def test_small_estate_dowry(self):
         uid = self.new_user()
         game.create_family(uid, '江', 'dali')
@@ -300,7 +318,7 @@ class FamilyTests(unittest.TestCase):
         self.set_day(10)
         self.create_member('云')
         self.assertEqual(game.q('SELECT silver FROM consorts WHERE user_id=?', (uid,), one=True)['silver'],
-                         game.FAMILIES['dali']['silver'] + 30)
+                         game.FAMILIES['dali']['silver'] + int(300 * game.DOWRY_RATIO))
 
     def test_sworn_sisters_start_friendly_but_not_sworn(self):
         uid = self.new_user()

@@ -700,3 +700,36 @@ CREATE TABLE IF NOT EXISTS princess_suitors (
  active INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_suitors_heir ON princess_suitors(heir_id, active);
+
+-- 临时选贡品活动：一轮按开启时的位分顺序，每件贡品只领一次
+CREATE TABLE IF NOT EXISTS tribute_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ status TEXT NOT NULL DEFAULT 'active',
+ started_ts REAL NOT NULL,
+ turn_started_ts REAL NOT NULL,
+ timeout_hours INTEGER NOT NULL DEFAULT 8,
+ low_quota INTEGER NOT NULL DEFAULT 1
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tribute_one_active ON tribute_events(status) WHERE status='active';
+CREATE TABLE IF NOT EXISTS tribute_turns (
+ event_id INTEGER NOT NULL,
+ consort_id INTEGER NOT NULL,
+ position INTEGER NOT NULL,
+ quota INTEGER NOT NULL,
+ status TEXT NOT NULL DEFAULT 'waiting',
+ PRIMARY KEY(event_id,consort_id),
+ UNIQUE(event_id,position)
+);
+CREATE TABLE IF NOT EXISTS tribute_items (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ event_id INTEGER NOT NULL,
+ name TEXT NOT NULL,
+ grade INTEGER NOT NULL,
+ description TEXT NOT NULL,
+ holder_id INTEGER NOT NULL DEFAULT 0,
+ acquired_day INTEGER NOT NULL DEFAULT 0,
+ display_slot TEXT NOT NULL DEFAULT ''
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tribute_display ON tribute_items(holder_id,display_slot) WHERE display_slot!='';
+
+CREATE TABLE IF NOT EXISTS birth_losses (id INTEGER PRIMARY KEY AUTOINCREMENT,mother_id INTEGER NOT NULL,gender TEXT NOT NULL,day INTEGER NOT NULL,created_ts REAL NOT NULL,reason TEXT NOT NULL);

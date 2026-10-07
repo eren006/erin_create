@@ -54,6 +54,31 @@ class MaidTests(unittest.TestCase):
     def pick(self, name, idx=0):
         return self.client.post('/maids/pick', data={'idx': idx, 'name': name})
 
+    def test_reward_cost_scales_with_active_maid_count(self):
+        for count in (1, 2, 3):
+            with self.subTest(count=count):
+                game.run('DELETE FROM maids WHERE owner_id=?', (self.me,))
+                game.run('DELETE FROM daily_counters')
+                game.run('UPDATE consorts SET silver=2000 WHERE id=?', (self.me,))
+                for j in range(count): self.maid(self.me, f'宫人{j}')
+                past = self.maid(self.me, '旧人')
+                game.run("UPDATE maids SET status='gone' WHERE id=?", (past,))
+                cost = count * game.MAID_REWARD_COST
+                self.assertIn(f'赏宫人（{cost} 两', self.client.get('/maids').get_data(as_text=True))
+                self.client.post('/maids/reward')
+                self.assertEqual(game.get_consort(self.me)['silver'], 2000 - cost)
+                self.assertTrue(all(m['loyalty'] == 65 for m in game.active_maids(self.me)))
+                self.client.post('/maids/reward')
+                self.assertEqual(game.get_consort(self.me)['silver'], 2000 - cost)
+
+    def test_reward_insufficient_funds_does_not_charge_or_raise_loyalty(self):
+        self.maid(self.me, '甲一'); self.maid(self.me, '甲二')
+        game.run('UPDATE consorts SET silver=39 WHERE id=?', (self.me,))
+        self.client.post('/maids/reward')
+        self.assertEqual(game.get_consort(self.me)['silver'], 39)
+        self.assertTrue(all(m['loyalty'] == 60 for m in game.active_maids(self.me)))
+        self.assertEqual(game.daily_count(self.me, 'maid_reward'), 0)
+
     def test_pick_name_rules_and_quota(self):
         self.assertEqual(self.client.get('/maids').status_code, 200)
         for bad in ('阿', 'ab', '三个字'):   # 蕴仪是皇后的名

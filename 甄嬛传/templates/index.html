@@ -90,7 +90,7 @@
 </section>
 {% endif %}
 {% if open_cases_count %}<p class="state-conf" role="alert">你被卷进了 {{ open_cases_count }} 桩案子，<a href="{{ url_for('drug_cases') }}">去慎刑司陈情</a>。</p>{% endif %}
-<form method="post" action="{{ url_for('diagnose') }}"><button class="plain">请太医诊脉（20 两，每日一次）</button></form>
+<form method="post" action="{{ url_for('diagnose') }}"><button class="plain">请太医诊脉（20 两，每日一次，不一定诊得出）</button></form>
 
 {% if promo and promo.met and not promo.slot %}
 <section class="sheet" style="margin-top:18px;border-left:4px solid var(--jin)">
@@ -98,7 +98,8 @@
   <p class="muted" style="margin:6px 0">圣宠、德行、势力都已达标，可{{ promo.rank }}位的 {{ promo.cap }} 个名额都满了：{{ promo.holders|join('、') or '（占着名额的人暂时看不到）' }}。有人腾出位子，会按圣宠高低排队晋你，每 4 小时检查一次。</p>
 </section>
 {% endif %}
-{% if c.dying_since_ts %}
+{% if c.birth_crisis %}<section class="sheet" role="alert" style="border:3px solid var(--bad)"><b>早产后濒死，急需抢救！</b><p>12小时内花500两请太医抢救；救回后体质上限永久−15，可叠加。普通补养不能解除这次危机。</p><form method="post" action="{{ url_for('birth_rescue') }}"><button>请太医抢救（500两）</button></form></section>{% endif %}
+{% if c.dying_since_ts and not c.birth_crisis %}
 <section class="sheet" style="margin-top:18px;border-left:4px solid var(--bad)">
   <b>你已濒死</b>
   <p class="muted" style="margin:6px 0">体质只剩 {{ c.health }} 点。{{ DYING_HOURS }} 小时内体质没回到 {{ HEALTH_DYING_AT + 1 }} 点以上，就会殒命。去「本宫」静养（体质 +8）、梳妆保养（+3），或者请姐妹送补养（+3）。</p>
@@ -132,7 +133,7 @@
       <dt>精力</dt><dd><span class="pips" aria-label="精力 {{ c.energy }}">{{ '●' * c.energy }}{{ '○' * (ENERGY_MAX - c.energy if c.energy < ENERGY_MAX else 0) }}</span></dd>
       <dt>心情</dt><dd>{{ c.mood }}　<span class="muted">每天 0 点降回 {{ MOOD_DAY_RESET }}；一天结束时低于 {{ DEPRESSION_BELOW }} 会郁结，大寿上限 −1 年。逛御花园 +5，雅趣 +2，侍寝、被召见 +3；被害成功 −5</span>{% if c.mood < DEPRESSION_BELOW %}　<span style="color:var(--bad)">今天还差 {{ DEPRESSION_BELOW - c.mood }} 点</span>{% endif %}</dd>
       <dt>容貌</dt><dd>{{ c.appearance }}　<span class="muted">才艺</span> {{ c.talent }}　<span class="muted">心计</span> {{ c.scheme }}　<span class="muted">德行</span> {{ c.virtue }}</dd>
-      <dt>体质</dt><dd>{{ c.health }}{% if sick %}　<span style="color:var(--bad)">卧病在床</span>{% endif %}</dd>
+      <dt>体质</dt><dd>{{ c.health }} / {{ c.health_max }}{% if sick %}　<span style="color:var(--bad)">卧病在床</span>{% endif %}</dd>
       {% for l in tryst_leaks %}<dt>风声</dt><dd><span style="color:var(--bad)">{{ l.knower }}瞧见了你的事，还剩 {{ l.left }} 天她可以告发你。</span>　封口进度 {{ l.progress }}/{{ TRYST_HUSH_GOAL }}　<span class="muted">攒满她就告发不了你，你反而势力 +{{ TRYST_HUSH_INFLUENCE }}</span>
         <form method="post" action="{{ url_for('tryst_hush', clue_id=l.id) }}" style="display:inline"><button class="plain">花 {{ TRYST_HUSH_COST }} 两封口（+{{ TRYST_HUSH_STEP }}）</button></form></dd>{% endfor %}
       {% if c.pregnant_since %}<dt>喜脉</dt><dd>已有喜脉，{{ pregnancy_due_text(c) }}　<span class="muted">当心入口的东西</span></dd>{% endif %}

@@ -33,9 +33,10 @@ class DrugTests(unittest.TestCase):
     def test_cabinet_stock_purchase_and_duplicate(self):
         stock = game.cabinet_stock(self.atk,10)
         self.assertEqual(stock, game.cabinet_stock(self.atk,10))
-        self.assertEqual(len(set(stock)),3)
+        self.assertEqual(len(set(stock)),3+len(game.PREGNANCY_DRUGS))      # 3 种轮换 + 红花、麝香常备
+        self.assertTrue(set(game.PREGNANCY_DRUGS) <= set(stock))
         game.run('UPDATE consorts SET rank=6 WHERE id=?',(self.atk,))
-        key=stock[0]
+        key=stock[-1]      # 取轮换货，不取常备的红花、麝香
         with patch.object(game.random,'random',return_value=0):
             self.client.post('/shop/drug/'+key)
             self.client.post('/shop/drug/'+key)
@@ -99,7 +100,7 @@ class DrugTests(unittest.TestCase):
         with patch.object(game.random,'random',return_value=0):
             self.client.post('/diagnose')
             self.client.post('/diagnose')
-        self.assertEqual(game.get_consort(self.tgt)['silver'],1980)
+        self.assertEqual(game.get_consort(self.tgt)['silver'],2000-game.DIAGNOSE_COST)
         self.assertIsNone(game.affliction(self.tgt,'qingsi'))
         self.assertEqual(len(game.q('SELECT * FROM cases')),0)
 
@@ -206,6 +207,38 @@ class DrugTests(unittest.TestCase):
         a=game.affliction(self.tgt,'hanshui')
         with patch.object(game.time,'time',return_value=a['expires_ts']-1):self.assertIsNotNone(game.affliction(self.tgt,'hanshui'))
         with patch.object(game.time,'time',return_value=a['expires_ts']):self.assertIsNone(game.affliction(self.tgt,'hanshui'))
+
+    def test_pregnancy_drugs_need_a_pregnancy(self):
+        for d in ('honghua','musk'):
+            self.assertIsNone(self.plan(d) and None)
+        self.assertEqual(len(game.q("SELECT * FROM intrigues WHERE drug IN ('honghua','musk')")),0)
+
+    def test_musk_miscarries_hides_culprit_from_eyes_but_case_opens(self):
+        game.run('UPDATE consorts SET pregnant_since=9 WHERE id=?',(self.tgt,))
+        with patch.object(game,'eyes_active',return_value=True):
+            self.apply('musk')
+        c=game.get_consort(self.tgt)
+        self.assertEqual(c['pregnant_since'],0)
+        self.assertEqual(c['health'],70-game.PREGNANCY_DRUGS['musk']['health'])
+        self.assertEqual(c['culprit_id'] or 0,0)                      # 眼线没通报凶手
+        self.assertEqual(len(game.q('SELECT * FROM cases')),1)        # 但慎刑司能查案
+
+    def test_failed_miscarriage_raises_preterm_chance(self):
+        game.run('UPDATE consorts SET pregnant_since=9,pregnancy_started_ts=1 WHERE id=?',(self.tgt,))
+        base=game.preterm_chance(game.get_consort(self.tgt))
+        it=self.plan('musk')
+        with patch.object(game.random,'random',side_effect=[0.0,0.99,0.99,0.99,0.99,0.99,0.99,0.99]):
+            game.resolve_intrigue(it)
+        c=game.get_consort(self.tgt)
+        self.assertEqual(c['pregnant_since'],9)                      # 90% 小产没掷中，胎儿保住
+        self.assertAlmostEqual(game.preterm_chance(c)-base,game.PREGNANCY_DRUGS['musk']['preterm'],places=3)
+
+    def test_honghua_blocked_by_antai(self):
+        game.run('UPDATE consorts SET pregnant_since=9 WHERE id=?',(self.tgt,))
+        game.inv_add(self.tgt,'antai')
+        self.apply('honghua')
+        self.assertEqual(game.get_consort(self.tgt)['pregnant_since'],9)
+        self.assertEqual(game.inv_qty(self.tgt,'antai'),0)
 
     def test_fake_pregnancy_opens_case_at_due_and_no_heir(self):
         self.apply('chunxin')

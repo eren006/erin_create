@@ -13,8 +13,8 @@
     <td>{{ (dn(fo) if fo.id != h.mother_id else '（自己养）') if fo else '皇嗣养育所（NPC）' }}</td>
     <td>{% set pe = heir_persona(h) %}{% if pe %}<span title="{{ pe.effect }}">{{ pe.name }}·{{ pe.tag }}</span><br><span class="muted" style="font-size:12px">{{ pe.text }}</span>{% endif %}</td>
     <td class="muted" style="font-size:13px;white-space:nowrap">学 {{ gift_word(h.gift_study) }}<br>射 {{ gift_word(h.gift_riding) }}<br>品 {{ gift_word(h.gift_virtue) }}</td>
-    <td>{{ heir_age_years(h) }} 岁{% if h.status=='crown' %}<br><span class="muted">太子</span>{% elif h.status=='deposed' %}<br><span class="muted">废黜圈禁</span>{% endif %}{% if h.title %}<br><span class="muted">{{ h.title }}{% if h.marriage=='capital' %}·留京{% elif h.marriage=='mongol' %}·抚蒙古{% endif %}</span>{% elif h.marriage=='choice' %}<br><span class="muted">待指婚</span>{% endif %}</td>
-    <td>{{ h.study }}/{{ h.riding }}/{{ h.virtue }}/{{ h.health }}/{{ h.appearance }}{% if h.temperament %}<br><span class="muted" title="{{ temper_desc(h.temperament) }}">气质：{{ h.temperament }}</span>{% endif %}</td>
+    <td>{{ heir_age_years(h) }} 岁{% if h.premature %}<br><span class="muted">早产</span>{% endif %}{% if h.status=='crown' %}<br><span class="muted">太子</span>{% elif h.status=='deposed' %}<br><span class="muted">废黜圈禁</span>{% endif %}{% if h.title %}<br><span class="muted">{{ h.title }}{% if h.marriage=='capital' %}·留京{% elif h.marriage=='mongol' %}·抚蒙古{% endif %}</span>{% elif h.marriage=='choice' %}<br><span class="muted">待指婚</span>{% endif %}</td>
+    <td>{{ h.study }}/{{ h.riding }}/{{ h.virtue }}/{{ h.health }}（上限{{ h.health_max }}）/{{ h.appearance }}{% if h.temperament %}<br><span class="muted" title="{{ temper_desc(h.temperament) }}">气质：{{ h.temperament }}</span>{% endif %}</td>
     <td>{{ h.caretaker_affinity }}{% if fo and fo.id != h.mother_id %}<span class="muted">（生母 {{ h.mother_affinity }}）</span>{% endif %}</td>
     <td>{% if h.mother_id == c.id and not h.name %}{% set gen = h.gen_word or cur_gen[h.gender] %}
       <div class="muted" style="font-size:13px;margin-bottom:4px">字辈「{{ gen }}」，皇上点了三个字，选一个：</div>
@@ -87,4 +87,5 @@
   {% endfor %}
 </table></div>
 {% else %}<p>宫里还没有新的皇嗣降生。</p>{% endif %}
+{% if losses %}<h3>早产夭折记录</h3>{% for loss in losses %}<p class="muted">第{{ loss.day }}天 · {{ loss.gender }} · {{ loss.reason }}</p>{% endfor %}{% endif %}
 {% endblock %}

@@ -62,9 +62,10 @@ class IntrigueRealtimeTests(unittest.TestCase):
         self.assertIn('截宠要等', page)
 
     def test_done_intrigues_still_count_against_the_daily_target_cap(self):
-        c3, c4 = self.player('丙'), self.player('丁')
+        extra = [self.player(f'补{i}') for i in range(game.INTRIGUE_TARGET_DAILY_MAX - 1)]
+        c4 = self.player('丁')
         game.run("UPDATE consorts SET entered_day=1")
-        for who in (self.atk, c3):
+        for who in (self.atk, *extra):
             self.login(who)
             game.run("DELETE FROM daily_counters")
             with patch.object(game.random, 'random', return_value=0.99):

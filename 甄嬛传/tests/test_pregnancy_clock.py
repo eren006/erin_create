@@ -15,7 +15,7 @@ class PregnancyClockTests(unittest.TestCase):
 
     def test_exact_24_hours_and_idempotent(self):
         self.conceive()
-        with patch.object(game.time,'time',return_value=186399):game.resolve_births(10,False)
+        with patch.object(game.time,'time',return_value=186399),patch.object(game,'preterm_chance',return_value=0):game.resolve_births(10,False)
         self.assertEqual(game.q('SELECT COUNT(*) n FROM heirs',one=True)['n'],0)
         before=game.get_consort(self.atk)
         with patch.object(game.time,'time',return_value=186400):
@@ -32,12 +32,12 @@ class PregnancyClockTests(unittest.TestCase):
     def test_birth_costs_health_and_scales_with_prior_births(self):
         game.run("UPDATE consorts SET health=90 WHERE id=?",(self.atk,))
         self.conceive()
-        with patch.object(game.time,'time',return_value=186400):game.resolve_births(10,False)
+        with patch.object(game.time,'time',return_value=186400),patch.object(game.random,'random',return_value=.99):game.resolve_births(10,False)
         self.assertEqual(game.get_consort(self.atk)['health'],90-game.BIRTH_HEALTH_LOSS)
         self.assertGreater(game.get_consort(self.atk)['postpartum_until'],10)
         game.run("UPDATE consorts SET health=90 WHERE id=?",(self.atk,))
         self.conceive()
-        with patch.object(game.time,'time',return_value=186400):game.resolve_births(10,False)
+        with patch.object(game.time,'time',return_value=186400),patch.object(game.random,'random',return_value=.99):game.resolve_births(10,False)
         self.assertEqual(game.get_consort(self.atk)['health'],90-game.BIRTH_HEALTH_LOSS-game.BIRTH_HEALTH_PER_PRIOR)
 
     def test_birth_health_never_below_floor(self):

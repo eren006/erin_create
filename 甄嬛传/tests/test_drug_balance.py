@@ -20,10 +20,10 @@ class DrugBalanceTests(unittest.TestCase):
             with patch.object(game.time,'time',return_value=100000):
                 self.assertEqual(self.apply(drug)[1],'success')
             self.assertEqual(game.get_consort(self.tgt)[stat],before-5)
-            with patch.object(game.time,'time',return_value=186399):
+            with patch.object(game.time,'time',return_value=143199):
                 self.assertIsNotNone(game.affliction(self.tgt,drug))
                 game.resolve_realtime_drugs(10)
-            with patch.object(game.time,'time',return_value=186400):
+            with patch.object(game.time,'time',return_value=143200):
                 game.resolve_realtime_drugs(10);game.resolve_realtime_drugs(10)
                 self.assertIsNone(game.affliction(self.tgt,drug))
             self.assertEqual(game.get_consort(self.tgt)[stat],before)
@@ -93,3 +93,55 @@ class DrugBalanceTests(unittest.TestCase):
             game.resolve_realtime_drugs(10)
         self.assertEqual(game.get_consort(self.tgt)['appearance'],40)
         self.assertEqual(game.q('SELECT status FROM afflictions WHERE id=?',(aid,),one=True)[0],'done')
+
+    def test_lethal_success_does_not_start_account_cooldown(self):
+        uid = game.get_consort(self.atk)['user_id']
+        self.assertEqual(self.apply('lihun')[1], 'success')
+        account = game.q('SELECT * FROM users WHERE id=?', (uid,), one=True)
+        self.assertEqual((account['drug_ready_day'], account['lethal_ready_day']), (0, 0))
+        self.assertEqual(game.DRUGS['lihun']['price'], 444)
+
+    def test_existing_temporary_drugs_are_shortened_once(self):
+        aid = game.run("INSERT INTO afflictions(consort_id,drug,start_day,expires_ts) VALUES(?,'yanzhi',10,200000)", (self.tgt,)).lastrowid
+        game.run('UPDATE game_state SET drug_timing_version=0')
+        game.migrate_drug_timing(game.get_db())
+        self.assertEqual(game.q('SELECT expires_ts FROM afflictions WHERE id=?', (aid,), one=True)[0], 156800)
+        game.migrate_drug_timing(game.get_db())
+        self.assertEqual(game.q('SELECT expires_ts FROM afflictions WHERE id=?', (aid,), one=True)[0], 156800)
+
+    def test_old_lethal_cooldown_is_removed_but_other_drug_cooldown_remains(self):
+        uid = game.get_consort(self.atk)['user_id']
+        self.apply('lihun')
+        game.run('UPDATE users SET drug_ready_day=12,lethal_ready_day=12 WHERE id=?', (uid,))
+        game.run('UPDATE game_state SET drug_rules_version=1')
+        game.migrate_drug_cooldowns(game.get_db())
+        account = game.q('SELECT * FROM users WHERE id=?', (uid,), one=True)
+        self.assertEqual((account['drug_ready_day'], account['lethal_ready_day']), (0, 0))
+        game.run("INSERT INTO intrigues(day,attacker_id,target_id,method,drug,item_used,status,result,created_ts) VALUES(10,?,?,'drug','yanzhi','yanzhi','done','success',0)", (self.atk, self.tgt))
+        game.run('UPDATE game_state SET drug_rules_version=1')
+        game.migrate_drug_cooldowns(game.get_db())
+        self.assertEqual(game.q('SELECT drug_ready_day FROM users WHERE id=?', (uid,), one=True)[0], 11)
+
+    def test_lihun_death_risk_by_care_treatment_and_blessing(self):
+        self.assertEqual(self.apply('lihun')[1], 'success')
+        for tier in ('hot', 'normal', 'low'):
+            for treated in (False, True):
+                with patch.object(game, 'favor_care_tier', return_value=tier):
+                    game.run('UPDATE consorts SET blessing=0 WHERE id=?', (self.tgt,))
+                    c = game.get_consort(self.tgt)
+                    self.assertAlmostEqual(game.poison_survival_chance(c, treated=treated), game.LIHUN_SURVIVE[tier][int(treated)])
+                    game.run('UPDATE consorts SET blessing=100 WHERE id=?', (self.tgt,))
+                    self.assertAlmostEqual(game.poison_survival_chance(game.get_consort(self.tgt), treated=treated), game.LIHUN_SURVIVE[tier][int(treated)] + .15)
+
+    def test_lihun_treated_normal_can_die_on_roll_point_four(self):
+        self.assertEqual(self.apply('lihun')[1], 'success')
+        game.run('UPDATE consorts SET poison_treatment=1,blessing=0 WHERE id=?', (self.tgt,))
+        with patch.object(game, 'favor_care_tier', return_value='normal'), patch.object(game.random, 'random', return_value=.4):
+            game.resolve_poison_crises(game.cur_day()+1)
+        self.assertEqual(game.get_consort(self.tgt)['status'], 'dead')
+
+    def test_other_poison_retains_old_survival_chance(self):
+        game.poison_player(self.tgt, game.cur_day())
+        c = game.get_consort(self.tgt)
+        self.assertEqual(game.poison_survival_chance(c, treated=True), .9)
+        self.assertEqual(game.poison_survival_chance(c, treated=False), .35)
