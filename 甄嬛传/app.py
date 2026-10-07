@@ -8308,7 +8308,7 @@ def end_reign(day):
     run("DELETE FROM consorts WHERE npc_key IS NOT NULL")
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims', 'custody_battles',
-              'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
+              'tribute_items', 'tribute_turns', 'tribute_events', 'princess_suitors', 'princess_courtships', 'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
               'garden_plots', 'garden_stock', 'banquet_entries', 'banquet_invites', 'banquet_gear', 'achievements'):
         run(f"DELETE FROM {t}")
     run('UPDATE users SET lethal_ready_day=0, nameless_ready_day=0, forge_used=0')
@@ -9248,6 +9248,7 @@ def maybe_settle():
     now=datetime.now(TZ)
     st=state()
     if not st['event_started'] or st['maintenance']:return
+    tribute_tick()
     resolve_births(st['day'],include_legacy=False)
     key=latest_bedding_slot(now)
     pace_key=latest_pace_slot(now)
@@ -9538,7 +9539,7 @@ def admin_reset():
         return redirect(url_for('admin'))
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars', 'reports', 'maids',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims', 'custody_battles',
-              'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
+              'tribute_items', 'tribute_turns', 'tribute_events', 'princess_suitors', 'princess_courtships', 'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
               'garden_plots', 'garden_stock', 'banquet_entries', 'banquet_invites', 'banquet_gear', 'achievements', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
@@ -11364,7 +11365,8 @@ def room_view(cid, mine):
     held = q("SELECT * FROM hobby_items WHERE holder_id=? ORDER BY id DESC", (cid,)) if mine else []
     displayed_ids = {r['item_id'] for r in q('SELECT item_id FROM displays WHERE consort_id=?', (cid,))} if mine else set()
     return render_template('room.html', t=t, mine=mine, slots=slots, DISPLAY_SLOTS=DISPLAY_SLOTS,
-                           held=held, displayed_ids=displayed_ids, hobby_item_desc=hobby_item_desc, HOBBIES=HOBBIES)
+                           held=held, displayed_ids=displayed_ids, hobby_item_desc=hobby_item_desc, HOBBIES=HOBBIES,
+                           tribute_owned=q('SELECT * FROM tribute_items WHERE holder_id=? ORDER BY grade DESC,id', (cid,)), TRIBUTE_GRADES=TRIBUTE_GRADES)
 
 @app.route('/room')
 @login_required
@@ -11421,7 +11423,7 @@ DISHES = {
     'babao': dict(name='八宝菜', needs={'qingcai': 1, 'luobo': 1, 'baicai': 1, 'nangua': 1}, eat=dict(energy=3), gift=12, tribute=(12, 18), sell=60,
                   desc='四样菜合炒，一盘顶三顿。'),
     'lingzhitang': dict(name='灵芝炖汤', needs={'lingzhi': 1, 'baicai': 1}, eat=dict(health=5, buff=10), gift=15, tribute=(15, 22), sell=90,
-                        desc='大补之物：体质 +15，宴会得分 +10（要先报节目）。'),
+                        desc='大补之物：体质 +5，宴会得分 +10（要先报节目）。'),
 }
 COOK_DAILY_MAX = 5
 EAT_DAILY_MAX = 1      # 每天所有吃食加起来只能吃一回（原 3 回）
@@ -12552,6 +12554,176 @@ def princess_courtship(hid):
         text = '已回信处理这次家事。'
     flash(text, 'good')
     return redirect(url_for('heirs'))
+
+
+# ── 临时活动 · 六宫选贡品 ──
+TRIBUTE_GRADES = {1: '雅品', 2: '精品', 3: '珍品', 4: '御品', 5: '瑰宝'}
+TRIBUTE_CATALOG = {
+    5: ['羊脂玉双耳瓶', '翡翠白菜摆件', '金丝嵌宝如意', '珐琅缠枝莲尊', '紫檀百宝嵌屏风', '白玉蟠龙香炉'],
+    4: ['青玉山水插屏', '掐丝珐琅梅瓶', '金累丝花鸟摆件', '红珊瑚树', '象牙色雕花宫扇', '水晶莲花灯', '缂丝牡丹屏', '紫檀嵌螺钿匣', '琉璃瑞兽', '银鎏金熏炉', '玛瑙荷叶洗', '青花海水龙纹瓶'],
+    3: ['粉彩百花瓶', '碧玉荷花笔架', '银丝八角香盒', '景泰蓝花觚', '黄杨木寿星像', '绣金凤穿牡丹屏', '锦地山水挂轴', '青玉莲瓣碗', '玛瑙双鱼坠', '琥珀香珠盒', '雕漆梅花盘', '檀木嵌玉镇纸', '白瓷观音像', '琉璃花鸟瓶', '银镶玉镜', '青花缠枝莲罐', '锦绣海棠桌屏', '黑漆描金香几'],
+    2: ['青花折枝梅瓶', '粉彩桃花碟', '白瓷花口瓶', '竹雕笔筒', '檀木香炉', '红漆描金匣', '绣花团扇', '锦缎靠枕', '琉璃小灯', '青瓷莲花碗', '木雕喜鹊', '山水折扇', '花鸟小屏', '银丝香囊', '缠枝纹铜镜', '红木镇纸', '梅兰竹菊挂轴', '雕花妆匣', '碧色瓷盏', '锦缎桌围', '竹节花插', '素银花簪', '彩绘小瓷罐', '漆木棋盘'],
+    1: ['素瓷花瓶', '竹编花篮', '绢制宫花', '青布香囊', '木雕小鹿', '素面团扇', '棉绣软枕', '陶制香炉', '竹制笔架', '小幅梅花图', '葫芦花器', '素漆收纳匣', '铜制烛台', '白瓷茶盏', '绢绣窗帘', '柳编果盘'],
+}
+
+
+def active_tribute():
+    return q("SELECT * FROM tribute_events WHERE status='active'", one=True)
+
+
+def tribute_current(event):
+    return q("SELECT * FROM tribute_turns WHERE event_id=? AND status='waiting' ORDER BY position LIMIT 1", (event['id'],), one=True)
+
+
+def tribute_advance(event):
+    """跳过失去参与资格的人；新轮次从当前时刻起计时。"""
+    while True:
+        turn = tribute_current(event)
+        remaining = q('SELECT COUNT(*) n FROM tribute_items WHERE event_id=? AND holder_id=0', (event['id'],), one=True)['n']
+        if not turn or not remaining:
+            run("UPDATE tribute_events SET status='finished' WHERE id=?", (event['id'],))
+            gazette('本次六宫选贡品已经结束，所得贡品可摆进寝宫。', 'news')
+            return
+        person = get_consort(turn['consort_id'])
+        if person and person['status'] not in ('dead', 'cold', 'xiunv'):
+            run('UPDATE tribute_events SET turn_started_ts=? WHERE id=?', (now_ts(), event['id']))
+            notify(person['id'], f"轮到你选贡品了，最多选{min(turn['quota'], remaining)}件。去选贡品页挑好后一并确认，或直接让给下一位。", 'info')
+            return
+        run("UPDATE tribute_turns SET status='skipped' WHERE event_id=? AND consort_id=?", (event['id'], turn['consort_id']))
+        if person: feed(person['id'], '因已无法参与，本次选贡品顺位交给下一位。')
+
+
+@atomic
+def tribute_tick():
+    event = active_tribute()
+    if not event or state()['maintenance']: return
+    turn = tribute_current(event)
+    if not turn: tribute_advance(event); return
+    person = get_consort(turn['consort_id'])
+    invalid = not person or person['status'] in ('dead', 'cold', 'xiunv')
+    expired = event['timeout_hours'] > 0 and now_ts() >= event['turn_started_ts'] + event['timeout_hours'] * 3600
+    if invalid or expired:
+        run("UPDATE tribute_turns SET status='skipped' WHERE event_id=? AND consort_id=?", (event['id'], turn['consort_id']))
+        if person:
+            feed(person['id'], '本轮选贡品' + ('已超时未选' if expired else '已无法参与') + '，顺位交给下一位。')
+            notify(person['id'], '本轮选贡品已跳过，轮到下一位了。', 'info')
+        tribute_advance(event)
+
+
+def start_tribute(low_quota=1, timeout_hours=8):
+    if active_tribute(): raise Reject('已有一轮选贡品正在进行。')
+    players = q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND npc_key IS NULL AND status NOT IN ('xiunv','dead','cold') ORDER BY rank DESC,favor DESC,id")
+    if not players: raise Reject('目前没有可参与的玩家。')
+    eid = run('INSERT INTO tribute_events(started_ts,turn_started_ts,timeout_hours,low_quota) VALUES(?,?,?,?)',
+        (now_ts(), now_ts(), timeout_hours, low_quota)).lastrowid
+    for pos, c in enumerate(players):
+        run('INSERT INTO tribute_turns(event_id,consort_id,position,quota) VALUES(?,?,?,?)', (eid, c['id'], pos, 3 if c['rank'] >= 5 else 2 if c['rank'] == 4 else 1))
+    catalog = [(grade, name) for grade, names in TRIBUTE_CATALOG.items() for name in names]
+    random.shuffle(catalog)  # 顺序固定落库，但不能从展示顺序猜出等级
+    for grade, name in catalog:
+        run('INSERT INTO tribute_items(event_id,name,grade,description) VALUES(?,?,?,?)',
+            (eid, name, grade, '内务府此次进呈，可置于寝宫赏玩；确认所选后揭晓品级。'))
+    gazette('内务府进呈76件贡品，六宫按位分从高到低依次挑选；嫔及以上最多三件、贵人两件、贵人以下一件，确认后揭晓品级。去「选贡品」查看顺位。', 'news')
+    for c in players: notify(c['id'], '临时活动「选贡品」已开启，按开启时位分依次挑选，请查看你的顺位。', 'info')
+    tribute_advance(q('SELECT * FROM tribute_events WHERE id=?', (eid,), one=True))
+    return eid
+
+
+@app.route('/admin/tribute', methods=['POST'])
+@admin_required
+@atomic
+def admin_tribute():
+    action = request.form.get('action')
+    try:
+        if action == 'start':
+            low = int(request.form.get('low_quota', 1)); timeout = int(request.form.get('timeout_hours', 8))
+            if low != 1 or timeout not in (0, 8, 12, 24): raise Reject('请选择有效的活动规则。')
+            start_tribute(low, timeout); flash('选贡品已开启。', 'good')
+        elif action in ('skip', 'close'):
+            event = active_tribute()
+            if not event: raise Reject('目前没有进行中的选贡品。')
+            if action == 'close':
+                run("UPDATE tribute_events SET status='closed' WHERE id=?", (event['id'],))
+                gazette('内务府宣布本次选贡品活动收官，已领贡品保留。', 'news')
+            else:
+                turn = tribute_current(event)
+                if turn:
+                    run("UPDATE tribute_turns SET status='skipped' WHERE event_id=? AND consort_id=?", (event['id'], turn['consort_id']))
+                    if get_consort(turn['consort_id']): feed(turn['consort_id'], '由内务府将选贡品顺位交给下一位。')
+                tribute_advance(event)
+            flash('活动进度已更新。', 'good')
+        else: raise Reject('请选择活动操作。')
+    except (Reject, ValueError) as exc: flash(str(exc), 'bad')
+    return redirect(url_for('admin'))
+
+
+@app.route('/tribute')
+@login_required
+def tribute():
+    tribute_tick()
+    event = active_tribute()
+    turn = tribute_current(event) if event else None
+    queue = q('SELECT t.*,c.surname,c.given,c.rank,c.title,c.status AS consort_status FROM tribute_turns t JOIN consorts c ON c.id=t.consort_id WHERE t.event_id=? ORDER BY position', (event['id'],)) if event else []
+    items = q('SELECT * FROM tribute_items WHERE event_id=? ORDER BY id', (event['id'],)) if event else []
+    mine = q('SELECT * FROM tribute_items WHERE holder_id=? ORDER BY grade DESC,id', (g.me['id'],))
+    return render_template('tribute.html', event=event, turn=turn, queue=queue, items=items, mine=mine, grades=TRIBUTE_GRADES,
+        get_consort=get_consort, DISPLAY_SLOTS=DISPLAY_SLOTS, is_turn=bool(turn and turn['consort_id'] == g.me['id']))
+
+
+@app.route('/tribute/choose', methods=['POST'])
+@login_required
+@atomic
+def tribute_choose():
+    tribute_tick()
+    event = active_tribute()
+    turn = tribute_current(event) if event else None
+    try:
+        c = get_consort(g.me['id'])
+        if not turn or turn['consort_id'] != c['id'] or c['status'] in ('dead', 'cold', 'xiunv'): raise Reject('现在还没有轮到你选贡品。')
+        if int(request.form.get('event_id', 0)) != event['id']: raise Reject('活动轮次已经变化，请刷新页面。')
+        ids = [int(v) for v in request.form.getlist('item_id')]
+        if len(ids) != len(set(ids)) or len(ids) > turn['quota']: raise Reject(f"本轮最多选{turn['quota']}件，不能重复选择。")
+        if request.form.get('pass') == '1': ids = []
+        elif not ids: raise Reject('请至少选一件贡品，或点击主动让过。')
+        picked = []
+        for iid in ids:
+            item = q('SELECT * FROM tribute_items WHERE id=? AND event_id=? AND holder_id=0', (iid, event['id']), one=True)
+            if not item: raise Reject('有贡品已被领走或不属于本轮，请刷新后再选。')
+            picked.append(item)
+        for item in picked:
+            run('UPDATE tribute_items SET holder_id=?,acquired_day=? WHERE id=?', (c['id'], cur_day(), item['id']))
+        run("UPDATE tribute_turns SET status='done' WHERE event_id=? AND consort_id=?", (event['id'], c['id']))
+        names = '、'.join(f"{it['name']}（{TRIBUTE_GRADES[it['grade']]}）" for it in picked)
+        feed(c['id'], f'选贡品：领了{names}，已将顺位交给下一位。' if picked else '选贡品：主动让过，将顺位交给下一位。')
+        tribute_advance(event)
+        flash(f'贡品品级揭晓：{names}。已收入宫中，可到寝宫陈设摆放。' if picked else '已让给下一位。', 'good')
+    except (Reject, ValueError) as exc: flash(str(exc), 'bad')
+    return redirect(url_for('tribute'))
+
+
+@app.route('/tribute/display', methods=['POST'])
+@login_required
+@atomic
+def tribute_display():
+    try:
+        iid = int(request.form.get('item_id', 0)); slot = request.form.get('slot', '')
+        item = q('SELECT * FROM tribute_items WHERE id=? AND holder_id=?', (iid, g.me['id']), one=True)
+        if not item or slot not in DISPLAY_SLOTS: raise Reject('只能摆放自己已领取的贡品。')
+        run("UPDATE tribute_items SET display_slot='' WHERE holder_id=? AND display_slot=?", (g.me['id'], slot))
+        run('UPDATE tribute_items SET display_slot=? WHERE id=?', (slot, iid))
+        flash(f"{item['name']}已摆在贡品陈设的{DISPLAY_SLOTS[slot]}。", 'good')
+    except (Reject, ValueError) as exc: flash(str(exc), 'bad')
+    return redirect(url_for('room'))
+
+
+@app.route('/tribute/undisplay', methods=['POST'])
+@login_required
+@atomic
+def tribute_undisplay():
+    try: iid = int(request.form.get('item_id', 0))
+    except ValueError: iid = 0
+    run("UPDATE tribute_items SET display_slot='' WHERE id=? AND holder_id=?", (iid, g.me['id']))
+    return redirect(url_for('room'))
 
 
 if __name__ == '__main__':
