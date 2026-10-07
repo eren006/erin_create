@@ -682,10 +682,19 @@ def conspire_affinity(a_id, b_id):
     rel = relation(a_id, b_id)
     return rel['affinity'] if rel else 0
 
+BULLY_MIN_RANK = 6       # 妃位及以上，不能再对常在及以下的人使计
+BULLY_MAX_TARGET_RANK = 3
+
+def bully_block(a, t):
+    if a['rank'] >= BULLY_MIN_RANK and t['rank'] <= BULLY_MAX_TARGET_RANK:
+        return f"你已是{RANK_NAMES[a['rank']]}位，不屑再算计{RANK_NAMES[BULLY_MAX_TARGET_RANK]}及以下的小主，传出去有失身份。"
+    return None
+
 def conspire_partner_block(c, p, cfg, tgt, day):
     """合伙人这一头够不够格；发起时和确认时都要查"""
     if not p or not p['user_id'] or p['id'] == c['id'] or p['id'] == tgt['id']: return '这个人不能当合谋的伙伴。'
     if p['status'] != 'normal' or is_sick(p): return f"{display_name(p)}眼下顾不上这件事。"
+    if bully_block(p, tgt): return f"{display_name(p)}位分已高，不会对{RANK_NAMES[BULLY_MAX_TARGET_RANK]}及以下的小主下手。"
     if p['rank'] < cfg['min_rank']: return f"{display_name(p)}位分不够，使不动「{cfg['name']}」。"
     if conspire_affinity(c['id'], p['id']) <= CONSPIRE_AFFINITY_MIN: return f"你和{display_name(p)}的交情还不够，好感要超过 {CONSPIRE_AFFINITY_MIN} 才能合谋。"
     if intrigue_capped(p['id']): return f"{display_name(p)}今天已经另有谋划了。"
@@ -2087,7 +2096,7 @@ def auto_scheme_on_promotion(target_id):
     for aid in AUTO_SCHEME_CONSORTS:
         a, t = get_consort(aid), get_consort(target_id)
         if not a or not t or a['id'] == t['id'] or a['status'] != 'normal' or is_sick(a): continue
-        if t['status'] in ('xiunv', 'cold', 'dead') or (t['user_id'] and t['entered_day'] >= day): continue
+        if t['status'] in ('xiunv', 'cold', 'dead') or (t['user_id'] and t['entered_day'] >= day) or bully_block(a, t): continue
         if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')", (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX: continue
         method = next((m for m in ('frame', 'rumor') if a['rank'] >= INTRIGUES[m]['min_rank'] and a['silver'] >= INTRIGUES[m]['silver']), None)
         if not method: continue
@@ -5023,6 +5032,7 @@ def intrigue_submit():
     elif is_sick(c): err = '你病着，没力气算计别人。'
     elif not t or t['id'] == c['id'] or t['status'] in ('xiunv', 'cold', 'dead'): err = '这个人不能当目标。'
     elif t['npc_key'] and not cfg['npc_ok']: err = f"「{cfg['name']}」不能用在她身上。"
+    elif bully_block(c, t): err = bully_block(c, t)
     elif c['rank'] < cfg['min_rank']: err = f"位分到{RANK_NAMES[cfg['min_rank']]}才使得动「{cfg['name']}」。"
     elif intrigue_capped(c['id']): err = f'一天只能谋划 {INTRIGUE_DAILY_MAX} 件事，多了容易露马脚。'
     elif c['energy'] < cfg['energy']: err = f"精力不够，需要 {cfg['energy']} 点。"
@@ -5346,6 +5356,7 @@ def bot_intrigue(c):
         t = random.choices(targets, weights=bot_grudge_weights(c, targets))[0]
         method = random.choices([m for m, _ in methods], weights=[w for _, w in methods])[0]
         if method == 'steal' and (t['pregnant_since'] or is_sick(t)): continue
+        if bully_block(c, t): continue
         cfg = INTRIGUES[method]
         run("UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?", (cfg['energy'], cfg['silver'], c['id']))
         iid = run("""INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts)

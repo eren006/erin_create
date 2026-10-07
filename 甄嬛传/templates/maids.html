@@ -40,7 +40,8 @@
 </div>
 {% endfor %}
 <form method="post" action="{{ url_for('maid_reward') }}" style="margin-top:10px">
-  <button class="plain" {{ 'disabled' if rewarded or c.silver < costs.reward or c.status == 'cold' }}>赏宫人（{{ costs.reward }} 两，全宫忠心 +5）</button>
+  <button class="plain" {{ 'disabled' if rewarded or not mine or c.silver < costs.reward or c.status == 'cold' }}>赏宫人（{{ costs.reward }} 两，全宫忠心 +5）</button>
+<span class="muted">每位 {{ costs.reward_each }} 两，当前 {{ mine|length }} 位</span>
   {% if rewarded %}<span class="muted">今天已经赏过了</span>{% endif %}
 </form>
 {% else %}<p>你宫里还没有宫人。</p>{% endif %}
