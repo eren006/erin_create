@@ -102,15 +102,18 @@ def atomic(fn):
 
 # ── 位分 ───────────────────────────────────────────────────────────────────────
 
-RANK_NAMES = ['秀女', '官女子', '答应', '常在', '贵人', '嫔', '妃', '贵妃', '皇贵妃', '皇后']
-PROMOTE_FAVOR  = {2: 30, 3: 65, 4: 110, 5: 180, 6: 280, 7: 420, 8: 600, 9: 850}   # 晋到该位分所需圣宠
-PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 60, 8: 70, 9: 75}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
-RANK_SLOTS     = {4: 8, 5: 6, 6: 4, 7: 2, 8: 1, 9: 1}                     # 贵人以上有名额，含 NPC
-STIPEND = {1: 15, 2: 30, 3: 45, 4: 75, 5: 200, 6: 300, 7: 450, 8: 650, 9: 1000}  # 每日月例银（2026-10-07 起：嫔以下 ×3，嫔以上 ×5；原来 5/10/15/25/40/60/90/130/200）
+RANK_NAMES = ['秀女', '官女子', '答应', '常在', '贵人', '嫔', '妃', '四妃', '贵妃', '皇贵妃', '皇后']   # 2026-10-07 起妃和贵妃之间加「四妃」档（淑德贤惠，rank 7），贵妃/皇贵妃/皇后顺延为 8/9/10
+RANK_FOUR = 7
+FOUR_CONSORT_TITLES = ['淑', '德', '贤', '惠']      # 四妃的名号：叫「封号+名号+妃」，如容德妃；这四个字不能当普通封号
+PROMOTE_FAVOR  = {2: 30, 3: 65, 4: 110, 5: 180, 6: 280, 7: 350, 8: 420, 9: 600, 10: 850}   # 晋到该位分所需圣宠
+PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 55, 8: 60, 9: 70, 10: 75}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
+RANK_SLOTS     = {4: 8, 5: 6, 6: 4, 7: 4, 8: 2, 9: 1, 10: 1}                     # 贵人以上有名额，含 NPC
+STIPEND = {1: 15, 2: 30, 3: 45, 4: 75, 5: 200, 6: 300, 7: 375, 8: 450, 9: 650, 10: 1000}  # 每日月例银（2026-10-07 起：嫔以下 ×3，嫔以上 ×5；原来 5/10/15/25/40/60/90/130/200）
 MOTHER_BY_SON_MAX_RANK = 5   # 母凭子贵最多晋到嫔位（rank 5），再往上要靠自己的圣宠、德行和名额
-PLAYER_MAX_RANK = 9   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[9]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
+PLAYER_MAX_RANK = 10   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[10]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
 
-PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:45,7:70,8:110,9:150}
+PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:45,7:55,8:70,9:110,10:150}
+PROMOTE_INFLUENCE_REWARD = 3     # 第一次晋到嫔位及以上的每一级，额外奖励势力（2026-10-07 起）
 INFLUENCE_GAINS = dict(rumor=5,steal=1,frame=10,drug=10,expose=10,witch=18,punish=10)
 FIZZLE_INFLUENCE_FRACTION = 0.25    # 计谋没成但也没败露：照成功的四分之一给势力（至少 1 点）；败露、落空不给
 RANDOM_STAT_RANGES = dict(appearance=(30,50),talent=(25,45),scheme=(25,45),virtue=(35,55),health=(60,80))
@@ -232,7 +235,7 @@ NPC_BED_MULT = 0.5          # NPC 翻牌权重打五折，免得宫里原有的�
 AUDIENCE_PER_NIGHT = 2      # 每晚除侍寝外再单独召见几位玩家
 LONG_UNSEEN_DAYS = 3        # 这么多天没见过皇上，算"久未见驾"（2026-09-28 从 6 压到 3）
 
-TITLE_POOL = list('莞惠安祺瑾婉容贞淳柔懿宁怡颖璟瑶玥韵馨娴淑嘉恬澜宸昭徽祥和敏')
+TITLE_POOL = list('莞安祺瑾婉容贞淳柔懿宁怡颖璟瑶玥韵馨娴嘉恬澜宸昭徽祥和敏')      # 淑德贤惠留给四妃，不进普通封号池
 
 # 承乾宫暂不开放；十三处宫院各四间，初始七间正殿留待晋封。
 PALACES = {
@@ -273,12 +276,13 @@ def favor_word(f):
 def display_name(c):
     if c is None: return '（无）'
     if c['status'] == 'dead':
-        return f"故·{c['title'] or c['surname']}{RANK_NAMES[c['rank']]}"
+        return f"故·{c['title'] or c['surname']}{(c['four_word'] + '妃') if c['rank'] == RANK_FOUR else RANK_NAMES[c['rank']]}"
     if c['status'] == 'cold':
         return f"{c['surname']}氏"
     r = c['rank']
     if r == 0: return f"秀女{c['surname']}{c['given']}"
-    if r == 9: return '皇后'
+    if r == PLAYER_MAX_RANK: return '皇后'
+    if r == RANK_FOUR: return f"{c['title'] or c['surname']}{c['four_word']}妃"      # 四妃叫「封号+淑/德/贤/惠+妃」，如容德妃
     return f"{c['title'] or c['surname']}{RANK_NAMES[r]}"
 
 def full_name(c):
@@ -1235,7 +1239,7 @@ EFFECT_NAMES = dict(favor='圣宠', trust='信任', virtue='德行', health='体
 # ── NPC ────────────────────────────────────────────────────────────────────────
 
 NPCS = [
-    dict(npc_key='huanghou', hall='main', surname='西林觉罗', given='蕴仪', title='', rank=9, palace='景仁宫',
+    dict(npc_key='huanghou', hall='main', surname='西林觉罗', given='蕴仪', title='', rank=10, palace='景仁宫',
          appearance=62, talent=70, scheme=92, virtue=80, health=75, favor=250, aggression=0.35,
          intro='中宫皇后，待人宽和，六宫都说她贤德。'),
     dict(npc_key='huafei', hall='main', surname='佟佳', given='灼华', title='华', rank=6, palace='翊坤宫',
@@ -1441,7 +1445,7 @@ def init_db():
     migrations = {
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
         'banquet_entries': {'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'tier': 'INTEGER NOT NULL DEFAULT 1', 'buff': 'INTEGER NOT NULL DEFAULT 0', 'note': "TEXT NOT NULL DEFAULT ''"},
-        'consorts': {'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
+        'consorts': {'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
                      'age_months': 'INTEGER NOT NULL DEFAULT 240',
                      'poisoned_day': 'INTEGER NOT NULL DEFAULT 0',
                      'poison_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -1545,7 +1549,7 @@ def init_db():
                     'sender_label': "TEXT NOT NULL DEFAULT ''"},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
-        'game_state': {'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
+        'game_state': {'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
                        'reign_no': 'INTEGER NOT NULL DEFAULT 1',
                        'reign_start_day': 'INTEGER NOT NULL DEFAULT 1',
                        'emperor_start_age': 'INTEGER NOT NULL DEFAULT 20',
@@ -1608,6 +1612,7 @@ def init_db():
     migrate_pregnancy_clocks(db)
     migrate_drug_cooldowns(db)
     migrate_drug_balance(db)
+    migrate_rank_scale(db)
     seed_npcs(db)
     seed_npc_heirs(db)
     migrate_no_clean_secret(db)
@@ -1616,6 +1621,25 @@ def init_db():
     db.close()
     with app.app_context():
         housing_sync()      # 老存档里的玩家第一次启动时分好住处；之后每次都是空操作
+
+def migrate_rank_scale(db):
+    """2026-10-07 在妃和贵妃之间加「四妃」档：旧档里贵妃(7)及以上全部顺延一位；占了淑德贤惠当封号的人换一个。只做一次"""
+    row = db.execute("SELECT rank_scale FROM game_state WHERE id=1").fetchone()
+    if row is not None and row[0] == 0:
+        for col in ('rank', 'rank_before_cold', 'peak_rank', 'prestige_top'):
+            db.execute(f"UPDATE consorts SET {col}={col}+1 WHERE {col}>=7")
+        db.execute("UPDATE game_state SET rank_scale=1 WHERE id=1")
+    used = {r[0] for r in db.execute("SELECT title FROM consorts WHERE title!='' AND status NOT IN ('cold','dead')")}
+    pool = [t for t in TITLE_POOL if t not in used]
+    random.shuffle(pool)
+    day = db.execute("SELECT day FROM game_state WHERE id=1").fetchone()
+    for cid, uid, title, rank in db.execute("SELECT id, user_id, title, rank FROM consorts WHERE title IN (%s) AND rank!=?" % ','.join('?' * len(FOUR_CONSORT_TITLES)), (*FOUR_CONSORT_TITLES, -1)).fetchall():
+        if not pool: break
+        new = pool.pop()
+        db.execute("UPDATE consorts SET title=? WHERE id=?", (new, cid))
+        if uid and day:
+            db.execute("INSERT INTO messages (consort_id, day, kind, text, is_night, created_ts) VALUES (?,?,?,?,0,?)",
+                       (cid, day[0], 'decree', f"「{title}」是四妃的名号，不能再当封号，内务府替你换了一个：「{new}」。", now_ts()))
 
 def seed_npcs(db):
     """后宫由玩家建立，不预置妃嫔。"""
@@ -1877,19 +1901,34 @@ def offer_title_choices(cid):
     run("UPDATE consorts SET title_choices=? WHERE id=?", (''.join(picks), cid))
     notify(cid, f"你晋为嫔位，可以换一个新封号了：{'、'.join(picks)}，回宫城挑一个（也可以保留「{c['title']}」）。", 'good')
 
+def assign_four_word(cid):
+    """四妃的名号：淑、德、贤、惠，一人一个，挑当前四妃里没人用的"""
+    used = {r['four_word'] for r in q("SELECT four_word FROM consorts WHERE rank=? AND status NOT IN ('cold','dead') AND id!=?", (RANK_FOUR, cid))}
+    free = [w for w in FOUR_CONSORT_TITLES if w not in used]
+    w = random.choice(free) if free else random.choice(FOUR_CONSORT_TITLES)
+    run("UPDATE consorts SET four_word=? WHERE id=?", (w, cid))
+    return w
+
 def set_rank(cid, new_rank, reason_day=None):
-    new_rank = max(1, min(9, new_rank))
+    new_rank = max(1, min(PLAYER_MAX_RANK, new_rank))
     old = get_consort(cid)['rank']
     run("UPDATE consorts SET rank=?, rank_since_day=? WHERE id=?", (new_rank, reason_day or cur_day(), cid))
     if new_rank > old:
         run("UPDATE consorts SET last_promote_day=? WHERE id=?", (cur_day(), cid))
     c = get_consort(cid)
+    if new_rank == RANK_FOUR and old != RANK_FOUR:
+        assign_four_word(cid)                                     # 晋四妃：从淑/德/贤/惠里挑还空着的一个当名号
+    elif old == RANK_FOUR and new_rank != RANK_FOUR:
+        run("UPDATE consorts SET four_word='' WHERE id=?", (cid,))      # 离开四妃，名号让出来
     if new_rank >= 5 and not c['title']:
         assign_title(cid)
-    elif new_rank >= 5 and old < 5 and c['title']:
+    elif new_rank >= 5 and old < 5 <= new_rank < RANK_FOUR and c['title']:
         offer_title_choices(cid)
     if not c['npc_key']:
         run("UPDATE consorts SET peak_rank=MAX(peak_rank, ?) WHERE id=?", (new_rank, cid))
+        if new_rank >= 5 and new_rank > c['prestige_top'] and c['user_id']:
+            run("UPDATE consorts SET influence=influence+? WHERE id=?", (PROMOTE_INFLUENCE_REWARD, cid))
+            notify(cid, f"晋为{RANK_NAMES[new_rank]}，势力 +{PROMOTE_INFLUENCE_REWARD}。", 'good')
         if new_rank > c['prestige_top']:
             gain = sum(v for r_, v in PRESTIGE_RANK_GAIN.items() if c['prestige_top'] < r_ <= new_rank)
             run("UPDATE consorts SET prestige_top=? WHERE id=?", (new_rank, cid))
@@ -1916,7 +1955,7 @@ def send_to_cold(cid):
     if c['status'] == 'dead': return
     # 废为庶人：封号一并褫夺，出冷宫后要重新挣
     if c['user_id']: add_prestige(c, PRESTIGE_COLD, f"{full_name(c)}被打入冷宫")
-    run("""UPDATE consorts SET status='cold', status_until_day=?, rank_before_cold=?,
+    run("""UPDATE consorts SET four_word='', status='cold', status_until_day=?, rank_before_cold=?,
            favor=0, pregnant_since=0, seek_bonus=0, hall='', housing_waiting='', title=? WHERE id=?""",
         (cur_day() + COLD_DAYS, c['rank'], c['title'] if c['npc_key'] else '', cid))
     housing_sync(fill_main=not settling())
@@ -1926,7 +1965,7 @@ def release_from_cold(cid, reason):
     c = get_consort(cid)
     if c['npc_key'] or c['status'] == 'dead': return   # NPC 进了冷宫就不再出来
     new_rank = min(2, max(1, c['rank_before_cold']))
-    run("""UPDATE consorts SET status='normal', status_until_day=0, rank=?, rank_since_day=?,
+    run("""UPDATE consorts SET four_word='', status='normal', status_until_day=0, rank=?, rank_since_day=?,
            favor=20, palace='', hall='', housing_waiting='' WHERE id=?""", (new_rank, cur_day(), cid))
     housing_sync(fill_main=not settling())
     c = get_consort(cid)
@@ -2099,7 +2138,7 @@ FELLOW_AFFINITY = 20
 HEIRLOOM_MAID_LOYALTY = 80
 PRESTIGE_DX_STEP, PRESTIGE_DX_MAX = 20, 10         # 每 20 点名望殿选 +1，最多 +10
 PRESTIGE_SILVER_MAX = 100                           # 起始银子 + 名望，最多 +100
-PRESTIGE_RANK_GAIN = {5: 5, 6: 10, 7: 20, 8: 20, 9: 40}    # 成员第一次晋到该位分给家里的名望
+PRESTIGE_RANK_GAIN = {5: 5, 6: 10, 7: 15, 8: 20, 9: 20, 10: 40}    # 成员第一次晋到该位分给家里的名望
 PRESTIGE_BORN_PRINCE, PRESTIGE_PRINCE_TITLE, PRESTIGE_DOWAGER, PRESTIGE_OLD_AGE = 5, 10, 50, 5
 PRESTIGE_COLD, PRESTIGE_EXPOSED = -10, -5
 
@@ -5410,7 +5449,7 @@ def admin_maid_rename():
 def ranks():
     rows = q("SELECT * FROM consorts WHERE status NOT IN ('xiunv','dead') ORDER BY rank DESC, favor DESC")
     groups = []
-    for r in range(9, 0, -1):
+    for r in range(PLAYER_MAX_RANK, 0, -1):
         members = [x for x in rows if x['rank'] == r and x['status'] != 'cold']
         if members or r in RANK_SLOTS:
             groups.append(dict(rank=r, name=RANK_NAMES[r], members=members, cap=RANK_SLOTS.get(r)))
@@ -5430,7 +5469,7 @@ def gazette_page():
     if g.me: guide_mark(g.me['id'], 'gazette')
     rank_rows = q("SELECT * FROM consorts WHERE status NOT IN ('xiunv','dead') ORDER BY rank DESC, favor DESC")
     groups = []
-    for r in range(9, 0, -1):
+    for r in range(PLAYER_MAX_RANK, 0, -1):
         members = [x for x in rank_rows if x['rank'] == r and x['status'] != 'cold']
         if members or r in RANK_SLOTS:
             groups.append(dict(rank=r, name=RANK_NAMES[r], members=members, cap=RANK_SLOTS.get(r)))
@@ -6542,7 +6581,7 @@ def heir_errand(hid):
 RIVAL_MIN_AGE = 12                    # 12 岁起算进储位人选、可以站队
 NPC_MERIT_CAP = 15                    # 系统皇子（三阿哥、四阿哥等）累计功绩最多算 15，试玩里他们靠秋狝、差事攒到 100+，玩家的孩子再怎么养也追不上
 NPC_CARETAKER_BONUS_CAP = 10          # 抚养他们的 NPC 妃嫔（皇后、齐妃）给的位分加成最多算 10
-RANK_BONUS = {5: 5, 6: 10, 7: 15, 8: 20, 9: 20}          # 抚养人位分给皇子圣眷的加成
+RANK_BONUS = {5: 5, 6: 10, 7: 12, 8: 15, 9: 20, 10: 20}          # 抚养人位分给皇子圣眷的加成
 FACTION_WARN, FACTION_SCOLD = 5, 8    # 党羽超过 5 圣眷每晚 -2；超过 8 皇上当众训斥
 FACTION_WARN_LOSS, FACTION_SCOLD_LOSS, FACTION_SCOLD_INTERVAL = 2, 15, 5   # 训斥间隔 2026-09-28 从 10 压到 5
 FACTION_ERRAND_BONUS, FACTION_ERRAND_BONUS_CAP = 0.02, 0.10
@@ -6564,7 +6603,7 @@ SUCCESSION_MOVES = {
     'feud':    dict(name='挑拨兄弟', silver=80, energy=1, min_scheme=50),
     'frame':   dict(name='构陷皇子', silver=400, energy=2, min_rank=6),
     'peek':    dict(name='窥匾', silver=500, energy=1, min_rank=5),
-    'forge':   dict(name='矫诏', silver=1000, energy=2, min_rank=7),
+    'forge':   dict(name='矫诏', silver=1000, energy=2, min_rank=8),
 }
 FRAME_PRINCE_BASE, FRAME_PRINCE_PER_SCHEME = 0.30, 0.004
 FRAME_PRINCE_CAUGHT, FRAME_PRINCE_CAUGHT_TRUST, FRAME_PRINCE_CAUGHT_VIRTUE = 0.20, 8, 5
@@ -7182,7 +7221,7 @@ def intrigue_success_p(atk, tgt, cfg, conspired=False):
     p -= min(0.15, 0.05 * active_sister_count(tgt['id']))
     if tgt['personality'] == 'dignified': p -= 0.05
     if tgt['virtue'] >= 70: p -= 0.05
-    if tgt['rank'] == 9: p -= 0.15
+    if tgt['rank'] == PLAYER_MAX_RANK: p -= 0.15
     p -= tgt['trust'] * 0.0015                      # 皇上信任的人难扳倒：信任 100 时 -15%
     if cfg is INTRIGUES['expose']:
         p += (atk['trust'] - 40) * 0.005            # 告发看告发人自己的信任：信任 0 时 -20%，100 时 +30%
@@ -7911,7 +7950,7 @@ PACE_ROUND_HOURS = (0,4,8,12,16,20)         # 精力回复、晋封检查仍是�
 
 
 def eligible_bedding(c,day):
-    return c['status']=='normal' and 1<=c['rank']<=9 and not c['pregnant_since'] and not is_sick(c) and not affliction(c['id'],'yanzhi',day) and (c['bed_daily_day']!=day or c['bed_daily_count']<BED_DAILY_MAX)
+    return c['status']=='normal' and 1<=c['rank']<=PLAYER_MAX_RANK and not c['pregnant_since'] and not is_sick(c) and not affliction(c['id'],'yanzhi',day) and (c['bed_daily_day']!=day or c['bed_daily_count']<BED_DAILY_MAX)
 
 
 def last_bed_consorts(st):
@@ -8627,7 +8666,7 @@ def admin_edit(cid):
         except ValueError: return True
     favor_new = max(0, favor) if changed('favor', favor, 'orig_favor') else c['favor']
     silver_new = max(0, silver) if changed('silver', silver, 'orig_silver') else c['silver']
-    rank_new = max(0, min(9, rank)) if changed('rank', rank, 'orig_rank') else c['rank']
+    rank_new = max(0, min(PLAYER_MAX_RANK, rank)) if changed('rank', rank, 'orig_rank') else c['rank']
     if f.get('orig_status') and f.get('orig_status') == f.get('status'): status = c['status']
     run("UPDATE consorts SET favor=?, silver=?, rank=?, status=? WHERE id=?", (favor_new, silver_new, rank_new, status, cid))
     rank = rank_new

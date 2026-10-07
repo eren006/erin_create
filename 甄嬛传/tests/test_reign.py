@@ -235,7 +235,7 @@ class ReignTests(unittest.TestCase):
         self.client.post('/succession/move', data=dict(move='peek'))
         self.assertEqual(game.get_consort(low)['silver'], 2000)
 
-    def make_boss(self, rank=7, scheme=100, name='丙'):
+    def make_boss(self, rank=8, scheme=100, name='丙'):
         boss = self.player(name, rank=rank)
         game.run('UPDATE consorts SET scheme=? WHERE id=?', (scheme, boss))
         self.login(boss)
@@ -412,7 +412,7 @@ class ReignTests(unittest.TestCase):
 
     def test_records_pick_top_players(self):
         game.run('UPDATE consorts SET bedded_count=7 WHERE id=?', (self.tgt,))
-        game.run('UPDATE consorts SET rank=8 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET rank=9 WHERE id=?', (self.atk,))
         self.heir(self.tgt, gender='皇子')
         game.end_reign(game.cur_day())
         rec = json.loads(self.reign_row()['records'])

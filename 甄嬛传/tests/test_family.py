@@ -413,7 +413,7 @@ class FamilyTests(unittest.TestCase):
         game.set_rank(self.atk, 5)
         self.assertEqual(self.frow(uid)['prestige'], 5, '降了再升不重复算')
         game.set_rank(self.atk, 8)
-        self.assertEqual(self.frow(uid)['prestige'], 5 + 10 + 20 + 20)
+        self.assertEqual(self.frow(uid)['prestige'], 5 + 10 + 15 + 20)
         self.assertEqual(game.get_consort(self.atk)['peak_rank'], 8)
 
     def test_births_cold_secret_and_old_age_move_prestige(self):
@@ -1226,9 +1226,9 @@ class EmpressRankTests(unittest.TestCase):
     player = test_heirs.fixtures.LifecycleTests.player
     login = test_heirs.fixtures.LifecycleTests.login
 
-    def promote(self, cid, prestige_top=8):
-        game.run('UPDATE consorts SET rank=8, prestige_top=?, favor=?, virtue=?, rank_since_day=1 WHERE id=?',
-                 (prestige_top, game.PROMOTE_FAVOR[9], game.PROMOTE_VIRTUE[9], cid))
+    def promote(self, cid, prestige_top=9):
+        game.run('UPDATE consorts SET rank=9, prestige_top=?, favor=?, virtue=?, rank_since_day=1 WHERE id=?',
+                 (prestige_top, game.PROMOTE_FAVOR[10], game.PROMOTE_VIRTUE[10], cid))
         # 晋位本身不靠掷骰，但同一次结算里家主升迁、时疫这些不相关的概率事件会消耗全局的 random 状态——
         # 不摁住它们，这条用例会不会 flaky 全看别的测试文件先跑了几次随机数，摁到 0.99 让那些支线都不触发
         with patch.object(game, 'npc_schemes'), patch.object(game.random, 'random', return_value=0.99):
@@ -1238,25 +1238,25 @@ class EmpressRankTests(unittest.TestCase):
     def test_cannot_reach_empress_while_the_npc_holds_the_slot(self):
         game.run("UPDATE consorts SET status='normal' WHERE npc_key='huanghou'")
         self.promote(self.atk)
-        self.assertEqual(game.get_consort(self.atk)['rank'], 8, 'npc 占着唯一的名额')
+        self.assertEqual(game.get_consort(self.atk)['rank'], 9, 'npc 占着唯一的名额')
 
     def test_reaches_empress_once_the_slot_is_free(self):
         game.run("UPDATE consorts SET status='cold' WHERE npc_key='huanghou'")
         self.promote(self.atk)
         c = game.get_consort(self.atk)
-        self.assertEqual(c['rank'], 9)
+        self.assertEqual(c['rank'], 10)
         self.assertEqual(game.display_name(c), '皇后')
 
     def test_only_one_empress_slot(self):
         game.run("UPDATE consorts SET status='cold' WHERE npc_key='huanghou'")
         self.promote(self.atk)
-        self.assertEqual(game.get_consort(self.atk)['rank'], 9)
+        self.assertEqual(game.get_consort(self.atk)['rank'], 10)
         self.promote(self.tgt)
-        self.assertEqual(game.get_consort(self.tgt)['rank'], 8, '名额已经被占了')
+        self.assertEqual(game.get_consort(self.tgt)['rank'], 9, '名额已经被占了')
 
     def test_reaching_empress_grants_family_prestige_once(self):
         game.run("UPDATE consorts SET status='cold' WHERE npc_key='huanghou'")
         uid = game.consort_uid(game.get_consort(self.atk))
         game.create_family(uid, '沈', 'dali')
-        self.promote(self.atk, prestige_top=8)   # 之前几级的名望已经拿过了，只看这一步新加的
-        self.assertEqual(game.family_row(uid)['prestige'], game.PRESTIGE_RANK_GAIN[9])
+        self.promote(self.atk, prestige_top=9)   # 之前几级的名望已经拿过了，只看这一步新加的
+        self.assertEqual(game.family_row(uid)['prestige'], game.PRESTIGE_RANK_GAIN[10])

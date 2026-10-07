@@ -123,8 +123,8 @@ class LifecycleTests(unittest.TestCase):
         self.assertIsNone(game.lethal_block(game.get_consort(self.atk), c, 15))
 
     def test_death_frees_slot_and_sisters(self):
-        game.run('UPDATE consorts SET rank=8 WHERE id=?', (self.tgt,))
-        self.assertFalse(game.slot_free(8))
+        game.run('UPDATE consorts SET rank=9 WHERE id=?', (self.tgt,))
+        self.assertFalse(game.slot_free(9))
         game.run('INSERT INTO relations(a_id,b_id,sister) VALUES(?,?,1)', (self.atk, self.tgt))
         self.assertIn(self.tgt, game.sisters_of(self.atk))
         game.die(self.tgt, '测试')

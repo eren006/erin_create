@@ -40,7 +40,7 @@ class RandomInfluenceTests(unittest.TestCase):
         game.run('UPDATE consorts SET influence=25 WHERE id=?',(self.tgt,))
         with patch.object(game.random,'random',return_value=.999):game.settle_day()
         self.assertEqual(game.get_consort(self.tgt)['rank'],5)
-        self.assertEqual(game.get_consort(self.tgt)['influence'],25)
+        self.assertEqual(game.get_consort(self.tgt)['influence'],25+game.PROMOTE_INFLUENCE_REWARD)      # 晋嫔额外奖励势力
 
     def test_success_gains_once_per_victim_and_pending_plan(self):
         game.run('UPDATE consorts SET influence=0 WHERE id=?',(self.atk,))
