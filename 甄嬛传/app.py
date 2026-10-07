@@ -9172,7 +9172,7 @@ def on_server_error(e):
     return '出了点问题，已经记下了，稍后再试。', 500
 
 
-ENERGY_REGEN = 2   # 除结算那一轮外，每个翻牌时点（4/8/12/16/20 点）每人回 2 点精力，封顶 ENERGY_MAX；0 点日结算回满
+ENERGY_REGEN = 3   # 除结算那一轮外，每 4 小时（4/8/12/16/20 点）每人回 3 点精力（2026-10-08 起，原 2 点），封顶 ENERGY_MAX；0 点日结算回满
 
 @atomic
 def energy_tick(key):
