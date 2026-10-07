@@ -3681,11 +3681,12 @@ DIET_RATIO = 0.4        # 普通饮食每晚花掉例银的四成，奢华 2.5 �
 DIETS = {
     'frugal': dict(name='节俭', mult=0.4, order=0, desc='清粥小菜，省钱，只是身子扛不住：每晚体质 −5（最低到 20）。'),
     'normal': dict(name='普通', mult=1.0, order=1, desc='按位分的份例吃，不好不坏。'),
-    'lavish': dict(name='奢华', mult=2.5, order=2, desc='燕窝鱼翅、四时鲜果：每 2 晚体质 +1、每 6 晚容貌 +1、翻牌权重 +8、宫人忠心 +1；'
+    'lavish': dict(name='奢华', mult=2.5, order=2, desc='燕窝鱼翅、四时鲜果：每晚体质 +1、每 3 晚容貌 +1、翻牌权重 +8、宫人忠心 +1；'
                                                      '只是贵人以下摆这个排场，难免有人说你逾制。'),
 }
 LAVISH_ILL_FORM_CHANCE = 0.06     # 贵人以下吃奢华，每晚被人参「逾制」的概率
 LAVISH_BED_BONUS = 8
+LAVISH_HEALTH_EVERY, LAVISH_LOOKS_EVERY = 1, 3      # 奢华饮食：每 1 晚体质 +1、每 3 晚容貌 +1（原 2 晚、6 晚）
 FRUGAL_HEALTH_LOSS = 5     # 吃节俭每晚体质 -5，最低扣到 20
 
 
@@ -3712,8 +3713,8 @@ def diet_tick(day):
         if eff == 'frugal' and c['health'] > 20:
             add_stat(c['id'], 'health', -min(FRUGAL_HEALTH_LOSS, c['health'] - 20))
         elif eff == 'lavish':
-            if day % 2 == 0 and c['health'] < 95: add_stat(c['id'], 'health', 1)
-            if day % 6 == 0 and c['appearance'] < 95: add_stat(c['id'], 'appearance', 1)
+            if day % LAVISH_HEALTH_EVERY == 0 and c['health'] < 95: add_stat(c['id'], 'health', 1)
+            if day % LAVISH_LOOKS_EVERY == 0 and c['appearance'] < 95: add_stat(c['id'], 'appearance', 1)
             for m in active_maids(c['id']): add_loyalty(m['id'], 1)
             if c['rank'] <= 4 and random.random() < LAVISH_ILL_FORM_CHANCE:
                 add_stat(c['id'], 'virtue', -2)
@@ -8806,7 +8807,7 @@ def help_page():
                            RANK_NAMES=RANK_NAMES, RANK_SLOTS=RANK_SLOTS, STIPEND=STIPEND, FAVOR_CARE=FAVOR_CARE, favor_care_tier=favor_care_tier, favor_stipend=favor_stipend, PROMOTE_FAVOR=PROMOTE_FAVOR,
                            PROMOTE_VIRTUE=PROMOTE_VIRTUE, MAID_QUOTA=MAID_QUOTA, MAID_WAGE=MAID_WAGE,
                            diet_norm={r: diet_cost(r, 'normal') for r in range(1, 10)}, DIETS=DIETS, DIET_RATIO=DIET_RATIO,
-                           INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
+                           INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS, QUIET_DAYS=QUIET_DAYS,
                            FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, TWIN_CHANCE=TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS=TWIN_EXTRA_HEALTH_LOSS, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, CUISHENG_HOURS=CUISHENG_HOURS, INFLUENCE_DECAY=INFLUENCE_DECAY, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
                            HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, HEALTH_DYING_AT=HEALTH_DYING_AT, DYING_HOURS=DYING_HOURS, CONFINE_DAYS=CONFINE_DAYS, CONFINE_HOURS=CONFINE_HOURS,
                            COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, EAT_DAILY_MAX=EAT_DAILY_MAX, COOK_DAILY_MAX=COOK_DAILY_MAX, GARDEN_SELL_DAILY_CAP=GARDEN_SELL_DAILY_CAP, GARDEN_TAN_CHANCE=GARDEN_TAN_CHANCE, GARDEN_TAN_LOSS=GARDEN_TAN_LOSS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_MAX=PREGNANCY_MAX, PREGNANCY_PITY_ATTEMPTS=PREGNANCY_PITY_ATTEMPTS, PREGNANCY_DAYS=PREGNANCY_DAYS,
@@ -9543,7 +9544,7 @@ def place(key):
                            counts=counts, sick=is_sick(c), arts=arts_of(c), ARTS=ARTS, ART_MASTERY=ART_MASTERY,
                            aid_targets=q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status IN ('normal','confined')", (c['id'],)), plead_targets=plead_targets, chastise_targets=chastise_targets(c) if key == 'jingren' else [], plead_p=int(plead_chance(c) * 100),
                            maid_ev=maid_ev, maid_info=maid_info, heir_ev=heir_ev, my_heirs=my_heirs, heir_todo=heir_todo, HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, PRENATAL=PRENATAL,
-                           DIETS=DIETS, PREGNANCY_DAYS=PREGNANCY_DAYS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS,
+                           DIETS=DIETS, PREGNANCY_DAYS=PREGNANCY_DAYS, diet_costs=diet_costs(c['rank']), repair=repair_state(c), REPAIRS=REPAIRS, PRAY_TIERS=PRAY_TIERS, QUIET_DAYS=QUIET_DAYS,
                            is_quiet=is_quiet(c) if c['status'] in ('normal', 'confined') else False, birth_count=birth_count, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, open_living=request.args.get('living') == '1',
                            household=palace_household(c['palace']) if key == 'home' and has_residence(c) else [],
                            is_head=has_residence(c) and c['hall'] == 'main' and c['rank'] >= 5,
