@@ -8443,8 +8443,11 @@ def settle_day(bed_key=None, partial=False):
         g.bed_round_key=bed_key
         g.settle_partial = partial
         g.settling, g.night_events = True, {}
+        g.ill_digest = {}
         try:
-            return _settle_night()
+            r = _settle_night()
+            flush_ill_digest()
+            return r
         finally:
             g.bed_round_key=None
             g.settle_partial = False
@@ -9298,6 +9301,22 @@ def resolve_poison_crises(day):
             gazette(f'{display_name(c)}脱离险境，留宫静养。', 'news')
 
 
+def ill_digest(kind, text):
+    """结算里的染病/病愈/时疫不逐条发公告，攒起来每晚合发一条；非结算时直接发"""
+    if not settling():
+        gazette({'sick': f'{text}，卧床不起。', 'well': f'{text}病愈，留宫静养。', 'epidemic': '宫里近来时疫流传，人人自危。'}[kind])
+        return
+    g.ill_digest.setdefault(kind, []).append(text)
+
+def flush_ill_digest():
+    d = getattr(g, 'ill_digest', None) or {}
+    parts = []
+    if d.get('epidemic'): parts.append('宫里近来时疫流传，人人自危')
+    if d.get('sick'): parts.append('、'.join(d['sick']) + '，卧床不起')
+    if d.get('well'): parts.append('、'.join(d['well']) + '病愈，留宫静养')
+    if parts: gazette('昨夜宫中：' + '；'.join(parts) + '。', 'news')
+    g.ill_digest = {}
+
 def fall_ill(cid, day, cause):
     c=get_consort(cid)
     if c['status'] in ('dead','xiunv') or c['ill_day'] or c['poisoned_day']: return
@@ -9309,7 +9328,7 @@ def fall_ill(cid, day, cause):
         care='皇上已命太医诊治，免付诊金。' if treatment else f'请在下一次结算前请太医（{treat_cost(c)} 两，可由姐妹代付）。'
         notify(cid,f"你{cause}，体质 -15。{care}本次为{cfg['name']}待遇：治疗后存活率 {int(cfg['survive']*100)}%，未治疗 {int(cfg['untreated']*100)}%；治疗成功需 {cfg['recover_nights']} 次结算康复（福报另有加成）。",'bad')
         guide_tip(cid,'sick','「早请太医，姐妹也能替你垫诊金。」')
-    gazette(f'{display_name(c)}{cause}，卧床不起。')
+    ill_digest('sick', f'{display_name(c)}{cause}')
     night_mark(cid,'ill')
 
 
@@ -9332,13 +9351,13 @@ def resolve_illness_crises(day):
             if c['user_id']:
                 notify(c['id'],f"你的病好了（{cfg['name']}待遇）。接下来 {RESCUE_PROTECT_DAYS} 天静养。",'good')
                 night_mark(c['id'],'ill_rescued')
-            gazette(f'{display_name(c)}病愈，留宫静养。','news')
+            ill_digest('well', display_name(c))
 
 
 def illness_onset_tick(day):
     """每晚判定会不会染病：连续体虚、冷宫阴寒、全宫时疫、产后失调"""
     epidemic = day % EPIDEMIC_INTERVAL == 0 and random.random() < EPIDEMIC_CHANCE
-    if epidemic: gazette('宫里近来时疫流传，人人自危。', 'news')
+    if epidemic: ill_digest('epidemic', '')
     for c in q("SELECT * FROM consorts WHERE status NOT IN ('dead','xiunv')"):
         if c['ill_day'] or c['poisoned_day']: continue
         if c['health'] < 25:
