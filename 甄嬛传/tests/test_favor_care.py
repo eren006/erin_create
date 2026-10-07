@@ -150,3 +150,13 @@ class FavorCareTests(unittest.TestCase):
         self.login(self.atk)
         self.client.post('/skin',data={'skin':''})
         self.assertEqual(game.get_consort(self.atk)['skin'],'','留空清掉')
+
+    def test_skin_form_moves_to_bottom_after_set(self):
+        self.login(self.atk)
+        html=self.client.get('/').get_data(as_text=True)
+        self.assertLess(html.index('name="skin"'),html.index('退出'))
+        self.assertLess(html.index('name="skin"'),html.index('me-top"') if 'me-top"' in html else len(html))
+        game.run("UPDATE consorts SET skin='周迅' WHERE id=?",(self.atk,))
+        html=self.client.get('/').get_data(as_text=True)
+        self.assertGreater(html.index('name="skin"'),html.index('<section class="me-top">'))
+        self.assertLess(html.index('name="skin"'),html.index('退出'))

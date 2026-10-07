@@ -122,7 +122,8 @@ class LivingTests(unittest.TestCase):
         for i in range(11):
             self.player(f'玩{i}', rank=3)
         self.assertEqual(game.q("SELECT COUNT(*) n FROM consorts WHERE user_id IS NOT NULL", one=True)['n'], 13)
-        self.settle()
+        with patch.object(game, 'XINGGONG_CHANCE', 0):      # 行宫随驾是另一回事，别让它随机搅进来
+            self.settle()
         bedded = game.q("SELECT id FROM consorts WHERE bedded_count>0")
         self.assertEqual(len(bedded), 2, '13 位玩家 → 每轮也只翻 2 位')
         self.assertEqual(len(game.q("SELECT id FROM gazette WHERE kind='bed'")), 2)

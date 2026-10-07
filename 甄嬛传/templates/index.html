@@ -53,6 +53,16 @@
 </style>
 {% endblock %}
 {% block body %}
+{% macro skin_form() %}
+<section class="sheet" style="margin-top:18px">
+  <b>皮相</b>{% if c.skin %}　<span style="font-family:var(--kai);font-size:18px">{{ c.skin }}</span>{% endif %}
+  <p class="muted" style="margin:6px 0">给自己定一个形象参照，写一位女明星的名字，六宫榜上会挂在你的牌子下面。全宫不能重名，先到先得；留空提交可以清掉。</p>
+  <form method="post" action="{{ url_for('set_skin') }}" class="row">
+    <input name="skin" value="{{ c.skin }}" maxlength="{{ SKIN_MAX_LEN }}" placeholder="例如：某某某" aria-label="皮相" style="max-width:220px">
+    <button>{{ '更换' if c.skin else '设定' }}</button>
+  </form>
+</section>
+{% endmacro %}
 {% if c %}<p>势力：{{ c.influence }}{% if promo %} · 晋为{{ promo.rank }}需 {{ promo.influence }}{% endif %}</p>{% endif %}
 {% if c and c.status not in ('xiunv','dead') %}<p class="muted">当前{{ FAVOR_CARE[favor_care_tier(c)].name }}待遇 · 每晚月例与赏银 {{ favor_stipend(c) }} 两{% if c.ill_day %} · 已患病，{{ '已获治疗' if c.ill_treatment else '请及时请太医（可由姐妹代付）' }}{% endif %}</p>{% endif %}
 {% if guide %}
@@ -90,16 +100,7 @@
   </form>
 </section>
 {% endif %}
-{% if c and c.status not in ('xiunv','dead') %}
-<section class="sheet" style="margin-top:18px">
-  <b>皮相</b>{% if c.skin %}　<span style="font-family:var(--kai);font-size:18px">{{ c.skin }}</span>{% endif %}
-  <p class="muted" style="margin:6px 0">给自己定一个形象参照，写一位女明星的名字，六宫榜上会挂在你的牌子下面。全宫不能重名，先到先得；留空提交可以清掉。</p>
-  <form method="post" action="{{ url_for('set_skin') }}" class="row">
-    <input name="skin" value="{{ c.skin }}" maxlength="{{ SKIN_MAX_LEN }}" placeholder="例如：某某某" aria-label="皮相" style="max-width:220px">
-    <button>{{ '更换' if c.skin else '设定' }}</button>
-  </form>
-</section>
-{% endif %}
+{% if c and c.status not in ('xiunv','dead') and not c.skin %}{{ skin_form() }}{% endif %}
 <section class="me-top">
   <div class="pai big {{ 'cold' if c.status=='cold' }}">{{ dn(c) }}</div>
   <div class="facts">
@@ -173,5 +174,6 @@
   {% for m in msgs %}<li class="{{ m.kind }} {{ 'new' if not m.is_read }}"><span class="d">第{{ m.day }}天{{ '夜' if m.is_night }}</span>{{ m.text }}</li>{% endfor %}
 </ul>
 {% else %}<p class="muted">还没什么消息。</p>{% endif %}
+{% if c and c.status not in ('xiunv','dead') and c.skin %}{{ skin_form() }}{% endif %}
 <p class="muted" style="margin-top:24px"><a href="{{ url_for('logout') }}">退出</a></p>
 {% endblock %}
