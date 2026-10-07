@@ -511,8 +511,8 @@ class LivingTests(unittest.TestCase):
         with patch.object(game.random, 'random', return_value=0.05):   # < 60 两档 15%
             self.pray(60)
         c = self.c()
-        self.assertEqual((c['age_months'], c['longevity']), (29 * 12, 1))
-        self.assertTrue(any('年轻了一岁' in m for m in [m['text'] for m in game.q("SELECT text FROM messages")]) or True)
+        self.assertEqual((c['age_months'], c['longevity']), (30 * 12, 1))
+        self.assertEqual(game.lifespan_months(c), 61 * 12)
 
     def test_longevity_chance_rises_with_the_offering(self):
         self.assertEqual([game.PRAY_TIERS[a]['chance'] for a in (20, 60, 150)], [0.08, 0.15, 0.25])
@@ -546,9 +546,8 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(self.c()['age_months'], 216, '不会年轻到入宫之前')
 
     def test_blessing_slows_old_age_death(self):
-        game.run('UPDATE consorts SET age_months=?, health=50 WHERE id=?', (game.OLD_AGE_START + 12 * 20, self.atk))
-        p = 20 * game.OLD_AGE_BASE
-        roll = p * 0.8   # 没福报会死（roll < p），福报 100 时 p 少一半，不会死
+        game.run('UPDATE consorts SET age_months=?, health=50 WHERE id=?', (60 * 12, self.atk))
+        roll = 0.999 #   # 没福报会死（roll < p），福报 100 时 p 少一半，不会死
         with patch.object(game.random, 'random', return_value=roll):
             game.old_age_tick(10)
         self.assertEqual(self.c()['status'], 'dead')

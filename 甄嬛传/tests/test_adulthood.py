@@ -263,7 +263,7 @@ class AdulthoodTests(unittest.TestCase):
         hid = self.grown(self.atk, gender='公主', favor=90)
         game.heir_adult_tick(game.cur_day())
         h = self.row(hid)
-        self.assertEqual((h['marriage'], h['title']), ('mongol', '固伦公主'))
+        self.assertEqual((h['marriage'], h['title']), ('choice', ''))
         self.assertEqual(game.get_consort(self.atk)['trust'], game.MARRY_MIN_TRUST - 1)
 
     @patch.object(game, 'heir_standing', favor_only)   # 这里只测门槛，圣眷公式另有用例
@@ -271,43 +271,21 @@ class AdulthoodTests(unittest.TestCase):
         game.run('UPDATE consorts SET trust=90 WHERE id=?', (self.atk,))
         hid = self.grown(self.atk, gender='公主', favor=game.MARRY_MIN_FAVOR - 1)
         game.heir_adult_tick(game.cur_day())
-        self.assertEqual(self.row(hid)['marriage'], 'mongol')
+        self.assertEqual(self.row(hid)['marriage'], 'choice')
 
-    def test_mother_picks_mongolia_gets_trust(self):
-        game.run('UPDATE consorts SET trust=60 WHERE id=?', (self.atk,))
-        hid = self.grown(self.atk, gender='公主', adult_day=game.cur_day(), marriage='choice', favor=70)
-        self.client.post(f'/heirs/marry/{hid}', data=dict(kind='mongol'))
-        h = self.row(hid)
-        self.assertEqual((h['marriage'], h['title']), ('mongol', '固伦公主'))
-        self.assertEqual(game.get_consort(self.atk)['trust'], 60 + game.MONGOL_TRUST_GAIN)
-        self.assertEqual(h['marry_day'], game.cur_day())
-
-    def test_mother_picks_capital(self):
-        hid = self.grown(self.atk, gender='公主', adult_day=game.cur_day(), marriage='choice', favor=70)
-        self.client.post(f'/heirs/marry/{hid}', data=dict(kind='capital'))
-        h = self.row(hid)
-        self.assertEqual((h['marriage'], h['title']), ('capital', '和硕公主'))
-
-    def test_only_caretaker_can_choose_and_only_once(self):
-        hid = self.grown(self.atk, gender='公主', adult_day=game.cur_day(), marriage='choice', favor=70)
-        self.login(self.tgt)
+    def test_old_direct_marriage_route_does_not_bypass_courtship(self):
+        hid = self.grown(self.atk, gender='公主', adult_day=game.cur_day(), marriage='choice')
         self.client.post(f'/heirs/marry/{hid}', data=dict(kind='capital'))
         self.assertEqual(self.row(hid)['marriage'], 'choice')
-        self.login(self.atk)
-        self.client.post(f'/heirs/marry/{hid}', data=dict(kind='capital'))
-        self.client.post(f'/heirs/marry/{hid}', data=dict(kind='mongol'))
-        self.assertEqual(self.row(hid)['marriage'], 'capital', '定了就不能改')
 
-    def test_undecided_marriage_defaults_to_capital_after_deadline(self):
-        hid = self.grown(self.atk, gender='公主', adult_day=game.cur_day() - game.MARRY_CHOICE_DAYS + 1, marriage='choice')
-        game.heir_marriage_deadline_tick(game.cur_day())
+    def test_undecided_marriage_has_no_player_deadline(self):
+        hid = self.grown(self.atk, gender='公主', adult_day=game.cur_day() - 5, marriage='choice')
+        game.heir_marriage_deadline_tick(game.cur_day() + 10)
         self.assertEqual(self.row(hid)['marriage'], 'choice')
-        game.heir_marriage_deadline_tick(game.cur_day() + 1)
-        self.assertEqual(self.row(hid)['marriage'], 'capital')
 
-    def test_capital_marriage_halves_mothers_favor_decay(self):
-        self.grown(self.tgt, caretaker=self.atk, gender='公主', adult_day=1, marriage='capital', title='和硕公主')
-        self.assertEqual(game.capital_mother_ids(), {self.tgt, self.atk})
+    def test_capital_marriage_has_no_favor_decay_discount(self):
+        import inspect
+        self.assertNotIn('CAPITAL_DECAY_FACTOR', inspect.getsource(game._settle_night))
 
     def test_family_letters_every_seven_days_for_mongol_marriage(self):
         hid = self.grown(self.atk, gender='公主', adult_day=1, marriage='mongol', title='固伦公主', marry_day=10)
@@ -335,8 +313,8 @@ class AdulthoodTests(unittest.TestCase):
         prince = self.adult_prince(self.atk)
         self.put_errand(prince, game.cur_day())
         page = self.client.get('/heirs').get_data(as_text=True)
-        self.assertIn('留京下嫁', page)
-        self.assertIn('抚蒙古', page)
+        self.assertIn('物色夫婿', page)
+        self.assertIn('相看', page)
         self.assertIn('赈灾', page)
         self.assertIn('稳妥办理', page)
         self.assertNotIn('推给别的阿哥', page, '没有别的阿哥可推时不给这个选项')

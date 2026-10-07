@@ -15,6 +15,22 @@ class OldAgeTests(unittest.TestCase):
     player = fixtures.LifecycleTests.player
     login = fixtures.LifecycleTests.login
 
+    def test_higher_lifespan_reduces_same_age_death_risk(self):
+        game.run('UPDATE consorts SET age_months=648, health=50, life_loss_months=0 WHERE id=?', (self.atk,))
+        with patch.object(game.random, 'random', return_value=0.02):
+            game.old_age_tick(game.cur_day())
+        self.assertEqual(game.get_consort(self.atk)['status'], 'normal')
+        game.run('UPDATE consorts SET life_loss_months=60 WHERE id=?', (self.atk,))
+        with patch.object(game.random, 'random', return_value=0.02):
+            game.old_age_tick(game.cur_day())
+        self.assertEqual(game.get_consort(self.atk)['status'], 'dead')
+
+    def test_folded_life_does_not_change_age(self):
+        game.run('UPDATE consorts SET age_months=360, life_loss_months=12 WHERE id=?', (self.atk,))
+        c = game.get_consort(self.atk)
+        self.assertEqual(c['age_months'], 360)
+        self.assertEqual(game.lifespan_months(c), 59 * 12)
+
     def test_no_death_roll_before_fifty(self):
         game.run('UPDATE consorts SET age_months=? WHERE id=?', (game.OLD_AGE_START - 6, self.atk))
         with patch.object(game.random, 'random', return_value=0.0):
@@ -30,7 +46,7 @@ class OldAgeTests(unittest.TestCase):
 
     def test_frail_body_doubles_chance_and_dies(self):
         game.run('UPDATE consorts SET age_months=?, health=20, rank=1 WHERE id=?',
-                (game.OLD_AGE_START + 12 * 10, self.atk))   # 60 岁，体质 <30 翻倍
+                (60 * 12, self.atk))   # 60 岁，体质 <30 翻倍
         with patch.object(game.random, 'random', return_value=0.05):
             game.old_age_tick(game.cur_day())
         c = game.get_consort(self.atk)

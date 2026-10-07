@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS consorts (
     dianxuan_score   INTEGER NOT NULL DEFAULT 0,
 
     age_months       INTEGER NOT NULL DEFAULT 240,
+    life_loss_months INTEGER NOT NULL DEFAULT 0,
     poisoned_day     INTEGER NOT NULL DEFAULT 0,
     poison_treatment INTEGER NOT NULL DEFAULT 0,      -- 0=没请太医 1=请了
     protected_until_day INTEGER NOT NULL DEFAULT 0,
@@ -666,3 +667,36 @@ CREATE TABLE IF NOT EXISTS tryst_clues (
     progress  INTEGER NOT NULL DEFAULT 0,
     hushed    INTEGER NOT NULL DEFAULT 0
 );
+
+-- 公主择婿：候选与相看结果持久保存，订婚后锁定
+CREATE TABLE IF NOT EXISTS princess_courtships (
+ heir_id INTEGER PRIMARY KEY,
+ selected_id INTEGER NOT NULL DEFAULT 0,
+ betrothed_day INTEGER NOT NULL DEFAULT 0,
+ self_chosen INTEGER NOT NULL DEFAULT 0,
+ harmony INTEGER NOT NULL DEFAULT 50,
+ family_fortune INTEGER NOT NULL DEFAULT 50,
+ last_replace_day INTEGER NOT NULL DEFAULT -100,
+ last_event_day INTEGER NOT NULL DEFAULT 0,
+ event TEXT NOT NULL DEFAULT '',
+ dowry INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS princess_suitors (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ heir_id INTEGER NOT NULL,
+ name TEXT NOT NULL,
+ family TEXT NOT NULL,
+ kind TEXT NOT NULL,
+ age INTEGER NOT NULL,
+ appearance INTEGER NOT NULL,
+ study INTEGER NOT NULL,
+ riding INTEGER NOT NULL,
+ virtue INTEGER NOT NULL,
+ personality TEXT NOT NULL,
+ fact TEXT NOT NULL,
+ investigated INTEGER NOT NULL DEFAULT 0,
+ met INTEGER NOT NULL DEFAULT 0,
+ attitude TEXT NOT NULL DEFAULT '',
+ active INTEGER NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_suitors_heir ON princess_suitors(heir_id, active);

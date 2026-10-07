@@ -286,8 +286,8 @@ CONFINE_HOURS = 12 # 所有禁足一律半天，不管因为什么
 COLD_DAYS = 3   # 2026-09-28 从 5 压到 3
 
 # ── 老死与病死 ─────────────────────────────────────────────────────────────────
-OLD_AGE_START = 600          # 50 岁（600 个月）起，每晚有寿终的可能
-OLD_AGE_BASE = 0.003          # 概率 = (年龄 - 50) × 0.3%，体质 ≥60 减半、<30 翻倍
+OLD_AGE_START = 600          # 默认大限 60 岁时，50 岁起有寿终的可能；实际起点随大限调整
+OLD_AGE_BASE = 0.003          # 概率 = max(0, 年龄 - (个人大限 - 10)) × 0.3%；体质 ≥60 减半、<30 翻倍
 OLD_AGE_REMINDER_START = 660  # 55 岁起，每满 5 岁提醒一句
 OLD_AGE_REMINDER_STEP = 60
 WEAK_SICK_DAYS = 2            # 连续体质 <25 这么多天，染病（2026-09-28 从 3 压到 2）
@@ -564,9 +564,10 @@ def hobby_unlocked_kinds(c):
 # ── 玩家心情值（2026-10-08）──────────────────────────────────────────────────────
 # 0~100。每天 0 点结算：低于 DEPRESSION_BELOW 就郁结（折寿一岁），然后一律降回 MOOD_DAY_RESET，新的一天重新攒。
 # 新人、老档的初始值是 50（列默认值），第一个 0 点前不会被罚。
+MOOD_HARM_LOSS = 5            # 被害成功一次，受害者心情 -5；失败、落空不扣
 MOOD_DAY_RESET = 20
 DEPRESSION_BELOW = 35
-DEPRESSION_AGE_MONTHS = 12      # 郁结一次，年龄 +1 岁（折寿）
+DEPRESSION_LIFE_MONTHS = 12      # 郁结一次，寿命上限 -1 岁（折寿）
 MOOD_GAIN = {'garden': 5}      # 日常行动里只有逛御花园涨心情（每次 +5，受每日次数限制）；其余日常行动不加
 MOOD_BED, MOOD_AUDIENCE, MOOD_HOBBY, MOOD_TRYST = 3, 3, 2, 15      # 侍寝 +3、被召见 +3、雅趣每次打理 +2、夜会侍卫 +15
 
@@ -1647,6 +1648,7 @@ def init_db():
                      'repair_date': "TEXT NOT NULL DEFAULT ''",
                      'main_guard_day': 'INTEGER NOT NULL DEFAULT 0',
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
+                     'life_loss_months': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
         'heirs': {'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
@@ -2071,6 +2073,25 @@ def assign_four_word(cid):
     run("UPDATE consorts SET four_word=? WHERE id=?", (w, cid))
     return w
 
+AUTO_SCHEME_CONSORTS = {30}   # 怡贵人（用户自己的号）：有人晋升就去栽赃一把（银子不够退而散布流言），套用玩家同一套结算
+
+def auto_scheme_on_promotion(target_id):
+    day = cur_day()
+    for aid in AUTO_SCHEME_CONSORTS:
+        a, t = get_consort(aid), get_consort(target_id)
+        if not a or not t or a['id'] == t['id'] or a['status'] != 'normal' or is_sick(a): continue
+        if t['status'] in ('xiunv', 'cold', 'dead') or (t['user_id'] and t['entered_day'] >= day): continue
+        if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')", (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX: continue
+        method = next((m for m in ('frame', 'rumor') if a['rank'] >= INTRIGUES[m]['min_rank'] and a['silver'] >= INTRIGUES[m]['silver']), None)
+        if not method: continue
+        cfg = INTRIGUES[method]
+        run("UPDATE consorts SET silver=silver-? WHERE id=?", (cfg['silver'], aid))
+        iid = run("INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts) VALUES (?,?,?,?,?,?,?)",
+                  (day, aid, target_id, method, cfg['silver'], '', now_ts())).lastrowid
+        daily_inc(aid, 'intrigue')
+        resolve_now(iid)
+
+
 def set_rank(cid, new_rank, reason_day=None):
     new_rank = max(1, min(PLAYER_MAX_RANK, new_rank))
     old = get_consort(cid)['rank']
@@ -2096,6 +2117,9 @@ def set_rank(cid, new_rank, reason_day=None):
             run("UPDATE consorts SET prestige_top=? WHERE id=?", (new_rank, cid))
             if gain: add_prestige(c, gain, f"{full_name(c)}晋为{RANK_NAMES[new_rank]}")
     housing_sync(fill_main=not settling())
+    if new_rank > old:
+        try: auto_scheme_on_promotion(cid)
+        except Exception: traceback.print_exc()      # 害人是附带的，出错不能连累晋升本身
 
 def demote_rank(cid):
     """降一级。降到的那一级若已超员，就在这一级所有人里比：圣宠最低的再降一级（同圣宠的，晋这一级最晚的先下），一级一级挤下去，直到有空位。
@@ -2230,7 +2254,7 @@ def admin_required(f):
 
 @app.context_processor
 def inject_globals():
-    ctx = dict(DEPRESSION_BELOW=DEPRESSION_BELOW, MOOD_DAY_RESET=MOOD_DAY_RESET, family_career_title=family_career_title, FAMILY_CAREER_TITLES=FAMILY_CAREER_TITLES,family_origin_options=family_origin_options, family_background=family_background,BED_DAILY_MAX=BED_DAILY_MAX, BED_COUNT_WEIGHTS=BED_COUNT_WEIGHTS,badge_name=badge_name, pregnancy_progress=pregnancy_progress, pregnancy_due_text=pregnancy_due_text, bed_chance_text=bed_chance_text, next_bedding_text=next_bedding_text, PROMOTE_INFLUENCE=PROMOTE_INFLUENCE, entry_stat_roll=entry_stat_roll, RANDOM_STAT_RANGES=RANDOM_STAT_RANGES, FAVOR_CARE=FAVOR_CARE, favor_care_tier=favor_care_tier, favor_stipend=favor_stipend, EAST_PALACE_CHANCE=EAST_PALACE_CHANCE, EAST_PALACE_FAVOR=EAST_PALACE_FAVOR, EAST_PALACE_TRUST=EAST_PALACE_TRUST, AGE_YEARS_PER_DAY=AGE_YEARS_PER_DAY, ENERGY_MAX=ENERGY_MAX, dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
+    ctx = dict(lifespan_months=lifespan_months, DEPRESSION_BELOW=DEPRESSION_BELOW, MOOD_DAY_RESET=MOOD_DAY_RESET, family_career_title=family_career_title, FAMILY_CAREER_TITLES=FAMILY_CAREER_TITLES,family_origin_options=family_origin_options, family_background=family_background,BED_DAILY_MAX=BED_DAILY_MAX, BED_COUNT_WEIGHTS=BED_COUNT_WEIGHTS,badge_name=badge_name, pregnancy_progress=pregnancy_progress, pregnancy_due_text=pregnancy_due_text, bed_chance_text=bed_chance_text, next_bedding_text=next_bedding_text, PROMOTE_INFLUENCE=PROMOTE_INFLUENCE, entry_stat_roll=entry_stat_roll, RANDOM_STAT_RANGES=RANDOM_STAT_RANGES, FAVOR_CARE=FAVOR_CARE, favor_care_tier=favor_care_tier, favor_stipend=favor_stipend, EAST_PALACE_CHANCE=EAST_PALACE_CHANCE, EAST_PALACE_FAVOR=EAST_PALACE_FAVOR, EAST_PALACE_TRUST=EAST_PALACE_TRUST, AGE_YEARS_PER_DAY=AGE_YEARS_PER_DAY, ENERGY_MAX=ENERGY_MAX, dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
                favor_word=favor_word, trust_word=trust_word, residence_name=residence_name, HALL_NAMES=HALL_NAMES, ITEMS=ITEMS, DRUGS=DRUGS, HOBBIES=HOBBIES, DISPLAY_SLOTS=DISPLAY_SLOTS,
                HOBBY_ENERGY=HOBBY_ENERGY, HOBBY_DAILY_MAX=HOBBY_DAILY_MAX, HOBBY_UNLOCK_ITEMS=HOBBY_UNLOCK_ITEMS, daily_count=daily_count, intrigue_label=intrigue_label, FAMILIES=FAMILIES, PERSONALITIES=PERSONALITIES, age_text=age_text, palace_date=palace_date,
                HEIR_STATS=HEIR_STATS, HEIR_PERSONALITIES=HEIR_PERSONALITIES, gift_word=gift_word, gift_text=gift_text, heir_age_days=heir_age_days,
@@ -3877,7 +3901,12 @@ def do_repair():
 
 PRAY_TIERS = {20: dict(blessing=1, chance=0.08), 60: dict(blessing=3, chance=0.15), 150: dict(blessing=8, chance=0.25)}
 BLESSING_CAP, QUIET_DAYS, LONGEVITY_MAX = 100, 3, 5   # 躺平要求 2026-10-06 从 10 天压到 5 天，2026-10-07 再压到 3 天
-BLESSING_OLD_AGE_DIV, BLESSING_OLD_AGE_MAX = 200, 0.5     # 福报每 2 点，老死的概率少 1%，最多少一半
+LIFESPAN_BASE_MONTHS = 60 * 12
+BLESSING_LIFE_STEP, BLESSING_LIFE_MAX = 20, 5  # 每 20 福报增加一年大寿上限，最多五年
+
+def lifespan_months(c):
+    return max(0, LIFESPAN_BASE_MONTHS + c['longevity'] * 12 + min(BLESSING_LIFE_MAX, c['blessing'] // BLESSING_LIFE_STEP) * 12 - c['life_loss_months'])
+
 BLESSING_SURVIVE_DIV, BLESSING_SURVIVE_MAX = 500, 0.15    # 福报每 5 点，病重、中毒时多 1% 的活路，最多多 15%
 
 
@@ -3903,8 +3932,8 @@ def do_pray(c, cfg):
     add_stat(c['id'], 'health', 1)
     msg = f"你在佛前添了 {amount} 两香油，心里静了下来。福报 +{tier['blessing']}，体质 +1。"
     if is_quiet(c) and c['longevity'] < LONGEVITY_MAX and random.random() < tier['chance']:
-        run("UPDATE consorts SET age_months=MAX(216, age_months-12), longevity=longevity+1 WHERE id=?", (c['id'],))
-        msg += '香烟直直地往上走，你忽然觉得身子轻了些，像是又年轻了一岁。'
+        run("UPDATE consorts SET longevity=longevity+1 WHERE id=?", (c['id'],))
+        msg += '香烟直直地往上走，你忽然觉得身子轻了些，大寿上限延长了一年。'
     return msg, 'good'
 
 
@@ -6095,7 +6124,10 @@ def heirs():
             a['entrust'] = True
             if h['foster_request_to']: a['waiting_on'] = get_consort(h['foster_request_to'])
         if h['foster_request_to'] == c['id']: a['reply'] = True
-        if h['caretaker_id'] == c['id'] and h['marriage'] == 'choice': a['marry'] = True
+        if h['gender'] == '公主' and h['marriage'] == 'choice':
+            ensure_courtship(h)
+        if h['gender'] == '公主' and maternal_kin(c, h):
+            a['courtship'] = courtship_view(h, c)
         if h['caretaker_id'] == c['id'] and not h['adult_day']: a['raise'] = True      # 日常教养按钮（本宫页也有一份）
         ev = errand_view(h) if h['errand'] else None
         if ev and h['caretaker_id'] == c['id'] and ev.get('key') in ERRANDS:
@@ -6869,10 +6901,8 @@ PRINCE_PLEAD_INTERVAL = 3   # 2026-09-28 从 7 压到 3
 PRINCE_PLEAD_FAVOR_BONUS = 0.003
 ERRAND_INTERVAL = 3
 MARRY_MIN_FAVOR, MARRY_MIN_TRUST = 35, 30   # 公主自己的圣眷、抚养人的信任够了才能自己选（试玩里原来的 60 / 50 一次也没人够到）
-MARRY_CHOICE_DAYS = 3         # 母亲三天不表态，就按留京下嫁办
 MONGOL_TRUST_GAIN = 10
 MONGOL_LETTER_INTERVAL = 3   # 2026-09-28 从 7 压到 3
-CAPITAL_DECAY_FACTOR = 0.5    # 女儿留京、天天回宫请安，母亲的圣宠流失减半
 
 ERRANDS = {
     'relief':  dict(name='赈灾', stat='virtue', line='南边闹了水患，皇上命他去督办赈济'),
@@ -6920,25 +6950,16 @@ def marry_off(h, kind, chosen):
     run('UPDATE heirs SET marriage=?, title=?, marry_day=? WHERE id=?', (kind, title, cur_day(), h['id']))
     label = heir_label(h)
     if kind == 'mongol':
-        gazette(f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，册封{title}，远嫁蒙古。", 'decree')
+        gazette(f"{label}年满{heir_age_years(h)}岁，册封{title}，远嫁蒙古。", 'decree')
         for p in heir_parents(h):
             extra = ''
             if chosen and p['id'] == h['caretaker_id']:
                 add_trust(p['id'], MONGOL_TRUST_GAIN); extra = f"皇上感念你深明大义，信任 +{MONGOL_TRUST_GAIN}。"
             notify(p['id'], f"{label}册封{title}，远嫁蒙古，此后每 {MONGOL_LETTER_INTERVAL} 天会有家书寄来。{extra}", 'decree')
     else:
-        gazette(f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，册封{title}，留京下嫁。", 'decree')
+        gazette(f"{label}年满{heir_age_years(h)}岁，册封{title}，留京下嫁。", 'decree')
         for p in heir_parents(h):
-            notify(p['id'], f"{label}册封{title}，留京下嫁，天天能回宫请安。你的圣宠流失减半。", 'decree')
-
-
-def choose_marriage_default(h):
-    """没有能拿主意的玩家母亲：够格的（圣眷、抚养人信任）留京，不够格的皇上直接指婚抚蒙古"""
-    caretaker = get_consort(h['caretaker_id'])
-    if caretaker and heir_standing(h) >= MARRY_MIN_FAVOR and caretaker['trust'] >= MARRY_MIN_TRUST:
-        marry_off(h, 'capital', False)
-    else:
-        marry_off(h, 'mongol', False)
+            notify(p['id'], f"{label}册封{title}，留京下嫁，天天能回宫请安。往后往来探望更方便。", 'decree')
 
 
 def heir_come_of_age(h, day):
@@ -6958,19 +6979,15 @@ def heir_come_of_age(h, day):
         for p in heir_parents(h):
             notify(p['id'], f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，皇上封为{title}，出宫开府了。往后每晚有孝敬银子，每 {ERRAND_INTERVAL} 天还会有一件差事等你帮他拿主意（去「子嗣」页）。", 'decree')
         return
-    caretaker = get_consort(h['caretaker_id'])
-    eligible = heir_standing(h) >= MARRY_MIN_FAVOR and caretaker and caretaker['trust'] >= MARRY_MIN_TRUST
-    if caretaker and caretaker['user_id'] and caretaker['status'] != 'dead' and eligible:
-        run("UPDATE heirs SET marriage='choice' WHERE id=?", (h['id'],))
-        notify(caretaker['id'], f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，该指婚了。皇上念你的功劳，许你自己拿主意：留京下嫁，还是抚蒙古？去「子嗣」页选，{MARRY_CHOICE_DAYS} 天内不表态，就按留京下嫁办。", 'decree')
-        gazette(f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，皇上正在为她择婿。", 'news')
-    else:
-        choose_marriage_default(h)
+    run("UPDATE heirs SET marriage='choice' WHERE id=?", (h['id'],))
+    ensure_courtship(get_heir(h['id']))
+    for parent in heir_parents(h):
+        notify(parent['id'], f"{label}年满14岁，可以开始物色夫婿了。去子嗣页打听、相看，16岁起可请旨赐婚。", 'info')
+    gazette(f"{label}年满14岁，宫中开始为她择婿。", 'news')
 
 
 def heir_marriage_deadline_tick(day):
-    for h in q("SELECT * FROM heirs WHERE marriage='choice' AND ?>=adult_day+?", (day, MARRY_CHOICE_DAYS)):
-        marry_off(h, 'capital', False)
+    princess_courtship_tick(day)
 
 
 def heir_filial_tick(day):
@@ -7084,6 +7101,7 @@ def heir_errand_tick(day):
 def heir_family_letter_tick(day):
     """抚蒙古的公主，每 3 天给母亲寄一封家书"""
     for h in q("SELECT * FROM heirs WHERE marriage='mongol' AND marry_day>0 AND ?>marry_day", (day,)):
+        if q('SELECT 1 FROM princess_courtships WHERE heir_id=?', (h['id'],), one=True): continue
         if (day - h['marry_day']) % MONGOL_LETTER_INTERVAL: continue
         label = f"{h['title']}{heir_label(h)}"
         for p in heir_parents(h):
@@ -7102,24 +7120,10 @@ def heir_adult_tick(day):
     heir_family_letter_tick(day)
 
 
-def capital_mother_ids():
-    """有女儿留京下嫁的母亲（生母、养母都算）：圣宠流失减半"""
-    ids = set()
-    for h in q("SELECT mother_id, caretaker_id FROM heirs WHERE marriage='capital'"):
-        ids.update((h['mother_id'], h['caretaker_id']))
-    return ids
-
-
 @app.route('/heirs/marry/<int:hid>', methods=['POST'])
 @login_required
 def heir_marry(hid):
-    c = g.me
-    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
-    kind = request.form.get('kind')
-    if not h or h['caretaker_id'] != c['id'] or h['marriage'] != 'choice' or kind not in ('capital', 'mongol'):
-        flash('这桩婚事轮不到你拿主意。', 'bad'); return redirect(url_for('heirs'))
-    marry_off(h, kind, True)
-    flash('皇上准了。', 'good')
+    flash('请先在择婿中选定具体人选，年满16岁后请旨赐婚。', 'info')
     return redirect(url_for('heirs'))
 
 
@@ -7952,6 +7956,8 @@ def resolve_intrigue(it, bed_id=None):
             victim = f"你宫中搜出了写着皇上生辰八字的巫蛊人偶。百口莫辩，你被打入冷宫。" + \
                      (f"眼线说，是{an}的人动的手。" if tell_name else '')
             gz = f"{tn}宫中搜出巫蛊之物，皇上大怒，废为庶人，打入冷宫。"
+        add_mood(tgt['id'], -MOOD_HARM_LOSS)
+        victim += f'心情 -{MOOD_HARM_LOSS}。'
         if tgt['user_id']: notify(tgt['id'], victim, 'bad')
         if atk['user_id']: notify(atk['id'], f"你{'与' + display_name(partner) + '合谋' if conspired else ''}对{tn}的「{cfg['name']}」成了。", 'good')
         if conspired: notify(partner['id'], f"你与{display_name(atk)}合谋对{tn}的「{cfg['name']}」成了。", 'good')
@@ -8893,7 +8899,6 @@ def _settle_night():
 
 
     # 5. 日常：同步增长两岁、月例、圣宠流失、精力、禁足/冷宫期满、请安
-    capital_mothers = capital_mother_ids()
     zones = None if partial else refresh_care_tiers()
     for c in q("SELECT * FROM consorts WHERE status NOT IN ('xiunv','dead')"):
         c = get_consort(c['id'])
@@ -8901,8 +8906,8 @@ def _settle_night():
             run('UPDATE consorts SET age_months=age_months+? WHERE id=?', (AGE_MONTHS_PER_DAY // 2, c['id']))   # 一天 = 宫中两年：零点涨一岁，中午 12 点再涨一岁（见 age_noon_tick）
             if c['user_id'] and c['status'] != 'dead':
                 if c['mood'] < DEPRESSION_BELOW:      # 一天下来心情太低：郁结，折寿
-                    run('UPDATE consorts SET age_months=age_months+? WHERE id=?', (DEPRESSION_AGE_MONTHS, c['id']))
-                    notify(c['id'], f"这一天里你心情始终郁郁（{c['mood']}，不到 {DEPRESSION_BELOW}），夜里愁肠百结，郁结于心，平白老了 {DEPRESSION_AGE_MONTHS // 12} 岁。明天多出去走走、做点开心的事。", 'bad')
+                    run('UPDATE consorts SET life_loss_months=life_loss_months+? WHERE id=?', (DEPRESSION_LIFE_MONTHS, c['id']))
+                    notify(c['id'], f"这一天里你心情始终郁郁（{c['mood']}，不到 {DEPRESSION_BELOW}），夜里愁肠百结，郁结于心，大寿上限减少了 {DEPRESSION_LIFE_MONTHS // 12} 年。明天多出去走走、做点开心的事。", 'bad')
                 run('UPDATE consorts SET mood=? WHERE id=?', (MOOD_DAY_RESET, c['id']))
             influence_check(c, day)
             c = get_consort(c['id'])
@@ -8923,7 +8928,7 @@ def _settle_night():
                 if income != STIPEND.get(c['rank'],0) and c['user_id']:
                     notify(c['id'],f"今日{FAVOR_CARE[favor_care_tier(c,day)]['name']}待遇，月例与赏银合计 {income} 两。",'good' if favor_care_tier(c,day)=='hot' else 'info')
             if not c['pregnant_since']:
-                decay = math.ceil(c['favor'] * FAVOR_DECAY * (CAPITAL_DECAY_FACTOR if c['id'] in capital_mothers else 1))
+                decay = math.ceil(c['favor'] * FAVOR_DECAY)
                 run("UPDATE consorts SET favor=MAX(0, favor-?) WHERE id=?", (decay, c['id']))
             if c['npc_key'] and c['status'] == 'normal':
                 add_favor(c['id'], random.randint(0, 8), gain_mult=False)
@@ -9654,6 +9659,19 @@ def flush_ill_digest():
     if parts: gazette('昨夜宫中：' + '；'.join(parts) + '。', 'news')
     g.ill_digest = {}
 
+AUTO_TREAT_CONSORTS = {30}   # 怡贵人（用户自己的号）：病了/中毒了自动自掏腰包请太医
+
+def auto_treat(cid):
+    c = get_consort(cid)
+    if cid not in AUTO_TREAT_CONSORTS or c['status'] == 'dead' or c['silver'] < treat_cost(c): return
+    for col, flag in (('poisoned_day', 'poison_treatment'), ('ill_day', 'ill_treatment')):
+        if c[col] and not c[flag]:
+            add_silver(cid, -treat_cost(c))
+            run(f"UPDATE consorts SET {flag}=1 WHERE id=?", (cid,))
+            notify(cid, '已自动请了太医。', 'good')
+            return
+
+
 def fall_ill(cid, day, cause):
     c=get_consort(cid)
     if c['status'] in ('dead','xiunv') or c['ill_day'] or c['poisoned_day']: return
@@ -9667,6 +9685,7 @@ def fall_ill(cid, day, cause):
         guide_tip(cid,'sick','「早请太医，姐妹也能替你垫诊金。」')
     ill_digest('sick', f'{display_name(c)}{cause}')
     night_mark(cid,'ill')
+    auto_treat(cid)
 
 
 def resolve_illness_crises(day):
@@ -9748,13 +9767,14 @@ def illness_roll_tick(now):
 
 
 def old_age_tick(day):
-    """50 岁起每晚可能寿终；55 岁起每满 5 岁提醒一句；嫔以上寿终按信任追封"""
-    for c in q("SELECT * FROM consorts WHERE status!='dead' AND age_months>=?", (OLD_AGE_START,)):
-        years_over = (c['age_months'] - OLD_AGE_START) / 12
-        p = years_over * OLD_AGE_BASE * (1 - min(BLESSING_OLD_AGE_MAX, c['blessing'] / BLESSING_OLD_AGE_DIV))
+    """大限前十年开始随机判定寿终；到大限必寿终，同龄时大限越高风险越低。"""
+    for c in q("SELECT * FROM consorts WHERE status NOT IN ('dead','xiunv')"):
+        limit = lifespan_months(c)
+        years_over = max(0, (c['age_months'] - (limit - 10 * 12)) / 12)
+        p = years_over * OLD_AGE_BASE
         if c['health'] >= 60: p /= 2
         elif c['health'] < 30: p *= 2
-        if random.random() < p:
+        if c['age_months'] >= limit or (p > 0 and random.random() < p):
             if c['rank'] >= 5:
                 if c['trust'] >= 70 and c['rank'] < PLAYER_MAX_RANK:
                     set_rank(c['id'], c['rank'] + 1, reason_day=day)
@@ -10401,6 +10421,7 @@ def poison_player(cid, day):
     notify(cid, f'你中毒了，体质 -20。下一次结算前请太医（{treat_cost(get_consort(cid))} 两）：请了九成能活，不请只有三成五。', 'bad')
     gazette(f'{display_name(get_consort(cid))}突然中毒，性命垂危。')
     night_mark(cid, 'poisoned')
+    auto_treat(cid)
     guide_tip(cid, 'poisoned', '「快请太医！这钱不能省，命才是自己的。」')
 
 
@@ -10450,6 +10471,8 @@ def resolve_drug(it):
         if result=='fizzle':
             gain_intrigue_influence(it, FIZZLE_INFLUENCE_FRACTION)
         if result=='success':
+            add_mood(t['id'], -MOOD_HARM_LOSS)
+            notify(t['id'], f'被人下药，心情 -{MOOD_HARM_LOSS}。', 'bad')
             gain_intrigue_influence(it)
             cooldown = LETHAL_COOLDOWN if it['drug']=='lihun' else 1
             if c['user_id']:
@@ -12336,6 +12359,199 @@ def rankings_boards():
 @login_required
 def rankings():
     return render_template('rankings.html', boards=rankings_boards(), me=g.me, badge_name=badge_name)
+
+
+# ── 公主择婿：14 岁物色，16 岁请旨，固定候选与婚后家事 ──
+SUITOR_KINDS = {'noble': '京中勋贵', 'scholar': '文臣世家', 'general': '武将之家', 'mongol': '蒙古王公'}
+COURTSHIP_COSTS = {'investigate': 30, 'meet': 50, 'ask': 0, 'replace': 100}
+COURTSHIP_EVENTS = {
+    'promotion': '夫婿得了新的差事，夫家境况转好。',
+    'dispute': '夫妻因家中事务起了争执，女儿来信求你劝慰。',
+    'aid': '夫家遇上周转困难，女儿来信询问能否帮衬。',
+    'visit': '女儿惦念宫中，想回来小住几日。',
+}
+
+
+def courtship_manager(h):
+    for cid in dict.fromkeys((h['caretaker_id'], h['mother_id'])):
+        c = get_consort(cid)
+        if c and c['user_id'] and c['status'] not in ('dead', 'cold'): return c
+    return None
+
+
+def new_suitor(h):
+    kind = random.choice(list(SUITOR_KINDS))
+    personality = random.choice(['温和', '持重', '刚直', '傲慢'])
+    virtue = random.randint(25, 90)
+    fact = random.choice(['家中和睦，行事守信', '家中纷争较多', '家中有旧债', '待人宽厚，家风清正'])
+    if '守信' in fact or '清正' in fact: virtue = max(65, virtue)
+    study, riding = random.randint(25, 85), random.randint(25, 85)
+    if kind == 'scholar': study = random.randint(65, 95)
+    if kind in ('general', 'mongol'): riding = random.randint(65, 95)
+    family = {'noble': '京中勋贵之家', 'scholar': '文臣世家', 'general': '武将之家', 'mongol': '蒙古王公之家'}[kind]
+    # 候选专属本公主，不进入其他公主的候选库；编号保证人物姓名不重。
+    result = run('INSERT INTO princess_suitors(heir_id,name,family,kind,age,appearance,study,riding,virtue,personality,fact) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+        (h['id'], '', family, kind, random.randint(max(17, heir_age_years(h) + 1), max(24, heir_age_years(h) + 7)), random.randint(35, 90), study, riding, virtue, personality, fact))
+    sid = result.lastrowid
+    surnames = ['博尔济吉特', '乌梁海', '巴林', '喀喇沁', '翁牛特'] if kind == 'mongol' else ['富察', '佟佳', '马佳', '索绰罗', '纳喇']
+    first, second = '景文承明绍彦秉廷怀思', '宁昭安远衡修礼谦瑞和'
+    serial = sid - 1
+    name = surnames[serial % 5] + first[(serial // 5) % 10] + second[(serial // 50) % 10]
+    extra = serial // 500
+    while extra:
+        name += second[extra % 10]
+        extra //= 10
+    run('UPDATE princess_suitors SET name=? WHERE id=?', (name, sid))
+    return sid
+
+
+def ensure_courtship(h):
+    if h['gender'] != '公主' or h['marriage'] != 'choice' or heir_age_years(h) < 14: return
+    run('INSERT OR IGNORE INTO princess_courtships(heir_id) VALUES(?)', (h['id'],))
+    count = q('SELECT COUNT(*) n FROM princess_suitors WHERE heir_id=? AND active=1', (h['id'],), one=True)['n']
+    for _ in range(max(0, 3 - count)): new_suitor(h)
+
+
+def suitor_attitude(h, suitor):
+    score = suitor['virtue'] * 0.45
+    if h['personality'] == 'clever' or h['study'] >= h['riding']: score += suitor['study'] * 0.35
+    else: score += suitor['riding'] * 0.35
+    score += suitor['appearance'] * 0.2
+    if suitor['personality'] == '傲慢': score -= 20
+    if h['personality'] == 'timid' and suitor['personality'] == '温和': score += 10
+    return '中意' if score >= 65 else '尚可' if score >= 45 else '不愿'
+
+
+def courtship_view(h, c):
+    row = q('SELECT * FROM princess_courtships WHERE heir_id=?', (h['id'],), one=True)
+    if not row: return None
+    manager = courtship_manager(h)
+    return dict(row=dict(row), candidates=[dict(r) for r in q('SELECT * FROM princess_suitors WHERE heir_id=? AND active=1 ORDER BY id', (h['id'],))],
+                manager=bool(manager and manager['id'] == c['id']),
+                used=daily_count(0, f"courtship:{h['id']}"), age=heir_age_years(h),
+                event_text=COURTSHIP_EVENTS.get(row['event'], ''), married=h['marriage'] in ('capital', 'mongol'))
+
+
+def complete_princess_marriage(h, dowry=0, chosen=False):
+    row = q('SELECT * FROM princess_courtships WHERE heir_id=?', (h['id'],), one=True)
+    s = q('SELECT * FROM princess_suitors WHERE id=? AND heir_id=?', (row['selected_id'], h['id']), one=True) if row else None
+    if not s: return False
+    harmony = {'中意': 75, '尚可': 55, '不愿': 30}.get(s['attitude'] or suitor_attitude(h, s), 50)
+    run('UPDATE princess_courtships SET harmony=?,family_fortune=?,dowry=?,last_event_day=? WHERE heir_id=?',
+        (harmony, 50 + (15 if dowry >= 300 else 0), dowry, cur_day(), h['id']))
+    if harmony == 30:
+        run('UPDATE heirs SET mother_affinity=MAX(0,mother_affinity-10),caretaker_affinity=MAX(0,caretaker_affinity-10) WHERE id=?', (h['id'],))
+    marry_off(h, 'mongol' if s['kind'] == 'mongol' else 'capital', chosen)
+    gazette(f"{heir_label(h)}与{s['name']}成婚，夫家为{s['family']}。", 'decree')
+    return True
+
+
+def princess_courtship_tick(day):
+    for h in q("SELECT * FROM heirs WHERE gender='公主' AND marriage='choice'"):
+        ensure_courtship(h)
+        if heir_age_years(h, day) < 16 or courtship_manager(h): continue
+        row = q('SELECT * FROM princess_courtships WHERE heir_id=?', (h['id'],), one=True)
+        if not row: continue
+        if not row['selected_id']:
+            candidates = q('SELECT * FROM princess_suitors WHERE heir_id=? AND active=1', (h['id'],))
+            best = max(candidates, key=lambda s: s['virtue'] + s['study'])
+            run('UPDATE princess_courtships SET selected_id=?,betrothed_day=? WHERE heir_id=?', (best['id'], day, h['id']))
+        complete_princess_marriage(h)
+    for row in q("SELECT pc.*,h.marriage FROM princess_courtships pc JOIN heirs h ON h.id=pc.heir_id WHERE h.marriage IN ('capital','mongol')"):
+        if row['event'] or day < row['last_event_day'] + 3: continue
+        h = get_heir(row['heir_id'])
+        s = q('SELECT * FROM princess_suitors WHERE id=?', (row['selected_id'],), one=True)
+        kinds = ['promotion', 'visit', 'dispute', 'aid']
+        weights = [3, 3 if h['marriage'] == 'capital' else 1, 1 + (row['harmony'] < 50) * 3, 1 + ('旧债' in s['fact']) * 3]
+        event = random.choices(kinds, weights=weights)[0]
+        run('UPDATE princess_courtships SET event=?,last_event_day=? WHERE heir_id=?', (event, day, h['id']))
+        for parent in heir_parents(h):
+            run('INSERT INTO letters(from_id,to_id,day,body,sender_label,created_ts) VALUES(0,?,?,?,?,?)',
+                (parent['id'], day, COURTSHIP_EVENTS[event], heir_label(h), now_ts()))
+            notify(parent['id'], f"{heir_label(h)}来信：{COURTSHIP_EVENTS[event]}去子嗣页处理。", 'info')
+        if not courtship_manager(h):
+            run("UPDATE princess_courtships SET event='',harmony=MAX(0,harmony-?),family_fortune=MAX(0,family_fortune-?) WHERE heir_id=?",
+                (5 if event == 'dispute' else 0, 5 if event == 'aid' else 0, h['id']))
+
+
+@app.route('/heirs/courtship/<int:hid>', methods=['POST'])
+@login_required
+@atomic
+def princess_courtship(hid):
+    c = get_consort(g.me['id'])
+    h = get_heir(hid)
+    if not h or h['gender'] != '公主' or not maternal_kin(c, h) or c['status'] != 'normal':
+        flash('你现在无法参与这桩婚事。', 'bad'); return redirect(url_for('heirs'))
+    ensure_courtship(h)
+    row = q('SELECT * FROM princess_courtships WHERE heir_id=?', (hid,), one=True)
+    if not row:
+        flash('年满14岁后才能开始择婿。', 'bad'); return redirect(url_for('heirs'))
+    action = request.form.get('action', '')
+    manager = courtship_manager(h)
+    main = bool(manager and manager['id'] == c['id'])
+    try: sid = int(request.form.get('suitor_id', 0))
+    except ValueError: sid = 0
+    suitor = q('SELECT * FROM princess_suitors WHERE id=? AND heir_id=? AND active=1', (sid, hid), one=True)
+    error = None
+    cost = COURTSHIP_COSTS.get(action, 0)
+    if h['marriage'] in ('capital', 'mongol'):
+        if not main or not row['event'] or action not in ('comfort', 'help', 'visit', 'dismiss'):
+            error = '这件婚后家事现在不能这样处理。'
+        elif action == 'help' and row['event'] != 'aid': error = '这次家书没有求助银钱。'
+        elif action == 'visit' and (row['event'] != 'visit' or h['marriage'] != 'capital'): error = '远嫁公主路途遥远，可先写信劝慰。'
+        cost = 100 if action == 'help' else 0
+    elif h['marriage'] != 'choice': error = '当前不在择婿阶段。'
+    elif row['betrothed_day']: error = '已经定亲，请筹备成婚。' if action != 'wedding' else None
+    elif action not in COURTSHIP_COSTS and action != 'petition': error = '请选择一个择婿行动。'
+    elif action in ('meet', 'replace', 'petition') and not main: error = '相看、换人和请旨由主事母亲安排。'
+    if not error and action in ('investigate', 'meet', 'replace', 'petition') and not suitor: error = '请选择本公主的一位候选。'
+    if not error and action == 'investigate' and suitor['investigated']: error = '这位候选的家风已经打听清楚。'
+    if not error and action == 'meet' and suitor['met']: error = '这位候选已经相看过，结果不会反复刷新。'
+    if not error and action == 'replace' and cur_day() < row['last_replace_day'] + 2: error = '另觅人选每两天最多一次。'
+    if not error and action == 'petition':
+        if heir_age_years(h) < 16: error = '16岁起才能请旨赐婚。'
+        elif not suitor['met']: error = '先安排一次相看，再请旨。'
+    if not error and action == 'wedding':
+        if not main or not row['betrothed_day'] or cur_day() <= row['betrothed_day']: error = '定亲后的下一天起，由主事母亲筹备成婚。'
+        cost = 300 if request.form.get('dowry') == 'rich' else 100
+    if not error and (c['energy'] < 1 or c['silver'] < cost): error = f'需要1精力和{cost}两银子。'
+    if not error and daily_count(0, f'courtship:{hid}'): error = '这位公主今天已经安排过一次择婿或家事行动。'
+    if error:
+        flash(error, 'bad'); return redirect(url_for('heirs'))
+    run('UPDATE consorts SET energy=energy-1,silver=silver-? WHERE id=?', (cost, c['id']))
+    daily_inc(0, f'courtship:{hid}')
+    text = ''
+    if action == 'ask':
+        affinity = h['caretaker_affinity'] if c['id'] == h['caretaker_id'] else h['mother_affinity']
+        text = '女儿愿意说实话：她更看重' + ('才学和品行。' if h['study'] >= h['riding'] else '胆识和品行。') if affinity >= 40 else '女儿有些拘谨，暂时不愿细说心事。'
+    elif action == 'investigate':
+        run('UPDATE princess_suitors SET investigated=1 WHERE id=?', (sid,)); text = suitor['fact'] + f"，品行{suitor['virtue']}。"
+    elif action == 'meet':
+        attitude = suitor_attitude(h, suitor)
+        run('UPDATE princess_suitors SET met=1,attitude=? WHERE id=?', (attitude, sid)); text = f'相看之后，女儿的态度是「{attitude}」。'
+    elif action == 'replace':
+        run('UPDATE princess_suitors SET active=0 WHERE id=?', (sid,)); new_suitor(h)
+        run('UPDATE princess_courtships SET last_replace_day=? WHERE heir_id=?', (cur_day(), hid)); text = '已另觅一位人选，其他候选与打听结果保留。'
+    elif action == 'petition':
+        eligible = heir_standing(h) >= MARRY_MIN_FAVOR and c['trust'] >= MARRY_MIN_TRUST
+        chosen = suitor
+        if not eligible:
+            candidates = q('SELECT * FROM princess_suitors WHERE heir_id=? AND active=1', (hid,))
+            chosen = max(candidates, key=lambda s: s['virtue'] + s['study'])
+        run('UPDATE princess_courtships SET selected_id=?,betrothed_day=?,self_chosen=? WHERE heir_id=?', (chosen['id'], cur_day(), int(eligible), hid))
+        text = f"皇上准了，定亲对象为{chosen['name']}。" if eligible else f"公主圣眷须{MARRY_MIN_FAVOR}、你的信任须{MARRY_MIN_TRUST}才能自主推荐；皇上按才德裁定为{chosen['name']}。"
+        text += '下一天起可筹备成婚。'
+        for parent in heir_parents(h): notify(parent['id'], f'{heir_label(h)}：{text}', 'decree')
+    elif action == 'wedding':
+        complete_princess_marriage(h, cost, chosen=bool(row['self_chosen'])); text = '嫁妆备妥，婚事办成了。'
+    else:
+        harmony = 8 if action == 'comfort' else 5 if action == 'visit' else 0
+        fortune = 10 if action == 'help' else 5 if row['event'] == 'promotion' else -5 if action == 'dismiss' and row['event'] == 'aid' else 0
+        if action == 'dismiss' and row['event'] == 'dispute': harmony = -5
+        run("UPDATE princess_courtships SET event='',harmony=MAX(0,MIN(100,harmony+?)),family_fortune=MAX(0,MIN(100,family_fortune+?)) WHERE heir_id=?", (harmony, fortune, hid))
+        text = '已回信处理这次家事。'
+    flash(text, 'good')
+    return redirect(url_for('heirs'))
 
 
 if __name__ == '__main__':

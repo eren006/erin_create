@@ -114,6 +114,7 @@
     <div class="muted">{{ full_name(c) }}　{{ '东宫旧人' if c.entry_origin == 'east_palace' else '新选入宫' }}　{{ FAMILIES[c.family].name }} · {{ family_background(c) }}　{{ PERSONALITIES[c.personality].name }}{% if c.lineage %}　{{ c.lineage }}{% endif %}</div>
     <dl>
       <dt>年龄</dt><dd>{{ age_text(c.age_months) }}　<span class="muted">宫中一天是 {{ AGE_YEARS_PER_DAY }} 年</span></dd>
+      <dt>大寿上限</dt><dd>{{ lifespan_months(c) // 12 }} 岁　<span class="muted">初始 60 岁，折寿与延寿调整此上限</span></dd>
       <dt>圣宠</dt><dd>{{ c.favor }}　<span class="muted">{{ favor_word(c.favor) }}</span>
         {% if promo %}<div class="bar"><i style="width:{{ [100, (c.favor * 100 / promo.favor)|int]|min }}%"></i></div>
         <div class="muted">晋{{ promo.rank }}：圣宠 {{ promo.favor }}，德行 {{ promo.virtue }}，势力 {{ c.influence }}/{{ promo.influence }}
@@ -121,7 +122,7 @@
       <dt>信任</dt><dd>{{ c.trust }}　<span class="muted">皇上对你{{ trust_word(c.trust) }}。求情、告发成不成，被人陷害时皇上信不信，都看这个</span></dd>
       <dt>翻牌</dt><dd>{{ bed_chance_text(c) }}</dd>
       <dt>精力</dt><dd><span class="pips" aria-label="精力 {{ c.energy }}">{{ '●' * c.energy }}{{ '○' * (ENERGY_MAX - c.energy if c.energy < ENERGY_MAX else 0) }}</span></dd>
-      <dt>心情</dt><dd>{{ c.mood }}　<span class="muted">每天 0 点降回 {{ MOOD_DAY_RESET }}；一天结束时低于 {{ DEPRESSION_BELOW }} 会郁结折寿。逛御花园、串门、梳妆、礼佛、雅趣、侍寝都能涨心情</span>{% if c.mood < DEPRESSION_BELOW %}　<span style="color:var(--bad)">今天还差 {{ DEPRESSION_BELOW - c.mood }} 点</span>{% endif %}</dd>
+      <dt>心情</dt><dd>{{ c.mood }}　<span class="muted">每天 0 点降回 {{ MOOD_DAY_RESET }}；一天结束时低于 {{ DEPRESSION_BELOW }} 会郁结，大寿上限 −1 年。逛御花园 +5，雅趣 +2，侍寝、被召见 +3；被害成功 −5</span>{% if c.mood < DEPRESSION_BELOW %}　<span style="color:var(--bad)">今天还差 {{ DEPRESSION_BELOW - c.mood }} 点</span>{% endif %}</dd>
       <dt>容貌</dt><dd>{{ c.appearance }}　<span class="muted">才艺</span> {{ c.talent }}　<span class="muted">心计</span> {{ c.scheme }}　<span class="muted">德行</span> {{ c.virtue }}</dd>
       <dt>体质</dt><dd>{{ c.health }}{% if sick %}　<span style="color:var(--bad)">卧病在床</span>{% endif %}</dd>
       {% for l in tryst_leaks %}<dt>风声</dt><dd><span style="color:var(--bad)">{{ l.knower }}瞧见了你的事，还剩 {{ l.left }} 天她可以告发你。</span>　封口进度 {{ l.progress }}/{{ TRYST_HUSH_GOAL }}　<span class="muted">攒满她就告发不了你，你反而势力 +{{ TRYST_HUSH_INFLUENCE }}</span>

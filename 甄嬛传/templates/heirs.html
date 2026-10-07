@@ -53,9 +53,33 @@
         <button name="opt" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'raise:' ~ h.id) or c.silver < r.get('silver', 0) or (r.get('looks') and h.appearance >= 100) }}{% if r.get('looks') %} title="容貌 +{{ r.looks }}，抚养人容貌 ≥{{ HEIR_GROOM_BEAUTY_LINE }} 时 +{{ r.looks_beauty }}"{% endif %}>{{ r.name }}{% if r.get('silver') %}（{{ r.silver }} 两）{% endif %}</button>
         {% endfor %}</form>{% endif %}
       {% if a.can_ban %}<form method="post" action="{{ url_for('heir_ban', hid=h.id) }}" class="row" style="display:inline"><button class="plain">{{ '允许探视' if h.visit_banned else '不许探视' }}</button></form>{% endif %}
-      {% if a.marry %}<form method="post" action="{{ url_for('heir_marry', hid=h.id) }}" class="row">
-        <span>指婚：</span><button class="plain" name="kind" value="capital" title="留京下嫁：天天回宫请安，你的圣宠流失减半">留京下嫁</button>
-        <button class="plain" name="kind" value="mongol" title="抚蒙古：封号高一等，信任 +10，每 {{ MONGOL_LETTER_INTERVAL }} 天收到家书">抚蒙古</button></form>{% endif %}
+      {% if a.courtship %}{% set cs = a.courtship %}
+      <details class="sheet"><summary>公主婚事 · {{ '已成婚' if cs.married else '已定亲' if cs.row.betrothed_day else '物色夫婿' }}</summary>
+      {% if not cs.married %}<p class="muted">14岁起物色，16岁起请旨。每位公主每日一次行动，每次1精力；定亲后下一天可成婚。未达自主推荐门槛（公主圣眷35、主事母亲信任30），皇上按候选才德裁定。不限择婿天数。留京方便探望；抚蒙古封号高一等，自主推荐时主事母亲信任 +10，每 {{ MONGOL_LETTER_INTERVAL }} 天收到家书。</p>{% endif %}
+      {% if cs.row.betrothed_day %}{% for su in cs.candidates if su.id == cs.row.selected_id %}<p>定亲人选：<b>{{ su.name }}</b> · {{ su.family }}</p>{% endfor %}{% endif %}
+      {% if cs.married %}<p>夫妻和睦 {{ cs.row.harmony }}/100 · 夫家境况 {{ cs.row.family_fortune }}/100 · 嫁妆 {{ cs.row.dowry }} 两</p>
+        {% if cs.event_text %}<p>{{ cs.event_text }}</p>{% if cs.manager %}
+        <form method="post" action="{{ url_for('princess_courtship',hid=h.id) }}" class="row">
+          <button name="action" value="comfort" {{ 'disabled' if cs.used }}>写信劝慰</button>
+          {% if cs.row.event == 'aid' %}<button name="action" value="help" {{ 'disabled' if cs.used }}>援助（100两）</button>{% endif %}
+          {% if cs.row.event == 'visit' and h.marriage == 'capital' %}<button name="action" value="visit" {{ 'disabled' if cs.used }}>接回小住</button>{% endif %}
+          <button name="action" value="dismiss" {{ 'disabled' if cs.used }}>回信让她自行处理</button>
+        </form>{% endif %}{% else %}<p class="muted">婚后每三天可能收到新的家事。</p>{% endif %}
+      {% elif cs.row.betrothed_day %}{% if cs.manager %}<form method="post" action="{{ url_for('princess_courtship',hid=h.id) }}" class="row">
+        <input type="hidden" name="action" value="wedding"><button name="dowry" value="normal" {{ 'disabled' if cs.used }}>普通嫁妆成婚（100两）</button><button name="dowry" value="rich" {{ 'disabled' if cs.used }}>丰厚嫁妆成婚（300两）</button></form>{% endif %}
+      {% else %}
+        <form method="post" action="{{ url_for('princess_courtship',hid=h.id) }}"><button name="action" value="ask" {{ 'disabled' if cs.used }}>问女儿心意</button></form>
+        {% for su in cs.candidates %}<div class="sheet"><b>{{ su.name }}</b> · {{ su.family }} · {{ su.age }} 岁<br>
+          容貌 {{ su.appearance }} · 学识 {{ su.study }} · 骑射 {{ su.riding }} · 性格 {{ su.personality }}<br>
+          {% if su.investigated %}家风：{{ su.fact }} · 品行 {{ su.virtue }}{% else %}<span class="muted">品行与家风尚未打听</span>{% endif %}<br>
+          {% if su.met %}女儿态度：{{ su.attitude }}{% endif %}
+          <form method="post" action="{{ url_for('princess_courtship',hid=h.id) }}" class="row"><input type="hidden" name="suitor_id" value="{{ su.id }}">
+          <button name="action" value="investigate" {{ 'disabled' if cs.used or su.investigated }}>打听（30两）</button>
+          {% if cs.manager %}<button name="action" value="meet" {{ 'disabled' if cs.used or su.met }}>相看（50两）</button><button name="action" value="replace" {{ 'disabled' if cs.used }}>另觅人选（100两）</button><button name="action" value="petition" {{ 'disabled' if cs.used or cs.age < 16 or not su.met }}>选定并请旨</button>{% endif %}
+          </form></div>{% endfor %}
+      {% endif %}
+      {% if cs.used %}<p class="muted">今天已安排过一次行动。</p>{% endif %}
+      </details>{% endif %}
       {% if a.errand %}<div>差事：<b>{{ a.errand.name }}</b><br><span class="muted">{{ a.errand.line }}。{{ '已定：' ~ ERRAND_APPROACHES[a.errand.approach].name if a.errand.approach else '还没定办法，不选就稳妥办。' }}</span></div>
         <form method="post" action="{{ url_for('heir_errand', hid=h.id) }}" class="row">
           {% for k, ap in ERRAND_APPROACHES.items() if k != 'shift' or a.errand.can_shift %}<button class="plain" name="approach" value="{{ k }}">{{ ap.name }}</button>{% endfor %}</form>{% endif %}

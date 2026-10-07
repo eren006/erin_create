@@ -31,10 +31,27 @@ class IntrigueRealtimeTests(unittest.TestCase):
         self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%流言%'", (self.tgt,), one=True), '被害的人立刻收到通知')
         self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '流言四起：%'", one=True))
 
+    def test_successful_harm_lowers_mood_once_and_clamps_at_zero(self):
+        for initial in (50, 5):
+            with self.subTest(initial=initial):
+                game.run("DELETE FROM daily_counters")
+                game.run("DELETE FROM intrigues")
+                game.run("UPDATE consorts SET mood=? WHERE id=?", (initial, self.tgt))
+                with patch.object(game.random, 'random', return_value=0.0):
+                    self.submit()
+                it = self.row()
+                self.assertEqual(it['result'], 'success')
+                expected = max(0, initial - game.MOOD_HARM_LOSS)
+                self.assertEqual(game.get_consort(self.tgt)['mood'], expected)
+                game.resolve_intrigue(it)
+                self.assertEqual(game.get_consort(self.tgt)['mood'], expected)
+
     def test_failure_and_caught_show_up_at_once_too(self):
+        before = game.get_consort(self.tgt)['mood']
         with patch.object(game.random, 'random', side_effect=[0.99, 0.0] + [0.5] * 30):
             page = self.submit().get_data(as_text=True)
         self.assertEqual(self.row()['result'], 'caught')
+        self.assertEqual(game.get_consort(self.tgt)['mood'], before)
         self.assertIn('被当场拿住', page)
         self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%败露%'", (self.atk,), one=True))
 
