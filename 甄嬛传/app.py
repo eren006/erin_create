@@ -272,6 +272,7 @@ FERTILE_BEFORE_AGE = 45 # 四十五岁起不再新怀孕
 LETHAL_COOLDOWN = 2     # 致命药成功后账号冷却2天
 CASE_JOIN_WINDOW, CASE_JOIN_MAX = 3, 1   # 一个人 3 天内最多被拉去陪查 1 次（真凶不算）
 CASE_NEWCOMER_SHIELD = 2      # 入宫不满 2 天的人不被拉去陪查（2026-10-06 从 5 天压到 2）
+BRIBE_BASE, BRIBE_SCHEME_RATIO = 30, 0.30   # 每次打点的进度 = 30 + 心计×0.3（2026-10-08 翻倍，原 15 + 心计×0.15）
 BRIBE_NEWCOMER_SHIELD = 2     # 入宫不满 2 天的人，宫人不能被打点（2026-10-06 从 5 天压到 2）
 NEWCOMER_LETHAL_SHIELD = 3   # 入宫前 3 天不能被毒害
 RESCUE_PROTECT_DAYS = 2      # 中毒获救后这么多天不能再被毒害（2026-09-28 从 3 压到 2）
@@ -10589,6 +10590,8 @@ def poison_player(cid, day):
     guide_tip(cid, 'poisoned', '「快请太医！这钱不能省，命才是自己的。」')
 
 
+CASE_SUSPECTS_MIN, CASE_SUSPECTS_MAX = 3, 5
+
 def open_drug_case(it, punished=0, force=False):
     if it['item_used']=='wuming' and not force:return None
     old = q('SELECT id FROM cases WHERE intrigue_id=?', (it['id'],), one=True)
@@ -10609,12 +10612,13 @@ def open_drug_case(it, punished=0, force=False):
         r = relation(c['id'], victim['id'])
         return r['affinity'] if r else 0
     candidates = sorted(candidates, key=lambda c: (affinity(c), abs(c['favor'] - victim['favor'])))
+    suspect_cap = random.randint(CASE_SUSPECTS_MIN, CASE_SUSPECTS_MAX)      # 每桩案子 3~5 个嫌疑人（含真凶）
     for c in candidates:
+        if q('SELECT COUNT(*) FROM case_suspects WHERE case_id=?', (case_id,), one=True)[0] >= suspect_cap: break
         active = q("SELECT COUNT(*) FROM case_suspects s JOIN cases c ON c.id=s.case_id WHERE s.consort_id=? AND c.status='open'", (c['id'],), one=True)[0]
         recent = q('SELECT COUNT(*) FROM case_suspects s JOIN cases c ON c.id=s.case_id WHERE s.consort_id=? AND c.culprit_id!=? AND c.day>?', (c['id'], c['id'], day-CASE_JOIN_WINDOW), one=True)[0]   # 陪查：3 天内最多 1 次（2026-10-06 从 7 天 2 次压）
         if active >= 2 or recent >= CASE_JOIN_MAX: continue
         run('INSERT INTO case_suspects(case_id,consort_id,suspicion) VALUES(?,?,?)', (case_id, c['id'], min(40, 10+random.randint(0,20)+(10 if affinity(c)<0 else 0))))
-        if q('SELECT COUNT(*) FROM case_suspects WHERE case_id=?', (case_id,), one=True)[0] >= 4: break
     suspects = q('SELECT consort_id FROM case_suspects WHERE case_id=?', (case_id,))
     names = '、'.join(display_name(get_consort(s['consort_id'])) for s in suspects)
     gazette(f'{display_name(victim)}出了事，皇上命慎刑司彻查。待查：{names}。', day=day)
@@ -10856,7 +10860,7 @@ def resolve_drug_cases(day):
                 elif case['drug']=='hanshui':
                     if c['rank']>1: demote_rank(convicted)
                     confine(convicted,3)
-                else: confine(convicted,2); cut_favor(convicted,FAVOR_LOSS['convicted'])
+                else: cut_favor(convicted,FAVOR_LOSS['convicted'])      # 2026-10-08 起不再禁足
                 add_trust(convicted,-15)
             gazette(f"慎刑司定案：{display_name(c)}获罪。")
             notify(convicted,'慎刑司将你定罪，信任 -15，并按案情受罚。','bad')
@@ -10961,7 +10965,7 @@ def agent_action():
         elif not free_errand_maids(c): err='没有空闲宫人去办差。'
         else:
             take_errand(c); add_silver(c['id'],-30); daily_inc(c['id'],f'bribe:{mid}')
-            gain=int((15+c['scheme']*0.15)*{'suizui':1.5,'tancai':1.5,'zhonghou':0.5,'zuijin':0.5}.get(m['trait'],1))
+            gain=int((BRIBE_BASE+c['scheme']*BRIBE_SCHEME_RATIO)*{'suizui':1.5,'tancai':1.5,'zhonghou':0.5,'zuijin':0.5}.get(m['trait'],1))
             run('INSERT INTO bribes(briber_id,maid_id,progress,last_day) VALUES(?,?,?,?) ON CONFLICT(briber_id,maid_id) DO UPDATE SET progress=progress+excluded.progress,last_day=excluded.last_day',(c['id'],mid,gain,day))
             run('UPDATE bribes SET turned=(progress>=?) WHERE briber_id=? AND maid_id=?',(m['loyalty'],c['id'],mid))
             if has_maid_trait(owner['id'],'jiling') and random.random()<0.4:
