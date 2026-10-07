@@ -107,7 +107,7 @@ RANK_FOUR = 7
 FOUR_CONSORT_TITLES = ['淑', '德', '贤', '惠']      # 四妃的名号：叫「封号+名号+妃」，如容德妃；这四个字不能当普通封号
 PROMOTE_FAVOR  = {2: 30, 3: 65, 4: 110, 5: 180, 6: 280, 7: 350, 8: 420, 9: 600, 10: 850}   # 晋到该位分所需圣宠
 PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 55, 8: 60, 9: 70, 10: 75}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
-RANK_SLOTS     = {4: 8, 5: 6, 6: 4, 7: 4, 8: 2, 9: 1, 10: 1}                     # 贵人以上有名额，含 NPC
+RANK_SLOTS     = {4: 8, 5: 4, 6: 4, 7: 4, 8: 2, 9: 1, 10: 1}                     # 贵人以上有名额，含 NPC
 STIPEND = {1: 15, 2: 30, 3: 45, 4: 75, 5: 200, 6: 300, 7: 375, 8: 450, 9: 650, 10: 1000}  # 每日月例银（2026-10-07 起：嫔以下 ×3，嫔以上 ×5；原来 5/10/15/25/40/60/90/130/200）
 MOTHER_BY_SON_INFLUENCE = 6     # 母凭子贵已封顶（嫔以上）时，改为奖励的势力
 MOTHER_BY_SON_MAX_RANK = 5   # 母凭子贵最多晋到嫔位（rank 5），再往上要靠自己的圣宠、德行和名额
@@ -477,13 +477,13 @@ ITEMS = {
 # eat：是吃进去的（试毒宫人尝得出来）；days：药效持续几晚（含当晚）
 
 DRUGS = {
- 'yanzhi':dict(name='胭脂霰',rank=2,price=80,case='now',eat=False,days=1,hours=24,desc='容貌暂降5、24小时内不能侍寝；药效结束恢复被扣容貌'),
+ 'yanzhi':dict(name='胭脂霰',rank=2,price=80,case='now',eat=False,days=1,hours=12,desc='容貌暂降5、12小时内不能侍寝；药效结束恢复被扣容貌'),
  'jingmeng':dict(name='惊梦香',rank=2,price=100,case='bed',eat=False,days=1,hours=24,desc='最多持续24小时；下一次侍寝不涨圣宠、圣宠 -18、信任-3，触发一次即失效'),
- 'yachan':dict(name='哑蝉汤',rank=3,price=120,case='now',eat=True,days=1,hours=24,desc='才艺暂降5，24小时内召见与侍寝只能选体谅；药效结束恢复被扣才艺'),
+ 'yachan':dict(name='哑蝉汤',rank=3,price=120,case='now',eat=True,days=1,hours=12,desc='才艺暂降5，12小时内召见与侍寝只能选体谅；药效结束恢复被扣才艺'),
  'hanshui':dict(name='寒水散',rank=3,price=200,case='now',eat=True,days=2,hours=48,desc='体质-10、阻孕48小时；有孕时50%概率小产，安胎药可挡一次'),
  'qingsi':dict(name='青丝引',rank=4,price=250,case='diag',eat=True,days=3,hours=0,desc='慢毒：第一次发作体质-10，之后每次日结算体质-4，直到解毒；诊脉可解毒；体质耗尽就转成中毒，生死各凭天命'),
  'chunxin':dict(name='春信丹',rank=4,price=300,case='due',eat=True,days=0,hours=24,desc='假孕24小时后揭穿，不会生出孩子；信任不足50时禁足半天、信任-5'),
- 'lihun':dict(name='离魂草',rank=5,price=500,case='now',eat=True,days=0,hours=0,desc='致死毒：下次结算判断生死，需及时请太医；存活率受得宠待遇、治疗及福报影响，成功后账号冷却2天'),
+ 'lihun':dict(name='离魂草',rank=5,price=444,case='now',eat=True,days=0,hours=0,desc='致死毒：下次结算判断生死，需及时请太医；离魂草毒性猛烈，治疗后基础存活率25%～45%，不治疗5%～15%，待遇与福报影响存活率'),
  'wuming':dict(name='无名',rank=6,price=800,case='none',eat=False,days=0,hours=0,desc='可配其他药（离魂草除外），24小时后线索浮现，仍可调查；成功后账号冷却1天'),
 }
 DRUG_ENERGY = 1
@@ -1527,15 +1527,15 @@ def migrate_pregnancy_clocks(db):
 
 
 def migrate_drug_cooldowns(db):
-    if db.execute('SELECT drug_rules_version FROM game_state WHERE id=1').fetchone()[0]: return
+    if db.execute('SELECT drug_rules_version FROM game_state WHERE id=1').fetchone()[0] >= 2: return
     db.execute('UPDATE users SET drug_ready_day=0,lethal_ready_day=0,nameless_ready_day=0')
     for uid, drug, used, day in db.execute("SELECT COALESCE(c.user_id,c.archived_user_id),i.drug,i.item_used,i.day FROM intrigues i JOIN consorts c ON c.id=i.attacker_id WHERE i.method='drug' AND i.status='done' AND i.result='success'").fetchall():
         if not uid: continue
-        ready=day+(2 if drug=='lihun' else 1)
+        if drug == 'lihun': continue
+        ready=day+1
         db.execute('UPDATE users SET drug_ready_day=MAX(drug_ready_day,?) WHERE id=?',(ready,uid))
-        if drug=='lihun':db.execute('UPDATE users SET lethal_ready_day=MAX(lethal_ready_day,?) WHERE id=?',(ready,uid))
         if used=='wuming':db.execute('UPDATE users SET nameless_ready_day=MAX(nameless_ready_day,?) WHERE id=?',(day+1,uid))
-    db.execute('UPDATE game_state SET drug_rules_version=1 WHERE id=1')
+    db.execute('UPDATE game_state SET drug_rules_version=2 WHERE id=1')
 
 
 def migrate_yinzhen_price(db):
@@ -1573,6 +1573,12 @@ def migrate_drug_balance(db):
         stat,delta=({'yanzhi':('appearance',10),'yachan':('talent',8)}.get(drug,('',0)))
         db.execute('UPDATE afflictions SET expires_ts=?,restore_stat=?,restore_delta=?,ticks=?,until_day=0 WHERE id=?',(onset+hours*3600 if hours else 0,stat,delta,min(3,max(0,day-start)) if drug=='qingsi' else 0,aid))
     db.execute('UPDATE game_state SET drug_balance_version=1')
+
+
+def migrate_drug_timing(db):
+    if db.execute('SELECT drug_timing_version FROM game_state WHERE id=1').fetchone()[0]: return
+    db.execute("UPDATE afflictions SET expires_ts=MAX(1,expires_ts-43200) WHERE drug IN ('yanzhi','yachan') AND expires_ts>0")
+    db.execute('UPDATE game_state SET drug_timing_version=1 WHERE id=1')
 
 
 def init_db():
@@ -1698,7 +1704,7 @@ def init_db():
                     'sender_label': "TEXT NOT NULL DEFAULT ''"},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
-        'game_state': {'last_mood_key': "TEXT NOT NULL DEFAULT ''", 'last_night_event_key': "TEXT NOT NULL DEFAULT ''", 'last_audience_key': "TEXT NOT NULL DEFAULT ''", 'last_remit_key': "TEXT NOT NULL DEFAULT ''", 'last_epidemic_key': "TEXT NOT NULL DEFAULT ''", 'last_illness_key': "TEXT NOT NULL DEFAULT ''", 'last_repair_key': "TEXT NOT NULL DEFAULT ''", 'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
+        'game_state': {'last_mood_key': "TEXT NOT NULL DEFAULT ''", 'last_night_event_key': "TEXT NOT NULL DEFAULT ''", 'last_audience_key': "TEXT NOT NULL DEFAULT ''", 'last_remit_key': "TEXT NOT NULL DEFAULT ''", 'last_epidemic_key': "TEXT NOT NULL DEFAULT ''", 'last_illness_key': "TEXT NOT NULL DEFAULT ''", 'last_repair_key': "TEXT NOT NULL DEFAULT ''", 'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_timing_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
                        'reign_no': 'INTEGER NOT NULL DEFAULT 1',
                        'reign_start_day': 'INTEGER NOT NULL DEFAULT 1',
                        'emperor_start_age': 'INTEGER NOT NULL DEFAULT 20',
@@ -1761,6 +1767,7 @@ def init_db():
     migrate_pregnancy_clocks(db)
     migrate_drug_cooldowns(db)
     migrate_drug_balance(db)
+    migrate_drug_timing(db)
     migrate_new_arts_notice(db)
     migrate_yinzhen_price(db)
     migrate_rank_scale(db)
@@ -5172,7 +5179,7 @@ MAID_BACKSTORIES = [
 ]
 MAID_WAGE = 1              # 每个宫人每晚的月钱
 MAID_REROLL_COST = 10      # 每天第二次起换一批候选
-MAID_REWARD_COST = 20
+MAID_REWARD_COST = 20  # 每位在宫宫人的赏赐费用
 MAID_BURY_COST = 20
 MAID_EVENT_CHANCE = 0.3    # 每天第一次进本宫时，宫人来找你的概率
 MAID_NEW_SHIELD = 3        # 刚挑的宫人 3 天内不会被发落
@@ -5737,7 +5744,7 @@ def maids_page():
                            errands=len(free_errand_maids(c)), maid_defense=maid_defense(c['id']), heart=sum(1 for m in mine if m['loyalty'] >= MAID_HEART_LOYALTY),
                            errand_actions=[(k, ACTIONS[k]) for k in ('maid_snack', 'maid_shop', 'maid_scribe', 'maid_watch', 'maid_gossip')],
                            MAID_GUARD_LOYALTY=MAID_GUARD_LOYALTY, MAID_HEART_LOYALTY=MAID_HEART_LOYALTY, costs=dict(reroll=MAID_REROLL_COST,
-                           reward=MAID_REWARD_COST, bury=MAID_BURY_COST, wage=MAID_WAGE))
+                           reward=MAID_REWARD_COST * len(mine), reward_each=MAID_REWARD_COST, bury=MAID_BURY_COST, wage=MAID_WAGE))
 
 @app.route('/maids/pick', methods=['POST'])
 @login_required
@@ -5782,21 +5789,23 @@ def maid_reroll():
 
 @app.route('/maids/reward', methods=['POST'])
 @login_required
+@atomic
 def maid_reward():
-    c = g.me
+    c = get_consort(g.me['id'])
     mine = active_maids(c['id'])
+    cost = MAID_REWARD_COST * len(mine)
     err = None
     if c['status'] == 'cold': err = '冷宫里连自己都顾不上。'
     elif not mine: err = '你宫里还没有宫人。'
     elif daily_count(c['id'], 'maid_reward'): err = '今天已经赏过了。'
-    elif c['silver'] < MAID_REWARD_COST: err = f'要 {MAID_REWARD_COST} 两银子。'
+    elif c['silver'] < cost: err = f'宫人 {len(mine)} 位，共需 {cost} 两银子。'
     if err:
         flash(err, 'bad')
         return redirect(url_for('maids_page'))
-    add_silver(c['id'], -MAID_REWARD_COST)
+    add_silver(c['id'], -cost)
     daily_inc(c['id'], 'maid_reward')
     for m in mine: add_loyalty(m['id'], 5)
-    flash(f'你赏了宫人们些果子和银钱。全宫宫人忠心 +5。', 'good')
+    flash(f'你赏了 {len(mine)} 位宫人，共花 {cost} 两银子。全宫宫人忠心 +5。', 'good')
     return redirect(url_for('maids_page'))
 
 @app.route('/maids/bury/<int:mid>', methods=['POST'])
@@ -9631,10 +9640,23 @@ def die(cid, reason, memorial_reason=None):
     gazette(f'{name}因{reason}薨逝，终年{age_text(c["age_months"])}。', 'death')
 
 
+LIHUN_SURVIVE = {'hot': {0: .15, 1: .45}, 'normal': {0: .10, 1: .35}, 'low': {0: .05, 1: .25}}
+
+
+def lihun_poisoned(c):
+    return bool(q("SELECT 1 FROM afflictions WHERE consort_id=? AND drug='lihun' AND start_day=?", (c['id'], c['poisoned_day']), one=True))
+
+
+def poison_survival_chance(c, day=None, treated=None):
+    treatment = min(1, c['poison_treatment']) if treated is None else int(bool(treated))
+    base = LIHUN_SURVIVE[favor_care_tier(c, day)][treatment] if lihun_poisoned(c) else POISON_SURVIVE[treatment]
+    return min(.995, base + blessing_survive_bonus(c))
+
+
 def resolve_poison_crises(day):
     # 只处理之前几天中的毒：当晚刚中毒的人至少有一整天可以请太医
     for c in q("SELECT * FROM consorts WHERE status!='dead' AND poisoned_day>0 AND poisoned_day<?", (day,)):
-        if random.random() >= POISON_SURVIVE[min(1, c['poison_treatment'])] + blessing_survive_bonus(c):
+        if random.random() >= poison_survival_chance(c, day):
             die(c['id'], '中毒救治无效')
         else:
             run('''UPDATE consorts SET poisoned_day=0, poison_treatment=0,
@@ -9816,7 +9838,7 @@ def treat(tid):
         col = 'poison_treatment' if crisis == 'poison' else 'ill_treatment'
         run(f'UPDATE consorts SET {col}=1 WHERE id=?', (tid,))
         if crisis=='poison':
-            text='太医来了，九成能救回来，下一次结算见分晓。'
+            text=f'太医来了，按当前待遇与福报，预计存活率 {round(poison_survival_chance(t, treated=True)*100)}%，下一次结算见分晓。'
         else:
             cfg=FAVOR_CARE[t['ill_care']]
             text=f"太医来了，{cfg['name']}待遇治疗后基础存活率 {int(cfg['survive']*100)}%，病后第 {cfg['recover_nights']} 次结算判断康复，福报另有加成。"
@@ -10360,7 +10382,6 @@ def drug_block(c, t, drug, used, mid, day, submitting=True):
         if inv_qty(c['id'], used) < 1: return '手里没有这份药。'
         account = q('SELECT * FROM users WHERE id=?', (c['user_id'],), one=True)
         if account['drug_ready_day'] > day: return f"下药冷却未结束，第{account['drug_ready_day']}天才能再动手。"
-        if drug == 'lihun' and account['lethal_ready_day'] > day: return '离魂草的两天冷却还没过。'
         if used == 'wuming' and account['nameless_ready_day'] > day: return '无名的一天冷却还没过。'
     return None
 
@@ -10419,7 +10440,10 @@ def resolve_realtime_drugs(day):
 
 def poison_player(cid, day):
     run('UPDATE consorts SET poisoned_day=?, poison_treatment=0, health=MAX(1,health-20) WHERE id=?', (day, cid))
-    notify(cid, f'你中毒了，体质 -20。下一次结算前请太医（{treat_cost(get_consort(cid))} 两）：请了九成能活，不请只有三成五。', 'bad')
+    victim = get_consort(cid)
+    treated = round(poison_survival_chance(victim, day, True)*100)
+    untreated = round(poison_survival_chance(victim, day, False)*100)
+    notify(cid, f'你中毒了，体质 -20。下一次结算前请太医（{treat_cost(victim)} 两）：按当前待遇与福报，治疗后预计存活率 {treated}%，不治疗 {untreated}%。', 'bad')
     gazette(f'{display_name(get_consort(cid))}突然中毒，性命垂危。')
     night_mark(cid, 'poisoned')
     auto_treat(cid)
@@ -10475,10 +10499,9 @@ def resolve_drug(it):
             add_mood(t['id'], -MOOD_HARM_LOSS)
             notify(t['id'], f'被人下药，心情 -{MOOD_HARM_LOSS}。', 'bad')
             gain_intrigue_influence(it)
-            cooldown = LETHAL_COOLDOWN if it['drug']=='lihun' else 1
             if c['user_id']:
-                run('UPDATE users SET drug_ready_day=MAX(drug_ready_day,?) WHERE id=?',(day+cooldown,c['user_id']))
-                if it['drug']=='lihun': run('UPDATE users SET lethal_ready_day=MAX(lethal_ready_day,?) WHERE id=?',(day+cooldown,c['user_id']))
+                if it['drug'] != 'lihun':
+                    run('UPDATE users SET drug_ready_day=MAX(drug_ready_day,?) WHERE id=?',(day+1,c['user_id']))
                 if it['item_used']=='wuming': run('UPDATE users SET nameless_ready_day=MAX(nameless_ready_day,?) WHERE id=?',(day+1,c['user_id']))
         run("UPDATE intrigues SET status='done', result=?,resolved_ts=? WHERE id=?", (result,time.time(), it['id']))
         if c['user_id']: notify(c['id'], f"对{display_name(t)}的下药：" + {'void':'局面已变，落空了。','fizzle':'没能得手。','caught':'没能得手，事情被察觉了。','success':'药已下进去。'}[result])
