@@ -10529,7 +10529,7 @@ def housing_reports(day):
         others = q("""SELECT * FROM consorts WHERE palace=? AND id!=? AND user_id IS NOT NULL
                       AND hall IN ('east','west','back') AND status IN ('normal','confined') ORDER BY id""", (head['palace'], head['id']))
         if others:
-            text = '；'.join(f"{display_name(c)}今日{daily_activity(c['id'], day)}" for c in others)
+            text = '；'.join(f"{display_name(c)}心计 {c['scheme']}、手头 {c['silver']} 两" for c in others)
             notify(head['id'], f'宫人来回话：{text}。')
 
 
