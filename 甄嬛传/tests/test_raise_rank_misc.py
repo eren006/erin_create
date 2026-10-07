@@ -113,6 +113,17 @@ class RaiseRankMiscTests(unittest.TestCase):
         self.assertIn(game.display_name(game.get_consort(low)), txt)
         self.assertIn('罚', txt)
 
+    def test_garden_tan_starts_on_oct_8(self):
+        from datetime import datetime
+        from unittest.mock import patch
+        self.assertFalse(game.garden_tan_on(datetime(2026, 10, 7, 23, 59, tzinfo=game.TZ)))
+        self.assertTrue(game.garden_tan_on(datetime(2026, 10, 8, 0, 0, tzinfo=game.TZ)))
+        game.run('UPDATE consorts SET silver=500, appearance=50 WHERE id=?', (self.atk,))
+        self.login(self.atk)
+        with patch.object(game, 'garden_tan_on', return_value=True), patch.object(game.random, 'random', return_value=0.0):
+            self.client.post('/garden/plant', data=dict(crop='baicai', slot=1))
+        self.assertEqual(game.get_consort(self.atk)['appearance'], 50 - game.GARDEN_TAN_LOSS)
+
 
 if __name__ == '__main__':
     unittest.main()

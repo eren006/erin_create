@@ -4,7 +4,7 @@
 皇帝是系统 NPC，每晚固定时刻（SETTLE_HOUR）统一结算：阴谋 → 翻牌子 → 生产 → 晋封 → 月例。
 """
 import os, re, json, random, math, time, threading, traceback, secrets
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from functools import wraps
 from flask import (Flask, render_template, request, redirect,
                    url_for, session as S, flash, g, has_request_context, jsonify)
@@ -8806,7 +8806,7 @@ def help_page():
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
                            FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, TWIN_CHANCE=TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS=TWIN_EXTRA_HEALTH_LOSS, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, CUISHENG_HOURS=CUISHENG_HOURS, INFLUENCE_DECAY=INFLUENCE_DECAY, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
                            HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, HEALTH_DYING_AT=HEALTH_DYING_AT, DYING_HOURS=DYING_HOURS, CONFINE_DAYS=CONFINE_DAYS, CONFINE_HOURS=CONFINE_HOURS,
-                           COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_MAX=PREGNANCY_MAX, PREGNANCY_PITY_ATTEMPTS=PREGNANCY_PITY_ATTEMPTS, PREGNANCY_DAYS=PREGNANCY_DAYS,
+                           COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, GARDEN_TAN_CHANCE=GARDEN_TAN_CHANCE, GARDEN_TAN_LOSS=GARDEN_TAN_LOSS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_MAX=PREGNANCY_MAX, PREGNANCY_PITY_ATTEMPTS=PREGNANCY_PITY_ATTEMPTS, PREGNANCY_DAYS=PREGNANCY_DAYS,
                            settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,
                            HEIR_EXAM_INTERVAL=HEIR_EXAM_INTERVAL, HEIR_EXAM_MIN_AGE=HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE=HEIR_EXAM_MAX_AGE,
                            ERRAND_INTERVAL=ERRAND_INTERVAL, CROWN_INTERVAL=CROWN_INTERVAL, BIRTHDAY_INTERVAL=BIRTHDAY_INTERVAL,
@@ -11014,6 +11014,13 @@ def garden():
                            GARDEN_GIFT_AFFINITY=GARDEN_GIFT_AFFINITY, GARDEN_GIFT_DAILY_MAX=GARDEN_GIFT_DAILY_MAX)
 
 
+GARDEN_TAN_START = date(2026, 10, 8)       # 北京时间这天起，种菜才会掉容貌
+GARDEN_TAN_CHANCE, GARDEN_TAN_LOSS = 0.25, 1   # 每次下种有 25% 的概率容貌 -1
+
+def garden_tan_on(now=None):
+    return (now or datetime.now(TZ)).date() >= GARDEN_TAN_START
+
+
 @app.route('/garden/plant', methods=['POST'])
 @login_required
 def garden_plant():
@@ -11031,7 +11038,11 @@ def garden_plant():
         run("INSERT INTO garden_plots (consort_id, slot, crop, planted_ts, ready_ts) VALUES (?,?,?,?,?)",
             (c['id'], slot, crop, now, now + cfg['hours'] * 3600))
         daily_inc(c['id'], 'g_plant')
-        flash(f"{cfg['name']}种下了，{cfg['hours']} 小时后成熟。", 'good')
+        msg = f"{cfg['name']}种下了，{cfg['hours']} 小时后成熟。"
+        if garden_tan_on() and c['appearance'] > 0 and random.random() < GARDEN_TAN_CHANCE:
+            add_stat(c['id'], 'appearance', -GARDEN_TAN_LOSS)
+            msg += f"日头晒了半晌，手上脸上都沾了泥，容貌 -{GARDEN_TAN_LOSS}。"
+        flash(msg, 'good')
     except (Reject, ValueError) as e:
         flash(str(e) if isinstance(e, Reject) else '没有这块地。', 'bad')
     return _garden_redirect()
