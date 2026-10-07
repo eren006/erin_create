@@ -121,8 +121,11 @@
       <dt>信任</dt><dd>{{ c.trust }}　<span class="muted">皇上对你{{ trust_word(c.trust) }}。求情、告发成不成，被人陷害时皇上信不信，都看这个</span></dd>
       <dt>翻牌</dt><dd>{{ bed_chance_text(c) }}</dd>
       <dt>精力</dt><dd><span class="pips" aria-label="精力 {{ c.energy }}">{{ '●' * c.energy }}{{ '○' * (ENERGY_MAX - c.energy if c.energy < ENERGY_MAX else 0) }}</span></dd>
+      <dt>心情</dt><dd>{{ c.mood }}　<span class="muted">每天 0 点降回 {{ MOOD_DAY_RESET }}；一天结束时低于 {{ DEPRESSION_BELOW }} 会郁结折寿。逛御花园、串门、梳妆、礼佛、雅趣、侍寝都能涨心情</span>{% if c.mood < DEPRESSION_BELOW %}　<span style="color:var(--bad)">今天还差 {{ DEPRESSION_BELOW - c.mood }} 点</span>{% endif %}</dd>
       <dt>容貌</dt><dd>{{ c.appearance }}　<span class="muted">才艺</span> {{ c.talent }}　<span class="muted">心计</span> {{ c.scheme }}　<span class="muted">德行</span> {{ c.virtue }}</dd>
       <dt>体质</dt><dd>{{ c.health }}{% if sick %}　<span style="color:var(--bad)">卧病在床</span>{% endif %}</dd>
+      {% for l in tryst_leaks %}<dt>风声</dt><dd><span style="color:var(--bad)">{{ l.knower }}瞧见了你的事，还剩 {{ l.left }} 天她可以告发你。</span>　封口进度 {{ l.progress }}/{{ TRYST_HUSH_GOAL }}　<span class="muted">攒满她就告发不了你，你反而势力 +{{ TRYST_HUSH_INFLUENCE }}</span>
+        <form method="post" action="{{ url_for('tryst_hush', clue_id=l.id) }}" style="display:inline"><button class="plain">花 {{ TRYST_HUSH_COST }} 两封口（+{{ TRYST_HUSH_STEP }}）</button></form></dd>{% endfor %}
       {% if c.pregnant_since %}<dt>喜脉</dt><dd>已有喜脉，{{ pregnancy_due_text(c) }}　<span class="muted">当心入口的东西</span></dd>{% endif %}
       {% if eyes %}<dt>眼线</dt><dd>在，到第 {{ c.eyes_until_day }} 天</dd>{% endif %}
       {% if heirs %}<dt>子嗣</dt><dd>{% for h in heirs %}{{ heir_label(h) }}{{ '、' if not loop.last }}{% endfor %}</dd>{% endif %}

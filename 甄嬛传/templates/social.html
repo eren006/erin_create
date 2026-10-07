@@ -53,6 +53,9 @@
       <a class="btn plain" href="{{ url_for('letters', to=o.id) }}">写信</a>
       <a class="btn plain" href="{{ url_for('room_other', cid=o.id) }}">看寝宫</a>
       <form method="post" action="{{ url_for('act', key='spy') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">派宫人打探（30 两）</button></form>
+      {% if o.id in tryst_known %}
+      <form method="post" action="{{ url_for('act', key='tryst_expose') }}" onsubmit="return confirm('告发不成，你要德行 -8、圣宠 -18、信任 -5，确定？')"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">告发偷情（{{ ACTIONS.tryst_expose.silver }} 两）</button></form>
+      {% endif %}
       {% if o.status in ('confined','cold') %}
       <form method="post" action="{{ url_for('act', key='plead') }}"><input type="hidden" name="target_id" value="{{ o.id }}"><input type="hidden" name="back" value="social"><button class="plain">求情（50 两）</button></form>
       {% endif %}

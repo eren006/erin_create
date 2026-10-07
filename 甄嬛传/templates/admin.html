@@ -9,7 +9,7 @@
 <button name="act" value="{{ 'maintenance_off' if gs.maintenance else 'maintenance_on' }}">{{ '恢复游戏（关闭维护模式）' if gs.maintenance else '维护暂停（开启维护模式）' }}</button>
 </form></div>
 
-<p class="muted">宫中第 {{ gs.day }} 日，皇上{{ gs.emperor_mood }}，喜好{{ gs.emperor_pref }}。下次自动结算：{{ next_settle }}。<a href="{{ url_for('admin_logout') }}">退出后台</a></p>
+<p class="muted">宫中第 {{ gs.day }} 日，皇上此刻{{ gs.emperor_mood }}，喜好{{ gs.emperor_pref }}。下次自动结算：{{ next_settle }}。<a href="{{ url_for('admin_logout') }}">退出后台</a></p>
 
 <div class="row" style="margin:12px 0 4px">
   <form method="post" action="{{ url_for('admin_settle') }}" onsubmit="return confirm('立刻结算一天？结算后今天算已结算，今晚不会再自动跑一次。')"><button>立即结算一天</button></form>

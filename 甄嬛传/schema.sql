@@ -656,3 +656,13 @@ CREATE TABLE IF NOT EXISTS achievements (
     ts          INTEGER NOT NULL,
     PRIMARY KEY (consort_id, key)
 );
+
+-- 夜会侍卫：漏出的风声。knower 手里有 target 的把柄，3 天内能告发；target 花钱封口攒满 progress 后 knower 告发不了
+CREATE TABLE IF NOT EXISTS tryst_clues (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    knower_id INTEGER NOT NULL,
+    target_id INTEGER NOT NULL,
+    day       INTEGER NOT NULL,
+    progress  INTEGER NOT NULL DEFAULT 0,
+    hushed    INTEGER NOT NULL DEFAULT 0
+);

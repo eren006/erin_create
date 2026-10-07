@@ -291,12 +291,13 @@ OLD_AGE_BASE = 0.003          # 概率 = (年龄 - 50) × 0.3%，体质 ≥60 �
 OLD_AGE_REMINDER_START = 660  # 55 岁起，每满 5 岁提醒一句
 OLD_AGE_REMINDER_STEP = 60
 WEAK_SICK_DAYS = 2            # 连续体质 <25 这么多天，染病（2026-09-28 从 3 压到 2）
-ILLNESS_ROLL_HOURS = (0, 6, 12, 18)   # 冷宫/产后/普通染病每 6 小时判一次（2026-10-08 起，原每晚一次）；体虚计数和时疫仍是每晚结算
+ILLNESS_ROLL_HOURS = (3, 9, 15, 21)   # 冷宫/产后/普通染病每 6 小时判一次（2026-10-08 起，原每晚一次；同日由 0/6/12/18 点改到 3/9/15/21 点）；体虚计数和时疫仍是每晚结算
+COLD_CAUGHT_DAILY_MAX = 1       # 普通风寒每人每个游戏日最多染几次
 ILLNESS_ROLLS_PER_DAY = len(ILLNESS_ROLL_HOURS)   # 下面三个概率、普通染病概率都是「每天」的数，每轮按这个均分
 COLD_SICK_CHANCE = 0.05       # 冷宫阴寒，每天染病概率
 EPIDEMIC_INTERVAL = 5        # 全宫时疫，每隔这么多天可能来一次（2026-09-28 从 10 压到 5）
 EPIDEMIC_CHANCE = 0.3         # 到了日子，当天真发生时疫的概率（每 12 小时判一轮，每轮按此均分，见 epidemic_roll）
-EPIDEMIC_ROLL_HOURS = (0, 12) # 2026-10-08 起时疫每 12 小时判一次（原每晚结算）
+EPIDEMIC_ROLL_HOURS = (1, 13) # 2026-10-08 起时疫每 12 小时判一次（原每晚结算；同日由 0/12 点改到 1/13 点）
 EPIDEMIC_ROLLS_PER_DAY = len(EPIDEMIC_ROLL_HOURS)
 POSTPARTUM_SICK_DAYS = 2      # 小产、难产后这么多天内（2026-09-28 从 3 压到 2）
 POSTPARTUM_SICK_CHANCE = 0.10 # ……每天染病概率
@@ -306,7 +307,13 @@ TRUST_START = 20
 TRUST_WORDS = [(70, '倚重'), (40, '信得过'), (20, '尚可'), (-1, '存疑')]
 TRUSTED_LINE = 50           # 信任到这条线，被散流言/栽赃时圣宠损失减半
 NPC_BED_MULT = 0.5          # NPC 翻牌权重打五折，免得宫里原有的妃嫔占掉大半夜晚
-AUDIENCE_PER_NIGHT = 2      # 每晚除侍寝外再单独召见几位玩家
+MOOD_HOURS = (1, 7, 13, 19)   # 2026-10-08 起皇上心情每 6 小时重掷一次（原每天 0 点一次）
+MOOD_WEIGHTS = (('大悦', 15), ('平和', 55), ('烦闷', 22), ('震怒', 8))
+MOOD_BED_DELTA = {'大悦': 1, '震怒': -1}                     # 翻牌轮：大悦多翻一位，震怒少翻一位（1~3 位之内）
+MOOD_CAUGHT_DELTA = {'震怒': 0.10, '大悦': -0.05}            # 使计败露率
+MOOD_AUDIENCE_FAVOR = {'大悦': 8, '平和': 5, '烦闷': 3, '震怒': 2}   # 召见圣宠
+AUDIENCE_HOURS = (10, 18)  # 2026-10-08 起召见改在白天这两个时点，每次召 AUDIENCE_PER_ROUND 位（原来 0 点日结算里一次召 2 位）
+AUDIENCE_PER_ROUND = 1
 LONG_UNSEEN_DAYS = 3        # 这么多天没见过皇上，算"久未见驾"（2026-09-28 从 6 压到 3）
 
 TITLE_POOL = list('莞安祺瑾婉容贞淳柔懿宁怡颖璟瑶玥韵馨娴嘉恬澜宸昭徽祥和敏')      # 淑德贤惠留给四妃，不进普通封号池
@@ -554,6 +561,30 @@ def hobby_unlocked_kinds(c):
 
 # ── 行动 ───────────────────────────────────────────────────────────────────────
 
+# ── 玩家心情值（2026-10-08）──────────────────────────────────────────────────────
+# 0~100。每天 0 点结算：低于 DEPRESSION_BELOW 就郁结（折寿一岁），然后一律降回 MOOD_DAY_RESET，新的一天重新攒。
+# 新人、老档的初始值是 50（列默认值），第一个 0 点前不会被罚。
+MOOD_DAY_RESET = 20
+DEPRESSION_BELOW = 35
+DEPRESSION_AGE_MONTHS = 12      # 郁结一次，年龄 +1 岁（折寿）
+MOOD_GAIN = {'garden': 5}      # 日常行动里只有逛御花园涨心情（每次 +5，受每日次数限制）；其余日常行动不加
+MOOD_BED, MOOD_AUDIENCE, MOOD_HOBBY, MOOD_TRYST = 3, 3, 2, 15      # 侍寝 +3、被召见 +3、雅趣每次打理 +2、夜会侍卫 +15
+
+def add_mood(cid, n):
+    run("UPDATE consorts SET mood=MAX(0, MIN(100, mood+?)) WHERE id=?", (int(n), cid))
+
+# ── 夜会侍卫（2026-10-08）──────────────────────────────────────────────────────
+TRYST_SILVER, TRYST_MIN_RANK = 100, 2
+TRYST_LOOKS = 2                 # 容貌 +2（养到 95 为止）
+TRYST_PREG_MULT, TRYST_PREG_CAP = 1.8, 0.35      # 怀孕概率 = 平常侍寝概率 ×1.8，最高 35%
+TRYST_CAUGHT_BASE, TRYST_CAUGHT_PER, TRYST_CAUGHT_MAX, TRYST_CAUGHT_EYES = 0.10, 0.03, 0.50, 0.06   # 当场败露：基础 10%，每做过一次 +3%（封顶 50%），有眼线 −6%
+TRYST_LEAK_CHANCE = 0.30        # 漏出风声：一位别的玩家收到线索
+TRYST_CLUE_DAYS = 3             # 线索 3 天内能告发
+TRYST_HUSH_COST, TRYST_HUSH_STEP, TRYST_HUSH_GOAL = 80, 25, 100    # 花钱封口：每次 80 两 +25 进度，攒满 100 对方告发不了，你势力 +TRYST_HUSH_INFLUENCE
+TRYST_HUSH_INFLUENCE = 8
+TRYST_EXPOSE_SILVER = 50
+TRYST_BLOOD_CHECK = 0.35        # 偷情怀的孩子出生时验亲败露的概率：孩子赐死，母亲同样重罚
+
 ACTIONS = {
     'greet':   dict(name='礼仪堂晨省', energy=0, silver=0, daily=1, when={'normal'}, sick_block=True,
                     desc='参加宫中晨省，德行 +1；不花精力'),
@@ -600,6 +631,10 @@ ACTIONS = {
                     desc='嫔位以上才能陪驾：研墨添香，圣宠 +10～14，信任 +2，势力 +4；皇上正在气头上时只能默默陪着，信任 +1、势力 +2'),
     'chastise': dict(name='责罚低位妃嫔', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True, target=True, min_rank=5,
                      desc='嫔位以上才能责罚比自己位分低的嫔以下妃嫔：罚跪（对方圣宠 -8）、罚俸（对方银子 -80）或禁足半天。对方每天最多被责罚一次，双方好感 -10，对方会知道是谁。你势力 +3'),
+    'tryst':   dict(name='夜会侍卫', energy=1, silver=TRYST_SILVER, daily=1, when={'normal'}, sick_block=True, min_rank=TRYST_MIN_RANK,
+                    desc='花 100 两打点侍卫，趁夜相会：容貌 +2、心情 +15，且比侍寝更容易有孕；每天一次。有人撞见、有人告发，被抓住是冷宫的罪——侍卫当场处死，你位分圣宠德行信任全掉。偷情怀的孩子出生时还要验亲'),
+    'tryst_expose': dict(name='告发偷情', energy=1, silver=TRYST_EXPOSE_SILVER, daily=1, when={'normal'}, sick_block=True, target=True,
+                    desc='手里有她偷情的风声（3 天内）才能告发。成：她被打入冷宫，你信任 +5；败：你德行 -8、圣宠 -18、信任 -5。对方花钱封口攒满的话，告发不了'),
     'attend':  dict(name='去养心殿侍疾', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
                     desc='皇上病重时才有。成败看信任：成了信任 +5，你抚养的阿哥圣眷 +5'),
 }
@@ -1547,7 +1582,7 @@ def init_db():
     migrations = {
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
         'banquet_entries': {'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'tier': 'INTEGER NOT NULL DEFAULT 1', 'buff': 'INTEGER NOT NULL DEFAULT 0', 'note': "TEXT NOT NULL DEFAULT ''"},
-        'consorts': {'favor_mark': 'INTEGER NOT NULL DEFAULT -1', 'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
+        'consorts': {'mood': 'INTEGER NOT NULL DEFAULT 50', 'pregnancy_secret': 'INTEGER NOT NULL DEFAULT 0', 'tryst_count': 'INTEGER NOT NULL DEFAULT 0', 'favor_mark': 'INTEGER NOT NULL DEFAULT -1', 'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
                      'age_months': 'INTEGER NOT NULL DEFAULT 240',
                      'poisoned_day': 'INTEGER NOT NULL DEFAULT 0',
                      'poison_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -1661,7 +1696,7 @@ def init_db():
                     'sender_label': "TEXT NOT NULL DEFAULT ''"},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
-        'game_state': {'last_epidemic_key': "TEXT NOT NULL DEFAULT ''", 'last_illness_key': "TEXT NOT NULL DEFAULT ''", 'last_repair_key': "TEXT NOT NULL DEFAULT ''", 'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
+        'game_state': {'last_mood_key': "TEXT NOT NULL DEFAULT ''", 'last_night_event_key': "TEXT NOT NULL DEFAULT ''", 'last_audience_key': "TEXT NOT NULL DEFAULT ''", 'last_remit_key': "TEXT NOT NULL DEFAULT ''", 'last_epidemic_key': "TEXT NOT NULL DEFAULT ''", 'last_illness_key': "TEXT NOT NULL DEFAULT ''", 'last_repair_key': "TEXT NOT NULL DEFAULT ''", 'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
                        'reign_no': 'INTEGER NOT NULL DEFAULT 1',
                        'reign_start_day': 'INTEGER NOT NULL DEFAULT 1',
                        'emperor_start_age': 'INTEGER NOT NULL DEFAULT 20',
@@ -2195,7 +2230,7 @@ def admin_required(f):
 
 @app.context_processor
 def inject_globals():
-    ctx = dict(family_career_title=family_career_title, FAMILY_CAREER_TITLES=FAMILY_CAREER_TITLES,family_origin_options=family_origin_options, family_background=family_background,BED_DAILY_MAX=BED_DAILY_MAX, BED_COUNT_WEIGHTS=BED_COUNT_WEIGHTS,badge_name=badge_name, pregnancy_progress=pregnancy_progress, pregnancy_due_text=pregnancy_due_text, bed_chance_text=bed_chance_text, next_bedding_text=next_bedding_text, PROMOTE_INFLUENCE=PROMOTE_INFLUENCE, entry_stat_roll=entry_stat_roll, RANDOM_STAT_RANGES=RANDOM_STAT_RANGES, FAVOR_CARE=FAVOR_CARE, favor_care_tier=favor_care_tier, favor_stipend=favor_stipend, EAST_PALACE_CHANCE=EAST_PALACE_CHANCE, EAST_PALACE_FAVOR=EAST_PALACE_FAVOR, EAST_PALACE_TRUST=EAST_PALACE_TRUST, AGE_YEARS_PER_DAY=AGE_YEARS_PER_DAY, ENERGY_MAX=ENERGY_MAX, dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
+    ctx = dict(DEPRESSION_BELOW=DEPRESSION_BELOW, MOOD_DAY_RESET=MOOD_DAY_RESET, family_career_title=family_career_title, FAMILY_CAREER_TITLES=FAMILY_CAREER_TITLES,family_origin_options=family_origin_options, family_background=family_background,BED_DAILY_MAX=BED_DAILY_MAX, BED_COUNT_WEIGHTS=BED_COUNT_WEIGHTS,badge_name=badge_name, pregnancy_progress=pregnancy_progress, pregnancy_due_text=pregnancy_due_text, bed_chance_text=bed_chance_text, next_bedding_text=next_bedding_text, PROMOTE_INFLUENCE=PROMOTE_INFLUENCE, entry_stat_roll=entry_stat_roll, RANDOM_STAT_RANGES=RANDOM_STAT_RANGES, FAVOR_CARE=FAVOR_CARE, favor_care_tier=favor_care_tier, favor_stipend=favor_stipend, EAST_PALACE_CHANCE=EAST_PALACE_CHANCE, EAST_PALACE_FAVOR=EAST_PALACE_FAVOR, EAST_PALACE_TRUST=EAST_PALACE_TRUST, AGE_YEARS_PER_DAY=AGE_YEARS_PER_DAY, ENERGY_MAX=ENERGY_MAX, dn=display_name, full_name=full_name, RANK_NAMES=RANK_NAMES, STAT_NAMES=STAT_NAMES,
                favor_word=favor_word, trust_word=trust_word, residence_name=residence_name, HALL_NAMES=HALL_NAMES, ITEMS=ITEMS, DRUGS=DRUGS, HOBBIES=HOBBIES, DISPLAY_SLOTS=DISPLAY_SLOTS,
                HOBBY_ENERGY=HOBBY_ENERGY, HOBBY_DAILY_MAX=HOBBY_DAILY_MAX, HOBBY_UNLOCK_ITEMS=HOBBY_UNLOCK_ITEMS, daily_count=daily_count, intrigue_label=intrigue_label, FAMILIES=FAMILIES, PERSONALITIES=PERSONALITIES, age_text=age_text, palace_date=palace_date,
                HEIR_STATS=HEIR_STATS, HEIR_PERSONALITIES=HEIR_PERSONALITIES, gift_word=gift_word, gift_text=gift_text, heir_age_days=heir_age_days,
@@ -3110,7 +3145,8 @@ def do_shoukang(c, cfg):
 
 # ── 家族发达了，定期送钱来 ────────────────────────────────────────────────────────
 
-REMIT_HOURS = 12              # 每 12 小时一次（零点结算 + 中午 12 点各一次；原来每 3 天一次）
+REMIT_HOURS = 12              # 每 12 小时一次（2026-10-08 起固定在 5 点、17 点，见 REMIT_SLOT_HOURS；原来每 3 天一次）
+REMIT_SLOT_HOURS = (5, 17)
 REMIT_PER_OFFICE, REMIT_PRESTIGE_DIV, REMIT_MAX = 15, 8, 300      # 每次上限 150→300
 REMIT_MIN_OFFICE, REMIT_MIN_PRESTIGE = 2, 30            # 家主至少七品，或名望够了，家里才有余钱
 
@@ -3131,6 +3167,15 @@ def family_remit_tick(day):
         c = mem[-1]
         add_silver(c['id'], amt)
         notify(c['id'], f"家里托人送来 {amt} 两体己。{fam['head_role']}说，家里一切都好。", 'good')
+
+
+def remit_tick(now):
+    """体己汇款：每天 5 点、17 点各一次，错过了下一分钟补；部署后第一次见到空标记只记下不发，免得多送一笔"""
+    key = latest_slot(now, REMIT_SLOT_HOURS)
+    last = state()['last_remit_key']
+    if last == key: return
+    run("UPDATE game_state SET last_remit_key=? WHERE id=1", (key,))
+    if last: family_remit_tick(state()['day'])
 
 
 def _clan_context(uid):
@@ -3279,7 +3324,8 @@ def index():
     unnamed_heirs = [h for h in heirs if not h['name']]
     for h in unnamed_heirs: ensure_name_choices(h['id'])      # 老档里没点过字的，补上，提醒才有的选
     confine_until = datetime.fromtimestamp(c['confine_until_ts'], TZ).strftime('%m-%d %H:%M') if c['confine_until_ts'] else ''
-    return render_template('index.html', DYING_HOURS=DYING_HOURS, HEALTH_DYING_AT=HEALTH_DYING_AT, c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs, confine_until=confine_until,
+    tryst_leaks = [dict(cl, knower=display_name(get_consort(cl['knower_id'])), left=cl['day'] + TRYST_CLUE_DAYS - day) for cl in tryst_clues_on(c['id']) if not cl['hushed']]
+    return render_template('index.html', tryst_leaks=tryst_leaks, TRYST_HUSH_COST=TRYST_HUSH_COST, TRYST_HUSH_STEP=TRYST_HUSH_STEP, TRYST_HUSH_GOAL=TRYST_HUSH_GOAL, TRYST_HUSH_INFLUENCE=TRYST_HUSH_INFLUENCE, DYING_HOURS=DYING_HOURS, HEALTH_DYING_AT=HEALTH_DYING_AT, c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs, confine_until=confine_until,
                            sick=is_sick(c), eyes=eyes_active(c), secret=SECRETS[c['secret']], guide=guide_view(c),
                            day=day, PREGNANCY_DAYS=PREGNANCY_DAYS, tiles=map_tiles(c))
 
@@ -3353,6 +3399,7 @@ def act(key):
             raise Reject('宫人今天都派出去了。' if active_maids(c['id']) else '你宫里还没有宫人，先去内务府挑一个。')
         msg, kind = ACTION_HANDLERS[key](c, cfg)
         daily_inc(c['id'], key)
+        if MOOD_GAIN.get(key): add_mood(c['id'], MOOD_GAIN[key])
         feed_for_action(c, key)
         if key in REQ_LABELS: guide_mark(c['id'], key)
         if getattr(g, 'scene_started', False):
@@ -3895,7 +3942,95 @@ def do_maid_gossip(c, cfg):
         lines.append(maid_gossip(c, m))
     return ' '.join(lines), 'info'
 
-ACTION_HANDLERS = dict(maid_snack=do_maid_snack, maid_shop=do_maid_shop, maid_scribe=do_maid_scribe, maid_watch=do_maid_watch, maid_gossip=do_maid_gossip, schemestudy=do_schemestudy, perform=do_perform, palace_work=do_palace_work, aid=do_aid, greet=do_greet, study=do_study, groom=do_groom, rest=do_rest, reflect=do_reflect,
+def tryst_punish(cid, how):
+    """偷情败露：打入冷宫、圣宠德行信任大扣，侍卫处死；偷情怀着的胎儿也没了"""
+    c = get_consort(cid)
+    if c['status'] in ('dead', 'xiunv'): return
+    name = display_name(c)
+    add_stat(cid, 'virtue', -20)
+    add_trust(cid, -30)
+    send_to_cold(cid)
+    run("UPDATE consorts SET pregnancy_started_ts=0, pregnancy_secret=0, prenatal='{}' WHERE id=?", (cid,))
+    run("DELETE FROM tryst_clues WHERE target_id=?", (cid,))
+    notify(cid, f"偷情之事{how}，皇上震怒。侍卫当场杖毙，你被打入冷宫，圣宠清零，德行 −20、信任 −30。", 'bad')
+    gazette(f"{name}与侍卫私通事发，侍卫杖毙，{name}被打入冷宫。", 'decree')
+
+
+def do_tryst(c, cfg):
+    if c['pregnant_since']: raise Reject('有孕在身，不宜冒这个险。')
+    charge(c, cfg)
+    cid = c['id']
+    run("UPDATE consorts SET tryst_count=tryst_count+1 WHERE id=?", (cid,))
+    if c['appearance'] < 95: add_stat(cid, 'appearance', TRYST_LOOKS)
+    add_mood(cid, MOOD_TRYST)
+    msg = f"你打点了侍卫，趁夜在僻静处见了一面。容貌 +{TRYST_LOOKS}，心情 +{MOOD_TRYST}。"
+    if not affliction(cid, 'hanshui', cur_day()) and not contraception_on(c) and random.random() < min(TRYST_PREG_CAP, pregnancy_chance(c) * TRYST_PREG_MULT):
+        run("UPDATE consorts SET pregnant_since=?, pregnancy_started_ts=?, prenatal='{}', pregnancy_misses=0, pregnancy_secret=1 WHERE id=?", (cur_day(), time.time(), cid))
+        msg += "过些日子月事没来，怕是有了身孕，这孩子是谁的，只有你自己心里清楚。"
+    p = min(TRYST_CAUGHT_MAX, TRYST_CAUGHT_BASE + TRYST_CAUGHT_PER * c['tryst_count'] - (TRYST_CAUGHT_EYES if eyes_active(c) else 0))
+    if random.random() < p:
+        tryst_punish(cid, '被巡夜的人当场撞破')
+        return '夜会被巡夜的人当场撞破，你被打入冷宫，侍卫杖毙。', 'bad'
+    if random.random() < TRYST_LEAK_CHANCE:
+        others = [o for o in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined') AND id!=?", (cid,))]
+        if others:
+            k = random.choice(others)
+            run("INSERT INTO tryst_clues (knower_id, target_id, day) VALUES (?,?,?)", (k['id'], cid, cur_day()))
+            notify(k['id'], f"夜里你起来，隐约瞧见{display_name(c)}宫外有侍卫模样的人出没……（{TRYST_CLUE_DAYS} 天内你可以去「六宫」告发她，花 {TRYST_EXPOSE_SILVER} 两、1 点精力）", 'info')
+            msg += f"回来时似乎被{display_name(k)}瞧见了。她手里有了你的把柄，{TRYST_CLUE_DAYS} 天内可以去告发你；去「首页」花钱封口，攒满了她就告发不了你，你反而势力 +{TRYST_HUSH_INFLUENCE}。"
+    return msg, 'good'
+
+
+def tryst_clues_on(cid):
+    """还在 3 天窗口内、别人手里关于我的线索"""
+    return list(q("SELECT * FROM tryst_clues WHERE target_id=? AND day>=?", (cid, cur_day() - TRYST_CLUE_DAYS)))
+
+
+def do_tryst_expose(c, cfg):
+    t = pick_target(c)
+    cl = q("SELECT * FROM tryst_clues WHERE knower_id=? AND target_id=? AND day>=?", (c['id'], t['id'], cur_day() - TRYST_CLUE_DAYS), one=True)
+    if not cl: raise Reject('你手里没有她的把柄，或者风声已经过了期。')
+    if cl['hushed']:
+        run("DELETE FROM tryst_clues WHERE id=?", (cl['id'],))
+        raise Reject('这件事已经被压下去了，告发不了。')
+    charge(c, cfg)
+    run("DELETE FROM tryst_clues WHERE id=?", (cl['id'],))
+    p = max(0.25, min(0.85, 0.5 + (c['trust'] - t['trust']) * 0.004))
+    if random.random() < p:
+        add_trust(c['id'], 5)
+        tryst_punish(t['id'], f"被{display_name(c)}告发")
+        return f"你把{display_name(t)}与侍卫私通的事告到了御前，皇上查证属实，她被打入冷宫。信任 +5。", 'good'
+    add_stat(c['id'], 'virtue', -8)
+    cut_favor(c['id'], 18)
+    add_trust(c['id'], -5)
+    return f"你告发{display_name(t)}偷情，皇上却不信，斥你信口雌黄。德行 −8、圣宠 −18、信任 −5。", 'bad'
+
+
+@app.route('/tryst/hush/<int:clue_id>', methods=['POST'])
+@login_required
+def tryst_hush(clue_id):
+    c = g.me
+    cl = q("SELECT * FROM tryst_clues WHERE id=?", (clue_id,), one=True)
+    if not cl or cl['target_id'] != c['id'] or cl['day'] < cur_day() - TRYST_CLUE_DAYS:
+        flash('没有这件事要封口。', 'bad')
+    elif cl['hushed']:
+        flash('她已经被你摆平了。', 'info')
+    elif c['silver'] < TRYST_HUSH_COST:
+        flash(f"银子不够，封口要 {TRYST_HUSH_COST} 两。", 'bad')
+    else:
+        add_silver(c['id'], -TRYST_HUSH_COST)
+        prog = min(TRYST_HUSH_GOAL, cl['progress'] + TRYST_HUSH_STEP)
+        if prog >= TRYST_HUSH_GOAL:
+            run("UPDATE tryst_clues SET progress=?, hushed=1 WHERE id=?", (prog, clue_id))
+            run("UPDATE consorts SET influence=influence+? WHERE id=?", (TRYST_HUSH_INFLUENCE, c['id']))
+            flash(f"银子和人情都使到了，{display_name(get_consort(cl['knower_id']))}从此不敢再提这件事，你反倒拿住了她的短处。势力 +{TRYST_HUSH_INFLUENCE}。", 'good')
+        else:
+            run("UPDATE tryst_clues SET progress=? WHERE id=?", (prog, clue_id))
+            flash(f"花了 {TRYST_HUSH_COST} 两打点，封口进度 {prog}/{TRYST_HUSH_GOAL}。", 'good')
+    return redirect(url_for('index'))
+
+
+ACTION_HANDLERS = dict(tryst=do_tryst, tryst_expose=do_tryst_expose, maid_snack=do_maid_snack, maid_shop=do_maid_shop, maid_scribe=do_maid_scribe, maid_watch=do_maid_watch, maid_gossip=do_maid_gossip, schemestudy=do_schemestudy, perform=do_perform, palace_work=do_palace_work, aid=do_aid, greet=do_greet, study=do_study, groom=do_groom, rest=do_rest, reflect=do_reflect,
                        eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend, pizhe=do_pizhe, chastise=do_chastise, shoukang=do_shoukang, pray=do_pray)
 
 # ── 秘密坦白 ───────────────────────────────────────────────────────────────────
@@ -4677,7 +4812,8 @@ def social():
     npcs = [(n, NPC_BOND[n['npc_key']], bond(c['id'], n['npc_key'])) for n in
             q("SELECT * FROM consorts WHERE npc_key IS NOT NULL AND status!='dead' ORDER BY rank DESC, id")
             if n['npc_key'] in NPC_BOND]
-    return render_template('social.html', c=c, others=others, rels=rels, known=known, SECRETS=SECRETS,
+    tryst_known = {cl['target_id'] for cl in q("SELECT * FROM tryst_clues WHERE knower_id=? AND day>=? AND hushed=0", (c['id'], cur_day() - TRYST_CLUE_DAYS))}
+    return render_template('social.html', tryst_known=tryst_known, c=c, others=others, rels=rels, known=known, SECRETS=SECRETS,
                            inv=inv, sister_count=len(sisters_of(c['id'])), ACTIONS={k: action_config(c, k) for k in ACTIONS},
                            npcs=npcs, bond_tier=bond_tier, npc_visited=daily_count(c['id'], 'npc_visit'),
                            BOND_CLOSE=BOND_CLOSE, BOND_INTIMATE=BOND_INTIMATE, knife=knife_view(c))
@@ -7670,7 +7806,7 @@ def intrigue_success_p(atk, tgt, cfg, conspired=False):
 
 def intrigue_caught_p(atk, tgt):
     p = 0.35 + (tgt['scheme'] - atk['scheme']) * 0.005 + (0.25 if eyes_active(tgt) else 0)
-    if state()['emperor_mood'] == '震怒': p += 0.1
+    p += MOOD_CAUGHT_DELTA.get(state()['emperor_mood'], 0)      # 震怒 +10%、大悦 −5%
     if atk['user_id'] and bond(atk['id'], 'caoguiren') >= BOND_INTIMATE and random.random() < BOND_CAO_LEAK:
         p += BOND_CAO_LEAK_CAUGHT                   # 曹贵人两头下注，把风声漏了出去
     return max(0.15, min(0.8, p))
@@ -8197,7 +8333,7 @@ def finish_mourning(day, st):
 def emperor_state_text(st):
     if st['mourning']: return '国丧'
     if emperor_ill(st): return '龙体违和'
-    return f"今日{st['emperor_mood']}"
+    return f"此刻{st['emperor_mood']}"
 
 
 app.jinja_env.globals['emperor_state_text'] = emperor_state_text
@@ -8340,6 +8476,12 @@ def resolve_births(day, include_legacy=True):
             set_heir_appearance(hid_new, c['appearance'] * 0.7 + random.randint(-8, 8))      # 容貌随母亲，气质按容貌分档随机
             born.append((f"{heir_rank_word(ordinal)}{'阿哥' if gender == '皇子' else '公主'}",
                          gift_text(dict(gift_study=gifts['study'], gift_riding=gifts['riding'], gift_virtue=gifts['virtue']))))
+        if c['pregnancy_secret']:
+            if random.random() < TRYST_BLOOD_CHECK:      # 偷情怀的孩子，出生时验亲败露：孩子赐死，母亲同样重罚
+                for hid_ in born_ids: run("DELETE FROM heirs WHERE id=?", (hid_,))
+                tryst_punish(c['id'], '败露：孩子滴血验亲不合，皇上震怒，孩子赐死')
+                continue
+            run("UPDATE consorts SET pregnancy_secret=0 WHERE id=?", (c['id'],))
         run("UPDATE consorts SET pregnant_since=0, pregnancy_started_ts=0, prenatal='{}' WHERE id=?", (c['id'],))
         birth_loss = min(BIRTH_HEALTH_LOSS + BIRTH_HEALTH_PER_PRIOR * prior_births + (TWIN_EXTRA_HEALTH_LOSS if twins else 0),
                          max(0, c['health'] - BIRTH_HEALTH_FLOOR))
@@ -8425,10 +8567,11 @@ def do_bedding(bed, day, primary, tray, quiet=False):
         run("UPDATE game_state SET last_bed_ids=? WHERE id=1", (json.dumps(ids + [bed['id']]),))
     if not quiet: gazette(f"敬事房：本轮皇上翻了{display_name(bed)}的牌子。", 'bed')      # 行宫随驾由 bedding_round 统一发一条
     if bed['user_id']:
+        add_mood(bed['id'], MOOD_BED)
         msg = f"敬事房来传话：本轮皇上翻了你的牌子。圣宠 +{gain}" + ('。' if dream else f"，信任 +{BED_TRUST_GAIN}。")
         newly_pregnant = False
         if not dream and not affliction(bed['id'], 'hanshui', day) and random.random() < pregnancy_chance(bed):
-            run("UPDATE consorts SET pregnant_since=?, pregnancy_started_ts=?, prenatal='{}', pregnancy_misses=0 WHERE id=?", (day, time.time(), bed['id']))
+            run("UPDATE consorts SET pregnant_since=?, pregnancy_started_ts=?, prenatal='{}', pregnancy_misses=0, pregnancy_secret=0 WHERE id=?", (day, time.time(), bed['id']))
             msg += "……太医诊出了喜脉，怀孕满24小时自动临盆。孕中可以在本宫安胎、胎教。"
             gazette(f"{display_name(bed)}有喜了。", 'birth')
             newly_pregnant = True
@@ -8484,6 +8627,7 @@ def bedding_round(day,key):
     trip=len(cands)>=XINGGONG_COUNT and not daily_count(0,'xinggong') and random.random()<XINGGONG_CHANCE
     if trip: daily_inc(0,'xinggong')
     count=XINGGONG_COUNT if trip else bed_count(cands); beds=[];used=set()
+    if not trip: count=max(1,min(BED_MAX_PER_ROUND,count+MOOD_BED_DELTA.get(st['emperor_mood'],0)))
     n_shown=min(count,len(cands))
     if n_shown and not trip:
         hour_part=str(key).rsplit(':',1)[-1]
@@ -8546,6 +8690,82 @@ def latest_bedding_slot(now):
 
 def latest_pace_slot(now):
     return latest_slot(now,PACE_ROUND_HOURS)
+
+
+def mood_tick(now):
+    """皇上心情每 6 小时（1/7/13/19 点）重掷；心情影响送汤羹、批折子、翻牌人数、召见圣宠、使计败露率"""
+    key = latest_slot(now, MOOD_HOURS)
+    if state()['last_mood_key'] == key: return
+    mood = random.choices([m for m, _ in MOOD_WEIGHTS], weights=[w for _, w in MOOD_WEIGHTS])[0]
+    run("UPDATE game_state SET last_mood_key=?, emperor_mood=? WHERE id=1", (key, mood))
+
+
+NIGHT_EVENT_HOURS = (4,)
+NIGHT_EVENT_CHANCE = 0.05     # 每个玩家每晚遇上夜间突发事件的概率
+NIGHT_EVENTS = (
+    ('fire', 15), ('theft', 25), ('cat', 20),          # 坏事 60%
+    ('find', 12), ('tonic', 10), ('sleep', 10), ('glimpse', 8),   # 好事 40%
+)
+
+def night_event_tick(now):
+    """4 点：夜里宫里出点小事——走水、失窃、野猫惊梦，概率小、损失不大，早上上线是一条消息。错过了下一分钟补"""
+    key = latest_slot(now, NIGHT_EVENT_HOURS)
+    if state()['last_night_event_key'] == key: return
+    run("UPDATE game_state SET last_night_event_key=? WHERE id=1", (key,))
+    for c in list(q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined')")):
+        if random.random() >= NIGHT_EVENT_CHANCE: continue
+        kind = random.choices([k for k, _ in NIGHT_EVENTS], weights=[w for _, w in NIGHT_EVENTS])[0]
+        if kind == 'fire':
+            loss = min(c['silver'], 30 + c['rank'] * 10)
+            add_silver(c['id'], -loss)
+            add_stat(c['id'], 'health', -2)
+            notify(c['id'], f"后半夜偏殿的烛火倒了，宫人们泼水扑了半宿，所幸没烧起来。烧坏些陈设，折银 {loss} 两，你被烟呛着，体质 −2。", 'bad')
+        elif kind == 'theft':
+            loss = min(c['silver'], random.randint(10, 30) + c['rank'] * 2)
+            add_silver(c['id'], -loss)
+            notify(c['id'], f"夜里有手脚不干净的人摸进了库房，丢了 {loss} 两银子。内务府说会查，多半是查不出来的。", 'bad')
+        elif kind == 'cat':
+            run("UPDATE consorts SET energy=MAX(0, energy-1) WHERE id=?", (c['id'],))
+            notify(c['id'], "不知哪来的野猫在房顶上叫了半宿，你被惊醒，再没睡踏实。精力 −1。", 'info')
+        elif kind == 'find':
+            gain = random.randint(10, 25) + c['rank'] * 2
+            add_silver(c['id'], gain)
+            notify(c['id'], f"宫人清早扫院子，在墙根下刨出一小包不知哪年遗落的银锞子，折银 {gain} 两。", 'good')
+        elif kind == 'tonic':
+            add_stat(c['id'], 'health', 3)
+            notify(c['id'], "后半夜寿康宫遣人送来一盅温补的汤，说是太妃惦记你。喝下去浑身暖和，体质 +3。", 'good')
+        elif kind == 'sleep':
+            run("UPDATE consorts SET energy=MIN(?, energy+1) WHERE id=?", (ENERGY_MAX, c['id']))
+            notify(c['id'], "昨夜睡得格外踏实，一觉到天亮。精力 +1。", 'good')
+        else:
+            gain = add_favor(c['id'], 4)
+            notify(c['id'], f"听宫人说，昨夜皇上从你宫门前路过，抬头望了一眼亮着的灯，站了片刻才走。圣宠 +{gain}。", 'good')
+
+
+def audience_tick(now):
+    """白天召见：10 点、18 点各一轮，每轮召 1 位（侍寝之外，让更多人见到皇上）；皇上病重、国丧不召。
+    当天已经被召见过、有场景没定夺、卧病的人不进候选。错过了下一分钟补"""
+    st = state()
+    key = latest_slot(now, AUDIENCE_HOURS)
+    if st['last_audience_key'] == key: return
+    run("UPDATE game_state SET last_audience_key=? WHERE id=1", (key,))
+    day = st['day']
+    if st['mourning'] or emperor_ill(st, day): return
+    pool = [c for c in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND pending_scene='' AND last_audience_day<?", (day,))
+            if not is_sick(c)]
+    called = []
+    for _ in range(min(AUDIENCE_PER_ROUND, len(pool))):
+        r = pick_audience(pool, day)
+        pool.remove(r); called.append(r)
+        gain = MOOD_AUDIENCE_FAVOR.get(st['emperor_mood'], 5)
+        add_favor(r['id'], gain)
+        add_mood(r['id'], MOOD_AUDIENCE)
+        run("UPDATE consorts SET last_audience_day=? WHERE id=?", (day, r['id']))
+        notify(r['id'], f"御前总管来传话：皇上要召你去养心殿说话（皇上此刻{st['emperor_mood']}）。圣宠 +{gain}。", 'good')
+        guide_tip(r['id'], 'audience', '「皇上召见，规规矩矩应答就是，不必太紧张。」')
+        start_scene(r['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=0, hoarse=bool(affliction(r['id'], 'yachan', day)))
+    if called:
+        gazette(f"皇上召见了{'、'.join(display_name(c) for c in called)}。", 'audience')
 
 
 @atomic
@@ -8641,22 +8861,6 @@ def _settle_night():
     for it in q("SELECT * FROM intrigues WHERE status='pending' AND method='steal' AND day<=?",(day,)):
         resolve_intrigue(it,None)
 
-    # 2b. 召见：侍寝之外，另召几位玩家单独说话，让更多人有机会见到皇上
-    pool = [] if ill else [c for c in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status='normal'")
-            if not is_sick(c) and c['id'] not in bed_ids]
-    called = []
-    for _ in range(min(AUDIENCE_PER_NIGHT, len(pool))):
-        r = pick_audience(pool, day)
-        pool.remove(r); called.append(r)
-        add_favor(r['id'], 5)
-        run("UPDATE consorts SET last_audience_day=? WHERE id=?", (day, r['id']))
-        notify(r['id'], '御前总管来传话：皇上要召你去养心殿说话。圣宠 +5。', 'good')
-        guide_tip(r['id'], 'audience', '「皇上召见，规规矩矩应答就是，不必太紧张。」')
-        start_scene(r['id'], 'audience', prompt=random.randrange(len(AUDIENCE_PROMPTS)), bed=0, hoarse=bool(affliction(r['id'], 'yachan', day)))
-    if called:
-        gazette(f"皇上召见了{'、'.join(display_name(c) for c in called)}。", 'audience')
-        report.append('召见：' + '、'.join(display_name(c) for c in called))
-
     # 同宫日间动向先回报，管教在生产与迁宫前处理。
     housing_reports(day)
 
@@ -8676,7 +8880,6 @@ def _settle_night():
     family_tick(day)
     family_venture_tick(day)
     family_patron_tick(day)
-    family_remit_tick(day)
     heir_exam_tick(day)
     heir_hunt_tick(day)
 
@@ -8694,6 +8897,11 @@ def _settle_night():
         c = get_consort(c['id'])
         if not partial:      # 补结算不再算这几笔每晚一次的账
             run('UPDATE consorts SET age_months=age_months+? WHERE id=?', (AGE_MONTHS_PER_DAY // 2, c['id']))   # 一天 = 宫中两年：零点涨一岁，中午 12 点再涨一岁（见 age_noon_tick）
+            if c['user_id'] and c['status'] != 'dead':
+                if c['mood'] < DEPRESSION_BELOW:      # 一天下来心情太低：郁结，折寿
+                    run('UPDATE consorts SET age_months=age_months+? WHERE id=?', (DEPRESSION_AGE_MONTHS, c['id']))
+                    notify(c['id'], f"这一天里你心情始终郁郁（{c['mood']}，不到 {DEPRESSION_BELOW}），夜里愁肠百结，郁结于心，平白老了 {DEPRESSION_AGE_MONTHS // 12} 岁。明天多出去走走、做点开心的事。", 'bad')
+                run('UPDATE consorts SET mood=? WHERE id=?', (MOOD_DAY_RESET, c['id']))
             influence_check(c, day)
             c = get_consort(c['id'])
             in_low = (c['id'] in zones[1]) if zones else c['favor'] < FAVOR_LOW
@@ -8753,7 +8961,7 @@ def _settle_night():
 
     # 7. 进入新的一天
     new_day = day + 1
-    mood = random.choices(['大悦', '平和', '烦闷', '震怒'], weights=[15, 55, 22, 8])[0]
+    mood = st['emperor_mood']      # 心情不再每天换，改由 mood_tick 在 1/7/13/19 点重掷
     pref = random.choice(ARTS) if new_day % 7 == 1 else st['emperor_pref']
     run("UPDATE game_state SET day=?, last_settle_date=?, emperor_mood=?, emperor_pref=? WHERE id=1",
         (new_day, datetime.now(TZ).date().isoformat(), mood, pref))
@@ -9026,7 +9234,6 @@ def age_noon_tick(now):
     if now.hour < 12 or state()['last_noon_age_date'] == today: return
     run("UPDATE game_state SET last_noon_age_date=? WHERE id=1", (today,))
     run("UPDATE consorts SET age_months=age_months+? WHERE status NOT IN ('xiunv','dead')", (AGE_MONTHS_PER_DAY // 2,))
-    family_remit_tick(state()['day'])      # 体己每 12 小时一次：中午这次和零点结算那次
 
 @atomic
 def maybe_settle():
@@ -9040,6 +9247,10 @@ def maybe_settle():
     energy_tick(pace_key)
     dying_tick()
     age_noon_tick(now)
+    remit_tick(now)
+    mood_tick(now)
+    night_event_tick(now)
+    audience_tick(now)
     repair_roll(now)
     heir_age_events(st['day'])
     heir_grow_stats(st['day'])
@@ -9512,9 +9723,11 @@ def illness_roll(day):
             fall_ill(c['id'], day, '在冷宫里冻着了'); continue
         if c['postpartum_until'] >= day and random.random() < POSTPARTUM_SICK_CHANCE / n:
             fall_ill(c['id'], day, '产后没调养好'); continue
+        if daily_count(c['id'], 'cold_caught') >= COLD_CAUGHT_DAILY_MAX: continue      # 风寒每人每个游戏日最多染一次（病好了当天也不再染）
         p = ordinary_illness_chance(c, day)
         if p > 0 and random.random() < p / n:
             fall_ill(c['id'], day, '偶感风寒')
+            daily_inc(c['id'], 'cold_caught')
 
 
 def epidemic_roll_tick(now):
@@ -9525,7 +9738,7 @@ def epidemic_roll_tick(now):
 
 
 def illness_roll_tick(now):
-    """maybe_settle 每分钟调：到了 0/6/12/18 点的这一轮就判一次；0 点这轮排在日结算之后，用的是新的一天"""
+    """maybe_settle 每分钟调：到了 3/9/15/21 点的这一轮就判一次"""
     key = latest_slot(now, ILLNESS_ROLL_HOURS)
     if state()['last_illness_key'] == key: return
     run("UPDATE game_state SET last_illness_key=? WHERE id=1", (key,))
@@ -9620,7 +9833,7 @@ def rebirth():
 # ── 宫城地图 / 地点 ────────────────────────────────────────────────────────────
 
 PLACES = {
-    'home':    dict(name='本宫', actions=['study', 'schemestudy', 'groom', 'rest', 'reflect', 'eyes', 'shoukang']),
+    'home':    dict(name='本宫', actions=['study', 'schemestudy', 'groom', 'rest', 'reflect', 'eyes', 'shoukang', 'tryst']),
     'jingren': dict(name='礼仪堂', actions=['greet', 'palace_work', 'aid', 'chastise']),
     'garden':  dict(name='御花园', actions=['garden']),
     'yangxin': dict(name='养心殿', actions=['seek', 'perform', 'pizhe', 'attend', 'plead']),
@@ -9639,7 +9852,7 @@ def map_tiles(c):
         dict(key='garden', name='御花园', area='garden', url=url_for('place', key='garden'),
              note=shut or (f'还能逛 {garden_left} 次' if garden_left > 0 else '今天逛够了'), off=bool(shut)),
         dict(key='yangxin', name='养心殿', area='yangxin', url=url_for('place', key='yangxin'),
-             note=shut or f"皇上今日{st['emperor_mood']}", off=bool(shut)),
+             note=shut or f"皇上此刻{st['emperor_mood']}", off=bool(shut)),
         dict(key='home', name=residence_name(c), area='home', url=url_for('place', key='home'),
              note=f"精力 {c['energy']}", off=False, home=True),
         dict(key='jingren', name='礼仪堂', area='jingren', url=url_for('place', key='jingren'),
@@ -9689,7 +9902,7 @@ def place(key):
     elif key == 'garden':
         desc = '春日里杏花开得正好，千鲤池边常有人走动。' if day % 2 else '入秋了，满园的菊花，风里有桂花香。'
     elif key == 'yangxin':
-        desc = f"皇上批折子的地方。今日皇上{st['emperor_mood']}，近来喜欢{st['emperor_pref']}。"
+        desc = f"皇上批折子的地方。此刻皇上{st['emperor_mood']}，近来喜欢{st['emperor_pref']}。"
         lb = get_consort(st['last_bed_id']) if st['last_bed_id'] else None
         if lb: extra = f"第 {st['last_bed_day']} 天夜里，皇上翻的是{display_name(lb)}的牌子。"
     plead_targets = q("""SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status IN ('confined','cold')""",
@@ -10296,7 +10509,7 @@ def resolve_drug(it):
             else:notify(t['id'],'寒水散伤了身子，但胎儿暂时保住了。','info')
     elif drug=='lihun': poison_player(t['id'],day)
     elif drug=='chunxin':
-        run('UPDATE consorts SET pregnant_since=?,pregnancy_started_ts=? WHERE id=?',(day,time.time(),t['id']))
+        run('UPDATE consorts SET pregnant_since=?,pregnancy_started_ts=?,pregnancy_secret=0 WHERE id=?',(day,time.time(),t['id']))
         notify(t['id'],'太医诊出了喜脉。','good')
         gazette(f'{display_name(t)}有喜了。','birth')
     if DRUGS[drug]['case']=='now':
@@ -11063,6 +11276,7 @@ def hobby_act():
         if daily_count(c['id'], 'hobby') >= HOBBY_DAILY_MAX: raise Reject(f'今天已经打理过 {HOBBY_DAILY_MAX} 次了，明天再来。')
         hobby_charge(c)
         daily_inc(c['id'], 'hobby')
+        add_mood(c['id'], MOOD_HOBBY)
         cfg = HOBBIES[proj['kind']]
         stage = proj['stage'] + 1
         if stage >= len(cfg['texts']) - 1:
