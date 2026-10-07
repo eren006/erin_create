@@ -163,16 +163,57 @@ FAVOR_DROP_DEMOTE = 50       # 一天之内圣宠净掉了这么多点以上（�
 UNFAVORED_GRACE_DAYS = 2
 NEWCOMER_CARE_DAYS = 3
 FAVOR_CARE = {
-    'hot': dict(name='得宠', stipend_factor=1.5, reward=15, sick_chance=.02, survive=.98, untreated=.70, recover_nights=1, recovery_health=50),
-    'normal': dict(name='普通', stipend_factor=1.0, reward=0, sick_chance=.03, survive=.90, untreated=.35, recover_nights=1, recovery_health=35),
-    'low': dict(name='失宠', stipend_factor=.7, reward=0, sick_chance=.05, survive=.80, untreated=.20, recover_nights=2, recovery_health=35),
+    'hot': dict(name='得宠', stipend_factor=1.5, reward=15, sick_chance=.10, survive=.80, untreated=.70, recover_nights=1, recovery_health=50),
+    'normal': dict(name='普通', stipend_factor=1.0, reward=0, sick_chance=.15, survive=.70, untreated=.35, recover_nights=1, recovery_health=35),
+    'low': dict(name='失宠', stipend_factor=.7, reward=0, sick_chance=.20, survive=.50, untreated=.20, recover_nights=2, recovery_health=35),
 }
+
+
+FAVOR_HOT_PCT = 0.25         # 2026-10-07 起：在宫玩家按圣宠排名，前 25% 得宠、后 25% 失宠，其余普通
+FAVOR_LOW_PCT = 0.25
+FAVOR_HOT_MIN = 50           # 排进前 20% 也要圣宠到这条线才算得宠
+FAVOR_RANK_MIN_POP = 4       # 在宫玩家不足这个数，不分排名，回到固定线（FAVOR_HOT / FAVOR_LOW）
+
+
+def care_pool():
+    return list(q("SELECT id, favor FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined')"))
+
+
+def care_zones(pool=None):
+    """排名模式：返回 (得宠 id 集合, 失宠区 id 集合)；人太少时返回 None，走固定线"""
+    pool = care_pool() if pool is None else pool
+    n = len(pool)
+    if n < FAVOR_RANK_MIN_POP: return None
+    top = sorted(pool, key=lambda r: (-r['favor'], r['id']))
+    bottom = sorted(pool, key=lambda r: (r['favor'], -r['id']))
+    hot = {r['id'] for r in top[:max(1, int(n * FAVOR_HOT_PCT))] if r['favor'] >= FAVOR_HOT_MIN}
+    low = {r['id'] for r in bottom[:max(1, int(n * FAVOR_LOW_PCT))]} - hot
+    return hot, low
+
+
+def refresh_care_tiers():
+    """每晚结算开头：按当晚的圣宠排名定下今天的待遇，白天保持不变"""
+    run("UPDATE consorts SET care_tier=''")
+    zones = care_zones()
+    if not zones: return None
+    hot, low = zones
+    for cid in hot: run("UPDATE consorts SET care_tier='hot' WHERE id=?", (cid,))
+    for cid in low: run("UPDATE consorts SET care_tier='low' WHERE id=?", (cid,))
+    return zones
+
+
+for _k in ('FAVOR_HOT_PCT', 'FAVOR_LOW_PCT', 'FAVOR_HOT_MIN', 'FAVOR_RANK_MIN_POP'): app.jinja_env.globals[_k] = globals()[_k]
 
 
 def favor_care_tier(c, day=None):
     day = cur_day() if day is None else day
-    if c['favor'] >= FAVOR_HOT and c['status'] != 'cold': return 'hot'
-    if c['status']=='cold': return 'low'
+    ranked = len(care_pool()) >= FAVOR_RANK_MIN_POP
+    if c['status'] == 'cold': return 'low'
+    if ranked:
+        if c['care_tier'] == 'hot': return 'hot'
+        if day-c['entered_day'] < NEWCOMER_CARE_DAYS: return 'normal'
+        return 'low' if c['care_tier'] == 'low' and c['unfavored_days'] >= UNFAVORED_GRACE_DAYS else 'normal'
+    if c['favor'] >= FAVOR_HOT: return 'hot'
     if day-c['entered_day']<NEWCOMER_CARE_DAYS: return 'normal'
     return 'low' if c['favor']<FAVOR_LOW and c['unfavored_days']>=UNFAVORED_GRACE_DAYS else 'normal'
 
@@ -1480,6 +1521,7 @@ def init_db():
                      'guide_progress': "TEXT NOT NULL DEFAULT '[]'",
                      'guide_tips': "TEXT NOT NULL DEFAULT '[]'",
                      'unfavored_days': 'INTEGER NOT NULL DEFAULT 0',
+                     'care_tier': "TEXT NOT NULL DEFAULT ''",
                      'ill_care': "TEXT NOT NULL DEFAULT 'normal'",
                      'ill_day': 'INTEGER NOT NULL DEFAULT 0',
                      'ill_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -5519,6 +5561,9 @@ def ranks():
     last_beds = last_bed_consorts(st)
     return render_template('ranks.html', groups=groups, cold=cold, me=g.me, last_beds=last_beds)
 
+GAZETTE_FAVORITES = 5      # 邸报顶部「圣眷最隆」列几位（只写名号，不写圣宠数值）
+
+
 @app.route('/gazette')
 @login_required
 def gazette_page():
@@ -5537,6 +5582,8 @@ def gazette_page():
     cold = [x for x in rank_rows if x['status'] == 'cold']
     st = state()
     last_beds = last_bed_consorts(st)
+    favorites = sorted((x for x in rank_rows if x['status'] in ('normal', 'confined') and x['favor'] > 0),
+                       key=lambda x: (-x['favor'], x['id']))[:GAZETTE_FAVORITES]
     expecting = []
     for x in rank_rows:
         if x['pregnant_since'] and x['status'] != 'cold':
@@ -5544,7 +5591,7 @@ def gazette_page():
             expecting.append(dict(c=x, stage=pr['stage'], hours=pr['hours'], minutes=pr['minutes'], legacy=pr['legacy'],
                                   percent=pr['percent'], due=pregnancy_due_text(x)))
     return render_template('gazette.html', days=sorted(days.items(), reverse=True), day=day,
-                            groups=groups, cold=cold, last_beds=last_beds, expecting=expecting, me=g.me)
+                            groups=groups, cold=cold, last_beds=last_beds, expecting=expecting, favorites=favorites, me=g.me)
 
 CN_NUM = '零一二三四五六七八九十'
 
@@ -8338,11 +8385,13 @@ def _settle_night():
 
     # 5. 日常：同步增长两岁、月例、圣宠流失、精力、禁足/冷宫期满、请安
     capital_mothers = capital_mother_ids()
+    zones = None if partial else refresh_care_tiers()
     for c in q("SELECT * FROM consorts WHERE status NOT IN ('xiunv','dead')"):
         c = get_consort(c['id'])
         if not partial:      # 补结算不再算这几笔每晚一次的账
             run('UPDATE consorts SET age_months=age_months+? WHERE id=?', (AGE_MONTHS_PER_DAY // 2, c['id']))   # 一天 = 宫中两年：零点涨一岁，中午 12 点再涨一岁（见 age_noon_tick）
-            streak = c['unfavored_days']+1 if c['favor']<FAVOR_LOW else 0
+            in_low = (c['id'] in zones[1]) if zones else c['favor'] < FAVOR_LOW
+            streak = c['unfavored_days']+1 if in_low else 0
             run('UPDATE consorts SET unfavored_days=? WHERE id=?',(streak,c['id']))
             c=get_consort(c['id'])
             drop = c['favor_mark'] - c['favor'] if c['favor_mark'] >= 0 else 0      # 比昨夜结算后的圣宠净掉了多少（含被使计、受罚、被截宠，扣掉当天涨的）

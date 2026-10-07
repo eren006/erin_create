@@ -30,7 +30,7 @@ class FavorCareTests(unittest.TestCase):
         self.assertEqual(game.favor_stipend(game.get_consort(self.atk)),0)
 
     def test_base_illness_risk_and_recovery_protection(self):
-        for favor,prob in [(150,.02),(40,.03),(0,.05)]:
+        for favor,prob in [(150,.10),(40,.15),(0,.20)]:
             self.assertEqual(game.ordinary_illness_chance(self.set_care(favor),10),prob)
         game.run('UPDATE consorts SET protected_until_day=10 WHERE id=?',(self.atk,))
         self.assertEqual(game.ordinary_illness_chance(game.get_consort(self.atk),10),0)
@@ -41,14 +41,14 @@ class FavorCareTests(unittest.TestCase):
         c=game.get_consort(self.atk);self.assertEqual(c['ill_treatment'],1)
         self.assertEqual(c['silver'],silver)
         game.run('UPDATE consorts SET health=20 WHERE id=?',(self.atk,))
-        with patch.object(game.random,'random',return_value=.97):game.resolve_illness_crises(11)
+        with patch.object(game.random,'random',return_value=.79):game.resolve_illness_crises(11)
         self.assertFalse(game.get_consort(self.atk)['ill_day'])
         self.assertEqual(game.get_consort(self.atk)['health'],50)
 
     def test_low_treated_recovers_after_two_nights(self):
         self.set_care(0);game.fall_ill(self.atk,10,'风寒')
         self.client.post(f'/treat/{self.atk}')
-        with patch.object(game.random,'random',return_value=.79):
+        with patch.object(game.random,'random',return_value=.49):
             game.resolve_illness_crises(11)
             self.assertTrue(game.get_consort(self.atk)['ill_day'])
             game.resolve_illness_crises(12)
@@ -61,7 +61,7 @@ class FavorCareTests(unittest.TestCase):
         self.client.post(f'/treat/{self.atk}')
         self.assertEqual(game.get_consort(self.tgt)['silver'],silver-game.treat_cost(game.get_consort(self.atk)))
         self.assertEqual(game.get_consort(self.atk)['ill_treatment'],1)
-        with patch.object(game.random,'random',return_value=.81):game.resolve_illness_crises(12)
+        with patch.object(game.random,'random',return_value=.51):game.resolve_illness_crises(12)
         self.assertEqual(game.get_consort(self.atk)['status'],'dead')
 
     def test_untreated_low_dies_next_night(self):
@@ -71,7 +71,7 @@ class FavorCareTests(unittest.TestCase):
 
     def test_regaining_favor_upgrades_ongoing_care(self):
         self.set_care(0);game.fall_ill(self.atk,10,'风寒');self.set_care(150)
-        with patch.object(game.random,'random',return_value=.97):game.resolve_illness_crises(11)
+        with patch.object(game.random,'random',return_value=.79):game.resolve_illness_crises(11)
         self.assertFalse(game.get_consort(self.atk)['ill_day'])
 
     def test_income_streak_grace_then_recovers(self):
@@ -98,3 +98,31 @@ class FavorCareTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['silver'],silver)
         self.assertEqual(game.get_consort(self.atk)['ill_care'],'hot')
         self.assertEqual(game.get_consort(self.atk)['ill_treatment'],1)
+
+
+    def test_ranked_tiers_with_enough_players(self):
+        ids=[self.atk]+[self.player(f'排{i}',rank=3) for i in range(9)]       # 凑够 10 个在宫玩家
+        others=[i for i in ids if i!=self.atk]
+        game.run("UPDATE consorts SET status='cold' WHERE user_id IS NOT NULL AND id NOT IN (%s)"%','.join('?'*len(ids)),ids)
+        for i,cid in enumerate(ids): game.run('UPDATE consorts SET favor=?,unfavored_days=2,entered_day=1 WHERE id=?',(100+i*10,cid))
+        game.refresh_care_tiers()
+        tiers={cid:game.favor_care_tier(game.get_consort(cid)) for cid in ids}
+        self.assertEqual(sorted(tiers.values()).count('hot'),2,'10 人取前 25% = 2 人')
+        self.assertEqual(sorted(tiers.values()).count('low'),2,'后 25% = 2 人')
+        self.assertEqual(tiers[ids[-1]],'hot');self.assertEqual(tiers[ids[0]],'low')
+        game.run('UPDATE consorts SET favor=30 WHERE id=?',(ids[-1],))      # 排第一但圣宠低于门槛
+        for cid in ids[:-1]: game.run('UPDATE consorts SET favor=5 WHERE id=?',(cid,))
+        game.refresh_care_tiers()
+        self.assertEqual(game.favor_care_tier(game.get_consort(ids[-1])),'normal','前 25% 但圣宠不到门槛不算得宠')
+
+    def test_few_players_fall_back_to_fixed_lines(self):
+        self.assertEqual(game.favor_care_tier(self.set_care(150)),'hot')
+        self.assertEqual(game.favor_care_tier(self.set_care(39)),'low')
+
+    def test_gazette_top_lists_favorites(self):
+        self.set_care(150)
+        r=self.client.get('/gazette')
+        self.assertEqual(r.status_code,200)
+        html=r.get_data(as_text=True)
+        self.assertIn('圣眷最隆',html)
+        self.assertIn(game.display_name(game.get_consort(self.atk)),html)

@@ -511,11 +511,11 @@ class LivingTests(unittest.TestCase):
 
     def test_blessing_helps_survive_illness(self):
         game.run("UPDATE consorts SET ill_day=5, ill_treatment=1, blessing=50 WHERE id=?", (self.atk,))
-        with patch.object(game.random, 'random', return_value=0.95):   # 请了太医九成，福报 50 再 +10%
+        with patch.object(game.random, 'random', return_value=0.78):   # 请了太医七成，福报 50 再 +10%
             game.resolve_illness_crises(6)
         self.assertEqual(self.c()['status'], 'normal')
         game.run("UPDATE consorts SET ill_day=5, ill_treatment=1, blessing=0 WHERE id=?", (self.atk,))
-        with patch.object(game.random, 'random', return_value=0.95):
+        with patch.object(game.random, 'random', return_value=0.78):
             game.resolve_illness_crises(6)
         self.assertEqual(self.c()['status'], 'dead')
 

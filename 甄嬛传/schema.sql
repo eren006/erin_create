@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS consorts (
     bed_daily_count INTEGER NOT NULL DEFAULT 0,
     influence        INTEGER NOT NULL DEFAULT 0,
     unfavored_days   INTEGER NOT NULL DEFAULT 0,
+    care_tier        TEXT NOT NULL DEFAULT '',                -- 圣宠排名待遇：每晚结算定，hot 前 25% / low 后 25% / 空 普通
     ill_care         TEXT NOT NULL DEFAULT 'normal',
     surname          TEXT NOT NULL,
     given            TEXT NOT NULL,

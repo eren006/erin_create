@@ -26,6 +26,14 @@
 {% block body %}
 <h2>邸报</h2>
 
+{% if favorites %}
+<h3>圣眷最隆</h3>
+<p class="muted" style="margin-top:0">眼下皇上最看重的几位，按圣眷高低排列。</p>
+<div class="rack" style="margin-bottom:8px">
+  {% for f in favorites %}<div><div class="pai {{ 'me' if me and me.id == f.id }}">{{ dn(f) }}</div><div class="muted" style="text-align:center;font-size:13px;margin-top:6px">{{ loop.index }}</div></div>{% endfor %}
+</div>
+{% endif %}
+
 <h3>待产</h3>
 {% if expecting %}
 <div class="scroll"><table>
