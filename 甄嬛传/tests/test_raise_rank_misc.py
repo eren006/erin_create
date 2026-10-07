@@ -142,6 +142,22 @@ class RaiseRankMiscTests(unittest.TestCase):
             game.resolve_births(game.cur_day(), False)
         self.assertTrue(all(h['gender'] == '皇子' for h in game.q('SELECT gender FROM heirs WHERE mother_id=?', (self.atk,))))
 
+    def test_adopt_influence_granted_and_revoked(self):
+        mother = self.player('生母', rank=3)
+        hid = self.heir(mother, caretaker=0, born=game.cur_day())
+        game.run('UPDATE consorts SET influence=10 WHERE id=?', (self.atk,))
+        game.run('INSERT INTO heir_claims (consort_id, heir_id, day) VALUES (?,?,?)', (self.atk, hid, game.cur_day()))
+        game.heir_orphan_tick(game.cur_day())
+        self.assertEqual(game.get_consort(self.atk)['influence'], 10 + game.ADOPT_INFLUENCE)
+        self.assertEqual(game.q('SELECT adopt_bonus_to FROM heirs WHERE id=?', (hid,), one=True)['adopt_bonus_to'], self.atk)
+        game.adopt_bonus_revoke(hid)
+        self.assertEqual(game.get_consort(self.atk)['influence'], 10)
+        game.adopt_bonus_revoke(hid)
+        self.assertEqual(game.get_consort(self.atk)['influence'], 10, '只扣一次')
+        own = self.heir(self.atk)
+        game.adopt_bonus_grant(self.atk, own)
+        self.assertEqual(game.get_consort(self.atk)['influence'], 10, '生母自己带不算收养')
+
 
 if __name__ == '__main__':
     unittest.main()

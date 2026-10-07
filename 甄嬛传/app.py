@@ -1607,7 +1607,7 @@ def init_db():
                      'repair': "TEXT NOT NULL DEFAULT ''",
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'personality': "TEXT NOT NULL DEFAULT ''",
@@ -6182,6 +6182,7 @@ def heir_upkeep(day):
             n = h['unpaid_days'] + 1
             if n >= HEIR_UNPAID_NIGHTS:
                 run('UPDATE heirs SET caretaker_id=0, caretaker_affinity=50, visit_banned=0, concealed=0, unpaid_days=0 WHERE id=?', (h['id'],))
+                adopt_bonus_revoke(h['id'])
                 taken.append(h)
                 gazette(f"{display_name(c)}连欠乳母月钱、师傅束脩，{heir_label(h)}被抱去皇嗣养育所，由乳母与师傅照料，{raise_rank_name(h)}位以上可申请领养。", 'decree')
                 mother = get_consort(h['mother_id']) if h['mother_id'] and h['mother_id'] != c['id'] else None
@@ -6320,6 +6321,31 @@ def raise_rank_name(h):
     return RANK_NAMES[raise_min_rank(h)]
 
 
+ADOPT_INFLUENCE = 5      # 收养（养育所领养、被托付、争夺抚养权赢下）孩子，养母势力 +5；孩子被送回去（生母讨回、欠钱被抱走）再扣回来
+
+
+def adopt_bonus_grant(cid, hid):
+    """收养成功：养母势力 +ADOPT_INFLUENCE，记在孩子身上，以后孩子离开时才知道要不要扣。生母自己带不算收养"""
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    c = get_consort(cid) if cid else None
+    if not h or not c or not c['user_id'] or cid == h['mother_id']: return
+    run('UPDATE consorts SET influence=influence+? WHERE id=?', (ADOPT_INFLUENCE, cid))
+    run('UPDATE heirs SET adopt_bonus_to=? WHERE id=?', (cid, hid))
+    notify(cid, f"收养{heir_label(h)}，势力 +{ADOPT_INFLUENCE}。孩子若被送回去，这点势力要扣回来。", 'good')
+
+
+def adopt_bonus_revoke(hid):
+    """孩子离开了拿过收养势力的养母：把那份势力扣回来（扣到 0 为止）"""
+    h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
+    if not h or not h['adopt_bonus_to']: return
+    cid = h['adopt_bonus_to']
+    run('UPDATE heirs SET adopt_bonus_to=0 WHERE id=?', (hid,))
+    c = get_consort(cid)
+    if not c or not c['user_id'] or c['status'] == 'dead': return
+    run('UPDATE consorts SET influence=MAX(0, influence-?) WHERE id=?', (ADOPT_INFLUENCE, cid))
+    notify(cid, f"{heir_label(h)}不在你身边了，当初收养得的势力扣回 {ADOPT_INFLUENCE}。", 'bad')
+
+
 def pick_foster(exclude=(), min_rank=RAISE_MIN_RANK_DAUGHTER):
     """挑一位够位分、正在当差的妃嫔当养母：带孩子最少的优先，同样多时 NPC 在前"""
     marks = ','.join('?' * len(exclude)) or '-1'
@@ -6389,12 +6415,12 @@ def heir_rehome_tick(day):
         label = heir_label(h)
         cur_gone = '进了冷宫' if cur['status'] == 'cold' else '薨逝了'
         if mother and h['caretaker_id'] != h['mother_id'] and mother['status'] == 'normal' and mother['rank'] >= raise_min_rank(h):
-            run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=mother_affinity WHERE id=?', (mother['id'], h['id']))
+            run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=mother_affinity, adopt_bonus_to=0 WHERE id=?', (mother['id'], h['id']))
             gazette(f"{display_name(cur)}{cur_gone}，{label}由生母{display_name(mother)}领回抚养。", 'decree')
             if mother['user_id']:
                 notify(mother['id'], f"{display_name(cur)}{cur_gone}，皇上让你把{label}领回去了。", 'good')
             continue
-        run('UPDATE heirs SET caretaker_id=0,caretaker_affinity=50,visit_banned=0,concealed=0 WHERE id=?', (h['id'],))
+        run('UPDATE heirs SET caretaker_id=0,caretaker_affinity=50,visit_banned=0,concealed=0,adopt_bonus_to=0 WHERE id=?', (h['id'],))
         gazette(f'{label}转入皇嗣养育所，等待合格妃嫔申请领养。', 'decree')
         continue
 
@@ -6457,6 +6483,7 @@ def heir_entrust_reply(hid):
     if c['rank'] < raise_min_rank(h) or c['status'] != 'normal' or h['zhuazhou'] or h['caretaker_id'] not in (0, h['mother_id']) or mother['status'] == 'dead':
         flash('这桩托付已经办不成了。', 'bad'); return redirect(url_for('heirs'))
     run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (c['id'], hid))
+    adopt_bonus_grant(c['id'], hid)
     add_affinity(c['id'], mother['id'], 5)
     gazette(f"{display_name(mother)}将{label}托付给{display_name(c)}抚养。", 'news')
     if mother['user_id']: notify(mother['id'], f"{display_name(c)}应下了，{label}往后由她抚养。晋到{raise_rank_name(h)}位后可以去求皇上讨回。", 'good')
@@ -6561,7 +6588,9 @@ def finish_custody_battle(battle, winner, reason):
     if h:
         run('UPDATE heirs SET reclaim_after_day=? WHERE id=?', (cur_day()+HEIR_RECLAIM_COOLDOWN,h['id']))
         if winner == battle['challenger_id']:
+            adopt_bonus_revoke(h['id'])      # 原养母输了，收养的势力扣回；新养母不是生母的话再算一次收养
             run('UPDATE heirs SET caretaker_id=?,caretaker_affinity=mother_affinity,visit_banned=0,concealed=0 WHERE id=?', (winner,h['id']))
+            adopt_bonus_grant(winner, h['id'])
             add_affinity(battle['challenger_id'],battle['defender_id'],-10)
         text = f"{heir_label(h)}抚养权争夺结束：{display_name(get_consort(winner))}胜出。{reason}"
         gazette(text,'decree')
@@ -7006,6 +7035,7 @@ def heir_orphan_tick(day):
         if claims:
             win = pick_weighted(claims, [max(1, c['trust'] + c['rank'] * 5) for c in claims])
             run('UPDATE heirs SET caretaker_id=?,caretaker_affinity=50,visit_banned=0,concealed=0 WHERE id=?', (win['id'], h['id']))
+            adopt_bonus_grant(win['id'], h['id'])
             gazette(f"皇上准{display_name(win)}从养育所领养{heir_label(h)}。", 'decree')
             for c in claims:
                 notify(c['id'], f"{heir_label(h)}由{display_name(win)}领养。", 'good' if c['id'] == win['id'] else 'info')
@@ -8823,7 +8853,7 @@ def help_page():
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS, QUIET_DAYS=QUIET_DAYS,
                            FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, TWIN_CHANCE=TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS=TWIN_EXTRA_HEALTH_LOSS, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, CUISHENG_HOURS=CUISHENG_HOURS, INFLUENCE_DECAY=INFLUENCE_DECAY, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
                            HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, HEALTH_DYING_AT=HEALTH_DYING_AT, DYING_HOURS=DYING_HOURS, CONFINE_DAYS=CONFINE_DAYS, CONFINE_HOURS=CONFINE_HOURS,
-                           COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, EAT_DAILY_MAX=EAT_DAILY_MAX, COOK_DAILY_MAX=COOK_DAILY_MAX, GARDEN_SELL_DAILY_CAP=GARDEN_SELL_DAILY_CAP, GARDEN_TAN_CHANCE=GARDEN_TAN_CHANCE, GARDEN_TAN_LOSS=GARDEN_TAN_LOSS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_MAX=PREGNANCY_MAX, PREGNANCY_PITY_ATTEMPTS=PREGNANCY_PITY_ATTEMPTS, PREGNANCY_DAYS=PREGNANCY_DAYS,
+                           COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, ADOPT_INFLUENCE=ADOPT_INFLUENCE, EAT_DAILY_MAX=EAT_DAILY_MAX, COOK_DAILY_MAX=COOK_DAILY_MAX, GARDEN_SELL_DAILY_CAP=GARDEN_SELL_DAILY_CAP, GARDEN_TAN_CHANCE=GARDEN_TAN_CHANCE, GARDEN_TAN_LOSS=GARDEN_TAN_LOSS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_MAX=PREGNANCY_MAX, PREGNANCY_PITY_ATTEMPTS=PREGNANCY_PITY_ATTEMPTS, PREGNANCY_DAYS=PREGNANCY_DAYS,
                            settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,
                            HEIR_EXAM_INTERVAL=HEIR_EXAM_INTERVAL, HEIR_EXAM_MIN_AGE=HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE=HEIR_EXAM_MAX_AGE,
                            ERRAND_INTERVAL=ERRAND_INTERVAL, CROWN_INTERVAL=CROWN_INTERVAL, BIRTHDAY_INTERVAL=BIRTHDAY_INTERVAL,
