@@ -8444,7 +8444,7 @@ def help_page():
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
                            FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, TWIN_CHANCE=TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS=TWIN_EXTRA_HEALTH_LOSS, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
                            HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, CONFINE_DAYS=CONFINE_DAYS, CONFINE_HOURS=CONFINE_HOURS,
-                           COLD_DAYS=COLD_DAYS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_DAYS=PREGNANCY_DAYS,
+                           COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_DAYS=PREGNANCY_DAYS,
                            settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,
                            HEIR_EXAM_INTERVAL=HEIR_EXAM_INTERVAL, HEIR_EXAM_MIN_AGE=HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE=HEIR_EXAM_MAX_AGE,
                            ERRAND_INTERVAL=ERRAND_INTERVAL, CROWN_INTERVAL=CROWN_INTERVAL, BIRTHDAY_INTERVAL=BIRTHDAY_INTERVAL,
@@ -10895,7 +10895,7 @@ BANQUET_TITLE_MAX = 12
 BANQUET_REWARDS = {   # 名次：(圣宠区间, 银子)
     1: ((20, 30), 80), 2: ((12, 18), 40), 3: ((6, 10), 20),
 }
-BANQUET_JOIN_SILVER = 10
+BANQUET_JOIN_SILVER = 30       # 参与奖：只要献了艺，不论名次都有（2026-10-07 起，原来只有前三名之外的人拿 10 两，前三名的奖金里不含它）；前三名在这之上再拿名次奖
 BANQUET_XP = 1          # 献艺本身也算一次练习
 
 # 戏装铺：宴服、头面、道具（按才艺分），买下就是自己的，开席时每类取最好的一件算加分
@@ -11206,7 +11206,8 @@ def run_banquet(date):
     units.sort(key=lambda u: -u['score'])
     if not units: return
     for place, u in enumerate(units, start=1):
-        favor_rng, silver = BANQUET_REWARDS.get(place, (None, BANQUET_JOIN_SILVER))
+        favor_rng, prize = BANQUET_REWARDS.get(place, (None, 0))
+        silver = BANQUET_JOIN_SILVER + prize
         word = {1: '拔得头筹', 2: '位列第二', 3: '位列第三'}.get(place, f'名列第 {place}')
         stumbled = any(m[3] for m in u['members'])
         for (_, e, c, stumble) in u['members']:
@@ -11221,7 +11222,7 @@ def run_banquet(date):
             if favor_rng and c['status'] == 'normal':
                 parts.append(f"圣宠 +{add_favor(c['id'], random.randint(*favor_rng))}")
             add_silver(c['id'], silver)
-            parts.append(f"赏银 {silver} 两")
+            parts.append(f"赏银 {silver} 两（参与奖 {BANQUET_JOIN_SILVER}" + (f"＋名次奖 {prize}" if prize else '') + "）")
             if place == 1 and c['user_id'] and family_row(c['user_id']):
                 add_prestige_uid(c['user_id'], 2, '新年宴会夺魁')
                 parts.append('名望 +2')
