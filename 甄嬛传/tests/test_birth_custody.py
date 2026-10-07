@@ -30,6 +30,13 @@ class BirthCustodyTests(unittest.TestCase):
         self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%不能亲自抚养%'", (self.tgt,), one=True))
         self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%送入皇嗣养育所%'", one=True))
 
+    def test_mother_raising_her_own_child_gets_influence(self):
+        game.run('UPDATE consorts SET influence=0 WHERE id=?', (self.atk,))
+        h = self.deliver(self.atk)
+        self.assertEqual(h['caretaker_id'], self.atk)
+        self.assertGreaterEqual(game.get_consort(self.atk)['influence'], game.ADOPT_INFLUENCE)
+        self.assertEqual(h['adopt_bonus_to'], self.atk)
+
     def test_pin_and_above_keep_their_own_child(self):
         h = self.deliver(self.atk)             # atk 是嫔（五级）
         self.assertEqual(h['caretaker_id'], self.atk)

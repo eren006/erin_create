@@ -1605,11 +1605,13 @@ def init_db():
                      'diet': "TEXT NOT NULL DEFAULT 'normal'",
                      'diet_eff': "TEXT NOT NULL DEFAULT 'normal'",
                      'repair': "TEXT NOT NULL DEFAULT ''",
+                     'repair_date': "TEXT NOT NULL DEFAULT ''",
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
         'heirs': {'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
+                  'attr_years': 'INTEGER NOT NULL DEFAULT 0',
                   'personality': "TEXT NOT NULL DEFAULT ''",
                   'study': 'INTEGER NOT NULL DEFAULT 20',
                   'riding': 'INTEGER NOT NULL DEFAULT 20',
@@ -1654,7 +1656,7 @@ def init_db():
                     'sender_label': "TEXT NOT NULL DEFAULT ''"},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
-        'game_state': {'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
+        'game_state': {'last_repair_key': "TEXT NOT NULL DEFAULT ''", 'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
                        'reign_no': 'INTEGER NOT NULL DEFAULT 1',
                        'reign_start_day': 'INTEGER NOT NULL DEFAULT 1',
                        'emperor_start_age': 'INTEGER NOT NULL DEFAULT 20',
@@ -3753,12 +3755,19 @@ def set_diet():
 
 REPAIRS = {
     'window': dict(name='窗纸破了', base=20, sev=1, weight=3, line='窗纸被风吹破了，屋里灌风。'),
-    'leak':   dict(name='屋顶漏雨', base=55, sev=2, weight=2, line='屋顶漏雨，被褥都潮了。'),
-    'stove':  dict(name='地龙坏了', base=40, sev=2, weight=2, line='烧地龙的火道塌了，屋里一夜比一夜冷。'),
+    'door':   dict(name='门轴松了', base=25, sev=1, weight=3, line='门轴松了，一开一合吱呀作响，夜里总被惊醒。'),
+    'rats':   dict(name='闹耗子', base=25, sev=1, weight=2, line='梁上闹耗子，夜夜窸窸窣窣，还啃坏了半柜点心。'),
     'well':   dict(name='井水浑浊', base=35, sev=1, weight=2, line='院里的井水浑了，吃着一股土腥气。'),
+    'tiles':  dict(name='地砖翻起', base=35, sev=1, weight=2, line='廊下的地砖翻起来了，走路都得留神，潮气一阵阵往上返。'),
+    'stove':  dict(name='地龙坏了', base=40, sev=2, weight=2, line='烧地龙的火道塌了，屋里一夜比一夜冷。'),
+    'flue':   dict(name='烟道堵了', base=45, sev=2, weight=2, line='烟道堵了，炭火一烧满屋子都是烟，呛得人直咳。'),
+    'bed':    dict(name='床榻裂了', base=50, sev=2, weight=1, line='床榻的一条腿裂了，躺上去直晃，睡不踏实。'),
+    'leak':   dict(name='屋顶漏雨', base=55, sev=2, weight=2, line='屋顶漏雨，被褥都潮了。'),
     'beam':   dict(name='梁柱朽坏', base=140, sev=3, weight=1, line='一根梁柱朽了，屋里吱呀作响，让人不敢安睡。'),
 }
-REPAIR_CHANCE, REPAIR_COST_PER_RANK = 0.04, 0.15
+REPAIR_CHANCE, REPAIR_COST_PER_RANK = 0.10, 0.15   # 每小时半点每人判一次，10%；每人每天最多坏一次（consorts.repair_date）
+REPAIR_MINUTE = 30
+REPAIR_COST_JITTER = (0.85, 1.2)                   # 工料行情浮动，坏的那一刻定价
 
 
 def repair_cost(kind, rank):
@@ -3772,7 +3781,7 @@ def repair_state(c):
 
 
 def repair_tick(day):
-    """宫里的屋子偶尔会坏：没修的每晚体质 −1（重一点的还会让宫人寒心、圣宠掉），修好为止"""
+    """日结算：没修的东西每晚体质 −1（重一点的还会让宫人寒心、圣宠掉），修好为止。新的损坏不在这里判，见 repair_roll"""
     for c in list(q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined') AND hall!=''")):
         st = repair_state(c)
         if st:
@@ -3783,11 +3792,20 @@ def repair_tick(day):
             if sev >= 3: cut_favor(c['id'], FAVOR_LOSS['repair'])
             st['days'] = st.get('days', 0) + 1
             run("UPDATE consorts SET repair=? WHERE id=?", (json.dumps(st), c['id']))
-        elif random.random() < REPAIR_CHANCE:
-            kind = random.choices(list(REPAIRS), weights=[r['weight'] for r in REPAIRS.values()])[0]
-            cost = repair_cost(kind, c['rank'])
-            run("UPDATE consorts SET repair=? WHERE id=?", (json.dumps(dict(kind=kind, cost=cost, day=day, days=0)), c['id']))
-            notify(c['id'], f"{REPAIRS[kind]['line']}找内务府来修，要 {cost} 两；不修，身子和宫人都要跟着受罪。去本宫看看。", 'bad')
+
+
+def repair_roll(now):
+    """每小时的半点判一次：没有东西坏着、今天还没坏过的住处玩家，各 10% 坏一样；每小时只判一次，错过了同一小时内下一分钟补"""
+    key = now.strftime('%Y-%m-%d:%H')
+    if now.minute < REPAIR_MINUTE or state()['last_repair_key'] == key: return
+    run("UPDATE game_state SET last_repair_key=? WHERE id=1", (key,))
+    today, day = now.date().isoformat(), state()['day']
+    for c in list(q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status IN ('normal','confined') AND hall!='' AND repair='' AND repair_date!=?", (today,))):
+        if random.random() >= REPAIR_CHANCE: continue
+        kind = random.choices(list(REPAIRS), weights=[r['weight'] for r in REPAIRS.values()])[0]
+        cost = round(repair_cost(kind, c['rank']) * random.uniform(*REPAIR_COST_JITTER))
+        run("UPDATE consorts SET repair=?, repair_date=? WHERE id=?", (json.dumps(dict(kind=kind, cost=cost, day=day, days=0)), today, c['id']))
+        notify(c['id'], f"{REPAIRS[kind]['line']}找内务府来修，要 {cost} 两；不修，身子和宫人都要跟着受罪。去本宫看看。", 'bad')
 
 
 @app.route('/repair', methods=['POST'])
@@ -6346,17 +6364,18 @@ def raise_rank_name(h):
     return RANK_NAMES[raise_min_rank(h)]
 
 
-ADOPT_INFLUENCE = 5      # 收养（养育所领养、被托付、争夺抚养权赢下）孩子，养母势力 +5；孩子被送回去（生母讨回、欠钱被抱走）再扣回来
+ADOPT_INFLUENCE = 15      # 孩子养到自己身边（生母自己带、养育所领养、被托付、争夺抚养权赢下、领回），抚养人势力 +15；孩子离开（被讨回、欠钱被抱走、抓周后送养育所、托付出去）再扣回来
 
 
 def adopt_bonus_grant(cid, hid):
-    """收养成功：养母势力 +ADOPT_INFLUENCE，记在孩子身上，以后孩子离开时才知道要不要扣。生母自己带不算收养"""
+    """孩子养到自己这里（不论生母还是养母）：势力 +ADOPT_INFLUENCE，记在孩子身上，以后孩子离开时才知道要不要扣"""
     h = q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
     c = get_consort(cid) if cid else None
-    if not h or not c or not c['user_id'] or cid == h['mother_id']: return
+    if not h or not c or not c['user_id']: return
+    if h['adopt_bonus_to'] == cid: return      # 同一个人已经拿过了
     run('UPDATE consorts SET influence=influence+? WHERE id=?', (ADOPT_INFLUENCE, cid))
     run('UPDATE heirs SET adopt_bonus_to=? WHERE id=?', (cid, hid))
-    notify(cid, f"收养{heir_label(h)}，势力 +{ADOPT_INFLUENCE}。孩子若被送回去，这点势力要扣回来。", 'good')
+    notify(cid, f"{heir_label(h)}养到了你身边，势力 +{ADOPT_INFLUENCE}。孩子若离开你，这点势力要扣回来。", 'good')
 
 
 def adopt_bonus_revoke(hid):
@@ -6368,7 +6387,7 @@ def adopt_bonus_revoke(hid):
     c = get_consort(cid)
     if not c or not c['user_id'] or c['status'] == 'dead': return
     run('UPDATE consorts SET influence=MAX(0, influence-?) WHERE id=?', (ADOPT_INFLUENCE, cid))
-    notify(cid, f"{heir_label(h)}不在你身边了，当初收养得的势力扣回 {ADOPT_INFLUENCE}。", 'bad')
+    notify(cid, f"{heir_label(h)}不在你身边了，当初养他得的势力扣回 {ADOPT_INFLUENCE}。", 'bad')
 
 
 def pick_foster(exclude=(), min_rank=RAISE_MIN_RANK_DAUGHTER):
@@ -6400,11 +6419,31 @@ def heir_looks_grow(day):
         if random.random() < HEIR_LOOKS_GROW_CHANCE: raise_looks(h, 1)
 
 HEIR_AUTO_NAME_AGE = 2      # 孩子到这个岁数还没人起名，系统自动从备选字里挑一个
+HEIR_GROW_FROM_AGE, HEIR_GROW_POINTS = 2, 4      # 2 岁起，每长一岁随机分到 4 点属性（学问/骑射/品行/体质，各最高 100）
+
+def heir_grow_stats(day):
+    """孩子 2 岁起每长一岁，4 点属性随机分到学问/骑射/品行/体质。attr_years 记着已经补到几岁，错过的岁数下次跑时一并补上（老档的孩子也靠它补）；成年后不再涨"""
+    for h in q("SELECT * FROM heirs WHERE adult_day=0"):
+        years = min(heir_age_years(h, day), HEIR_ADULT_AGE_YEARS - 1)
+        done = max(h['attr_years'], HEIR_GROW_FROM_AGE - 1)
+        if years <= done: continue
+        gain = dict.fromkeys(HEIR_STATS, 0)
+        for _ in range((years - done) * HEIR_GROW_POINTS):
+            open_ = [k for k in HEIR_STATS if h[k] + gain[k] < 100]
+            if not open_: break
+            gain[random.choice(open_)] += 1
+        run("UPDATE heirs SET attr_years=?, study=study+?, riding=riding+?, virtue=virtue+?, health=health+? WHERE id=?",
+            (years, gain['study'], gain['riding'], gain['virtue'], gain['health'], h['id']))
+        parts = '、'.join(f"{HEIR_STATS[k]} +{v}" for k, v in gain.items() if v)
+        if parts:
+            for par in heir_parents(h):
+                if par['user_id']: notify(par['id'], f"{heir_label(h)}长到 {years} 岁了，身量和心性都长了些：{parts}。", 'good')
 
 def heir_growth_tick(day):
     """抓周时低位生母的孩子进入养育所；已经主动托付的维持现有抚养。"""
     heir_looks_grow(day)
     heir_age_events(day)
+    heir_grow_stats(day)
 
 def heir_age_events(day):
     """到岁数的事：2 岁没起名自动起名、周岁抓周。孩子按出生时刻每 12 小时一岁，所以这个每小时也会跑（见 maybe_settle），夜里结算再补一次"""
@@ -6425,6 +6464,7 @@ def heir_age_events(day):
         gazette(f"{label}周岁抓周，{item['line']}。", 'news')
         if mother and h['caretaker_id'] == mother['id'] and (mother['rank'] < raise_min_rank(h) or mother['status'] != 'normal'):
             run('UPDATE heirs SET caretaker_id=0,caretaker_affinity=50 WHERE id=?', (h['id'],))
+            adopt_bonus_revoke(h['id'])
             gazette(f'{label}送入皇嗣养育所，由乳母与师傅照料，{raise_rank_name(h)}位以上可申请领养。', 'decree')
         if mother and mother['user_id']:
             notify(mother['id'], f"{label}今日抓周，{item['line']}。{HEIR_STATS[item['stat']]} +{ZHUAZHOU_GAIN}。", 'good')
@@ -6441,6 +6481,7 @@ def heir_rehome_tick(day):
         cur_gone = '进了冷宫' if cur['status'] == 'cold' else '薨逝了'
         if mother and h['caretaker_id'] != h['mother_id'] and mother['status'] == 'normal' and mother['rank'] >= raise_min_rank(h):
             run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=mother_affinity, adopt_bonus_to=0 WHERE id=?', (mother['id'], h['id']))
+            adopt_bonus_grant(mother['id'], h['id'])
             gazette(f"{display_name(cur)}{cur_gone}，{label}由生母{display_name(mother)}领回抚养。", 'decree')
             if mother['user_id']:
                 notify(mother['id'], f"{display_name(cur)}{cur_gone}，皇上让你把{label}领回去了。", 'good')
@@ -6507,6 +6548,7 @@ def heir_entrust_reply(hid):
         flash('已回绝。', 'good'); return redirect(url_for('heirs'))
     if c['rank'] < raise_min_rank(h) or c['status'] != 'normal' or h['zhuazhou'] or h['caretaker_id'] not in (0, h['mother_id']) or mother['status'] == 'dead':
         flash('这桩托付已经办不成了。', 'bad'); return redirect(url_for('heirs'))
+    adopt_bonus_revoke(hid)
     run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (c['id'], hid))
     adopt_bonus_grant(c['id'], hid)
     add_affinity(c['id'], mother['id'], 5)
@@ -6586,6 +6628,7 @@ def heir_reclaim(hid):
     if h['caretaker_id'] == 0:
         run('UPDATE heirs SET caretaker_id=?,caretaker_affinity=mother_affinity,visit_banned=0,concealed=0 WHERE id=?', (c['id'],hid))
         run('DELETE FROM heir_claims WHERE heir_id=?', (hid,))
+        adopt_bonus_grant(c['id'], hid)
         flash(f'{label}已从养育所领回，由你亲自教养。', 'good')
         return redirect(url_for('heirs'))
     battle = q('SELECT * FROM custody_battles WHERE heir_id=?', (hid,), one=True)
@@ -8337,6 +8380,8 @@ def resolve_births(day, include_legacy=True):
             sent_label = label if len(sent) == len(born_ids) else '、'.join(heir_label(get_heir(hid_)) for hid_ in sent)
             gazette(f"{sent_label}按祖制送入皇嗣养育所，由乳母与师傅照料，{need}位以上可申请领养。", 'decree')
             notify(c['id'], f"按祖制，{RANK_NAMES[mom['rank']]}不能亲自抚养{sent_label}（皇子须妃位以上，公主须嫔位以上），先由皇嗣养育所照料。周岁抓周前，你可以去「子嗣」页托付给好感不低于 {HEIR_ENTRUST_MIN_AFFINITY} 的{need}位以上姐妹，或者晋位后领回。", 'info')
+        for hid_ in born_ids:
+            if hid_ not in sent: adopt_bonus_grant(c['id'], hid_)      # 自己养的孩子，势力 +15
         if hard_labor and random.random() < LABOR_DEATH_CHANCE:      # 难产有小概率没挺过来：孩子保留，由后面的换人规则另派抚养人
             die(c['id'], '难产')
 
@@ -8989,7 +9034,9 @@ def maybe_settle():
     energy_tick(pace_key)
     dying_tick()
     age_noon_tick(now)
+    repair_roll(now)
     heir_age_events(st['day'])
+    heir_grow_stats(st['day'])
     bedding_round(st['day'],key)
     maybe_banquet(now)
     today = now.date().isoformat()

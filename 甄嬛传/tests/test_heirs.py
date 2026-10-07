@@ -328,6 +328,28 @@ class HeirTests(unittest.TestCase):
         self.assertFalse(game.q("SELECT 1 FROM heirs WHERE npc_key=''"), '玩家的孩子清掉')
         self.assertEqual(game.q('SELECT COUNT(*) n FROM heirs', one=True)['n'], 0, '新开局没有预设皇嗣')
 
+    # ── 2 岁起每岁长 4 点属性 ───────────────────────────────────────────────
+
+    def test_stats_grow_four_points_per_year_from_age_two(self):
+        sums = lambda r: sum(r[k] for k in ('study', 'riding', 'virtue', 'health'))
+        baby = self.heir(self.atk, born=game.cur_day() - game.HEIR_DAYS_PER_YEAR * 1)     # 1 岁，还不涨
+        kid = self.heir(self.atk, born=game.cur_day() - game.HEIR_DAYS_PER_YEAR * 10)     # 10 岁，一次补 2..10 岁共 9 岁
+        before = {i: sums(game.get_heir(i)) for i in (baby, kid)}
+        game.heir_grow_stats(game.cur_day())
+        self.assertEqual(sums(game.get_heir(baby)), before[baby])
+        self.assertEqual(sums(game.get_heir(kid)), before[kid] + 4 * 9)
+        self.assertEqual(game.get_heir(kid)['attr_years'], 10)
+        game.heir_grow_stats(game.cur_day())                                              # 再跑不重复涨
+        self.assertEqual(sums(game.get_heir(kid)), before[kid] + 4 * 9)
+
+    def test_stats_growth_stops_at_cap_and_adulthood(self):
+        kid = self.heir(self.atk, born=game.cur_day() - game.HEIR_DAYS_PER_YEAR * 10, study=100, riding=100, virtue=100, health=99)
+        game.heir_grow_stats(game.cur_day())
+        self.assertEqual(game.get_heir(kid)['health'], 100)
+        grown = self.heir(self.atk, born=game.cur_day() - game.HEIR_DAYS_PER_YEAR * 10, adult_day=1)
+        game.heir_grow_stats(game.cur_day())
+        self.assertEqual(game.get_heir(grown)['study'], 20)
+
 
 class HeirExamHuntTests(unittest.TestCase):
     """皇上考校、随驾秋狝，见设计文档九点六节 D"""

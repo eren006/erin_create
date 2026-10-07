@@ -156,7 +156,9 @@ class RaiseRankMiscTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['influence'], 10, '只扣一次')
         own = self.heir(self.atk)
         game.adopt_bonus_grant(self.atk, own)
-        self.assertEqual(game.get_consort(self.atk)['influence'], 10, '生母自己带不算收养')
+        self.assertEqual(game.get_consort(self.atk)['influence'], 10 + game.ADOPT_INFLUENCE, '生母自己带也加')
+        game.adopt_bonus_grant(self.atk, own)
+        self.assertEqual(game.get_consort(self.atk)['influence'], 10 + game.ADOPT_INFLUENCE, '同一个孩子不重复加')
 
 
 if __name__ == '__main__':

@@ -3,6 +3,7 @@
 运行：python3 -m unittest discover -s tests -v
 """
 import json
+from datetime import datetime, timedelta
 import unittest
 from unittest.mock import patch
 import test_heirs
@@ -348,27 +349,60 @@ class LivingTests(unittest.TestCase):
         for k in game.REPAIRS:
             self.assertLess(game.repair_cost(k, 3), game.repair_cost(k, 7))
 
+    def at(self, h, m):
+        return datetime(2026, 10, 7, h, m, tzinfo=game.TZ)
+
     def test_things_break_now_and_then(self):
         self.housed()
-        with patch.object(game.random, 'random', return_value=0.0):
-            game.repair_tick(5)
+        with patch.object(game.random, 'random', return_value=0.0), patch.object(game.random, 'uniform', return_value=1.0):
+            game.repair_roll(self.at(14, 30))
         st = game.repair_state(self.c())
         self.assertIsNotNone(st)
         self.assertEqual(st['cost'], game.repair_cost(st['kind'], 6))
         self.assertTrue(any('内务府' in m and str(st['cost']) in m for m in self.msgs()))
-        with patch.object(game.random, 'random', return_value=0.99):
-            game.repair_tick(6)
-        self.assertIsNone(game.repair_state(game.get_consort(self.tgt)))
+        self.assertIsNone(game.repair_state(game.get_consort(self.tgt)), '没住处的不判')
 
-    def test_only_one_breakage_at_a_time_and_only_for_housed_players(self):
+    def test_roll_happens_on_the_half_hour_once_per_hour(self):
+        self.housed()
+        with patch.object(game.random, 'random', return_value=0.99):
+            game.repair_roll(self.at(14, 29))
+            self.assertEqual(game.state()['last_repair_key'], '', '没到半点不判')
+            game.repair_roll(self.at(14, 30))
+            self.assertEqual(game.state()['last_repair_key'], '2026-10-07:14')
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.repair_roll(self.at(14, 45))
+        self.assertIsNone(game.repair_state(self.c()), '同一小时已判过')
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.repair_roll(self.at(15, 30))
+        self.assertIsNotNone(game.repair_state(self.c()))
+
+    def test_at_most_one_breakage_per_player_per_day(self):
+        self.housed()
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.repair_roll(self.at(9, 30))
+            first = self.c()['repair']
+            game.repair_roll(self.at(10, 30))
+            self.assertEqual(self.c()['repair'], first, '坏着的不再抽')
+            game.run("UPDATE consorts SET repair='' WHERE id=?", (self.atk,))   # 修好了
+            game.repair_roll(self.at(11, 30))
+            self.assertIsNone(game.repair_state(self.c()), '今天已经坏过一次，修好了也不再坏')
+            tomorrow = self.at(9, 30) + timedelta(days=1)
+            game.repair_roll(tomorrow)
+            self.assertIsNotNone(game.repair_state(self.c()), '隔天重新判')
+
+    def test_cost_has_some_variation_and_kinds_are_varied(self):
+        self.housed()
+        with patch.object(game.random, 'random', return_value=0.0), patch.object(game.random, 'uniform', return_value=1.2):
+            game.repair_roll(self.at(9, 30))
+        st = game.repair_state(self.c())
+        self.assertEqual(st['cost'], round(game.repair_cost(st['kind'], 6) * 1.2))
+        self.assertGreaterEqual(len(game.REPAIRS), 8)
+
+    def test_nightly_tick_only_wears_it_down_and_never_breaks_new_things(self):
         self.housed()
         with patch.object(game.random, 'random', return_value=0.0):
             game.repair_tick(5)
-            first = self.c()['repair']
-            game.repair_tick(6)
-        self.assertEqual(json.loads(self.c()['repair'])['kind'], json.loads(first)['kind'])
-        self.assertEqual(json.loads(self.c()['repair'])['days'], 1)
-        self.assertIsNone(game.repair_state(game.get_consort(self.tgt)), '没住处的不判')
+        self.assertIsNone(game.repair_state(self.c()))
 
     def set_repair(self, kind, days=0):
         game.run("UPDATE consorts SET repair=? WHERE id=?", (json.dumps(dict(kind=kind, cost=game.repair_cost(kind, 5), day=1, days=days)), self.atk))
@@ -412,7 +446,7 @@ class LivingTests(unittest.TestCase):
     def test_no_breakage_in_the_cold_palace(self):
         self.housed(status='cold')
         with patch.object(game.random, 'random', return_value=0.0):
-            game.repair_tick(5)
+            game.repair_roll(self.at(9, 30))
         self.assertIsNone(game.repair_state(self.c()))
 
     def test_diet_and_temple_live_in_a_folded_panel(self):
