@@ -127,6 +127,23 @@
 
   function dirTag(d) { return '<span class="dir ' + dirTone(d) + '">' + esc(d) + '</span>'; }
 
+  function secAiNews(s) {
+    if (!s) return '';
+    var out = '<section class="page" id="ainews">' + pageHead(s.title || 'AI 动态', s.sub || '美国、中国与全球各家 AI 公司的最新进展');
+    if (s.lede) out += '<p class="lede">' + esc(s.lede) + '</p>';
+    var blocks = '';
+    (s.regions || []).forEach(function (r) {
+      if (!r.items || !r.items.length) return;
+      blocks += '<div class="block wide"><h3>' + esc(r.name) + '</h3><ul class="cat">' + r.items.map(function (it) {
+        var u = safeUrl(it.src);
+        return '<li><span class="w">' + esc(it.who) + '</span><span><b>' + esc(it.title) + '</b>　' + esc(it.text) +
+          (u ? ' <a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">来源</a>' : '') + '</span></li>';
+      }).join('') + '</ul></div>';
+    });
+    if (blocks) out += '<div class="grids">' + blocks + '</div>';
+    return out + '</section>';
+  }
+
   function secChina(s) {
     if (!s) return '';
     var out = '<section class="page" id="china">' + pageHead(s.title || '中国 AI 映射', s.sub || '美股信号传导到 A 股与港股');
@@ -249,7 +266,7 @@
     }
     html += '</section>';
 
-    html += secUpcoming(it.upcoming) + secMarkets(it.markets) + secAi(it.ai) + secChina(it.china) + secPolicy(it.policy);
+    html += secUpcoming(it.upcoming) + secMarkets(it.markets) + secAi(it.ai) + secAiNews(it.ainews) + secChina(it.china) + secPolicy(it.policy);
 
     html += '<footer class="foot">';
     if (it.sources && it.sources.length) {

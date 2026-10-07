@@ -64,6 +64,19 @@ def validate(path: Path, d: dict) -> list:
             continue
         if sum(len(p) for p in sec.get("body") or []) < 500:
             errs.append(f"{key}.body 太短（正文至少 500 字）")
+    if date >= "2026-10-06":
+        an = d.get("ainews")
+        if not isinstance(an, dict):
+            errs.append("缺版面 ainews（AI动态）")
+        else:
+            regs = {r.get("name"): r for r in an.get("regions") or []}
+            for nm in ("美国", "中国", "全球其他地区"):
+                if len((regs.get(nm) or {}).get("items") or []) < 2:
+                    errs.append(f"ainews.{nm} 至少 2 条")
+            for r in regs.values():
+                for it in r.get("items") or []:
+                    if not str(it.get("src", "")).startswith("http"):
+                        errs.append(f"ainews 条目缺 src：{it.get('title')}")
     ai = d.get("ai") or {}
     syms = {s.get("symbol", "").upper() for s in ai.get("stocks") or []}
     if not MAG7 <= syms:
