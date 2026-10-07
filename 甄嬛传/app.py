@@ -1446,7 +1446,7 @@ def init_db():
     migrations = {
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
         'banquet_entries': {'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'tier': 'INTEGER NOT NULL DEFAULT 1', 'buff': 'INTEGER NOT NULL DEFAULT 0', 'note': "TEXT NOT NULL DEFAULT ''"},
-        'consorts': {'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
+        'consorts': {'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
                      'age_months': 'INTEGER NOT NULL DEFAULT 240',
                      'poisoned_day': 'INTEGER NOT NULL DEFAULT 0',
                      'poison_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -3138,7 +3138,7 @@ def index():
     unnamed_heirs = [h for h in heirs if not h['name']]
     for h in unnamed_heirs: ensure_name_choices(h['id'])      # 老档里没点过字的，补上，提醒才有的选
     confine_until = datetime.fromtimestamp(c['confine_until_ts'], TZ).strftime('%m-%d %H:%M') if c['confine_until_ts'] else ''
-    return render_template('index.html', c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs, confine_until=confine_until,
+    return render_template('index.html', DYING_HOURS=DYING_HOURS, HEALTH_DYING_AT=HEALTH_DYING_AT, c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs, confine_until=confine_until,
                            sick=is_sick(c), eyes=eyes_active(c), secret=SECRETS[c['secret']], guide=guide_view(c),
                            day=day, PREGNANCY_DAYS=PREGNANCY_DAYS, tiles=map_tiles(c))
 
@@ -4916,6 +4916,8 @@ def bot_care(c):
     """病了请太医、孩子没名字就自己挑一个、银子不够就补上——托管角色没有人替她操心"""
     if c['silver'] < BOT_SILVER_FLOOR:
         add_silver(c['id'], BOT_SILVER_FLOOR - c['silver'])
+        c = get_consort(c['id'])
+    while c['health'] <= HEALTH_DYING_AT + 8 and c['energy'] > 0 and bot_do(c, 'rest'):      # 体质太低就静养，别让托管角色没人管就死了
         c = get_consort(c['id'])
     for col, flag in (('poisoned_day', 'poison_treatment'), ('ill_day', 'ill_treatment')):
         if c[col] and not c[flag] and c['silver'] >= treat_cost(c):
@@ -8443,7 +8445,7 @@ def help_page():
                            diet_norm={r: diet_cost(r, 'normal') for r in range(1, 10)}, DIETS=DIETS, DIET_RATIO=DIET_RATIO,
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS,
                            FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, TWIN_CHANCE=TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS=TWIN_EXTRA_HEALTH_LOSS, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
-                           HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, CONFINE_DAYS=CONFINE_DAYS, CONFINE_HOURS=CONFINE_HOURS,
+                           HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, HEALTH_DYING_AT=HEALTH_DYING_AT, DYING_HOURS=DYING_HOURS, CONFINE_DAYS=CONFINE_DAYS, CONFINE_HOURS=CONFINE_HOURS,
                            COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_DAYS=PREGNANCY_DAYS,
                            settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_INTERVAL=REMIT_INTERVAL,
                            HEIR_EXAM_INTERVAL=HEIR_EXAM_INTERVAL, HEIR_EXAM_MIN_AGE=HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE=HEIR_EXAM_MAX_AGE,
@@ -8491,9 +8493,11 @@ def energy_tick(key):
 
 
 HEALTH_DECAY_HOUR = SETTLE_HOUR   # 和日结算同一时刻（0 点），所有人体质自然衰减一次
-HEALTH_DECAY_BASE = 0.5      # 20 岁时每晚平均掉这么多点体质（2026-10-06 从 0.2 提到 0.5）
-HEALTH_DECAY_PER_YEAR = 0.08 # 20 岁以后每长一岁，每晚平均多掉这么多（原 0.03）
-HEALTH_DECAY_FLOOR = 20      # 自然衰减最低到这里（和饮食、屋损的下限一致）
+HEALTH_DECAY_BASE = 0.8      # 20 岁时每晚平均掉这么多点体质（2026-10-06 从 0.2 提到 0.5，2026-10-07 再提到 0.8）
+HEALTH_DECAY_PER_YEAR = 0.12 # 20 岁以后每长一岁，每晚平均多掉这么多（原 0.03，后 0.08，2026-10-07 提到 0.12）
+HEALTH_DECAY_FLOOR = 1       # 自然衰减一直掉，最低到 1（2026-10-07 起不再停在 20；掉到 HEALTH_DYING_AT 以下就是濒死）
+HEALTH_DYING_AT = 10         # 体质掉到这个数及以下：濒死
+DYING_HOURS = 12             # 濒死状态撑过这么多小时还没好转（体质回到 HEALTH_DYING_AT 以上）就殒命
 
 def health_decay_rate(age_months):
     return HEALTH_DECAY_BASE + max(0, age_months / 12 - 20) * HEALTH_DECAY_PER_YEAR
@@ -8505,6 +8509,23 @@ def health_decay_tick():
         loss = int(rate) + (1 if random.random() < rate - int(rate) else 0)
         loss = min(loss, c['health'] - HEALTH_DECAY_FLOOR)
         if loss > 0: add_stat(c['id'], 'health', -loss)
+    dying_tick()
+
+
+def dying_tick():
+    """每分钟查一次：体质掉到濒死线以下就开始计时，12 小时内没好转就殒命；好转了（体质回到线以上）计时清零"""
+    now = now_ts()
+    for c in q("SELECT * FROM consorts WHERE status NOT IN ('dead','xiunv') AND (health<=? OR dying_since_ts>0)", (HEALTH_DYING_AT,)):
+        if c['health'] <= HEALTH_DYING_AT:
+            if not c['dying_since_ts']:
+                run("UPDATE consorts SET dying_since_ts=? WHERE id=?", (now, c['id']))
+                if c['user_id']: notify(c['id'], f"你的体质只剩 {c['health']} 点，已经濒死了。{DYING_HOURS} 小时内再不好转就要殒命：快去「本宫」静养、梳妆，或者请姐妹送补养，把体质养回 {HEALTH_DYING_AT + 1} 点以上。", 'bad')
+                gazette(f"{display_name(c)}病入膏肓，太医说怕是撑不过{DYING_HOURS}个时辰。", 'news')
+            elif now - c['dying_since_ts'] >= DYING_HOURS * 3600:
+                die(c['id'], '体弱衰竭，久未调养，不治身亡')
+        else:
+            run("UPDATE consorts SET dying_since_ts=0 WHERE id=?", (c['id'],))
+            if c['user_id']: notify(c['id'], f"你的体质回到了 {c['health']} 点，总算从鬼门关前缓了过来。", 'good')
 
 
 @atomic
@@ -8517,7 +8538,6 @@ def promotion_tick(key, settle_due=False):
         for r in _player_rows(): check_achievements(r['id'])
 
 
-@atomic
 def age_noon_tick(now):
     """每天中午 12 点，所有在世的妃嫔再涨一岁（零点结算已涨一岁，合起来一天两岁，即每 12 小时一岁）；每天只做一次，错过了下一分钟补"""
     today = now.date().isoformat()
@@ -8525,6 +8545,7 @@ def age_noon_tick(now):
     run("UPDATE game_state SET last_noon_age_date=? WHERE id=1", (today,))
     run("UPDATE consorts SET age_months=age_months+? WHERE status NOT IN ('xiunv','dead')", (AGE_MONTHS_PER_DAY // 2,))
 
+@atomic
 def maybe_settle():
     """翻牌每 2 小时一轮（每轮 2 位）、精力和晋封每 4 小时、22点宴会、0点日结算；补执行时也先发宴会奖励。"""
     now=datetime.now(TZ)
@@ -8534,6 +8555,7 @@ def maybe_settle():
     key=latest_bedding_slot(now)
     pace_key=latest_pace_slot(now)
     energy_tick(pace_key)
+    dying_tick()
     age_noon_tick(now)
     heir_age_events(st['day'])
     bedding_round(st['day'],key)
@@ -10895,7 +10917,7 @@ BANQUET_TITLE_MAX = 12
 BANQUET_REWARDS = {   # 名次：(圣宠区间, 银子)
     1: ((20, 30), 80), 2: ((12, 18), 40), 3: ((6, 10), 20),
 }
-BANQUET_JOIN_SILVER = 30       # 参与奖：只要献了艺，不论名次都有（2026-10-07 起，原来只有前三名之外的人拿 10 两，前三名的奖金里不含它）；前三名在这之上再拿名次奖
+BANQUET_JOIN_SILVER = 15       # 参与奖：献了艺但没进前三的人拿这些（2026-10-07 起从 10 提到 15；比第三名的名次奖 20 少一点）；和名次奖不叠加，前三名只拿各自的名次奖
 BANQUET_XP = 1          # 献艺本身也算一次练习
 
 # 戏装铺：宴服、头面、道具（按才艺分），买下就是自己的，开席时每类取最好的一件算加分
@@ -11206,8 +11228,7 @@ def run_banquet(date):
     units.sort(key=lambda u: -u['score'])
     if not units: return
     for place, u in enumerate(units, start=1):
-        favor_rng, prize = BANQUET_REWARDS.get(place, (None, 0))
-        silver = BANQUET_JOIN_SILVER + prize
+        favor_rng, silver = BANQUET_REWARDS.get(place, (None, BANQUET_JOIN_SILVER))      # 前三名拿名次奖，其余拿参与奖，不叠加
         word = {1: '拔得头筹', 2: '位列第二', 3: '位列第三'}.get(place, f'名列第 {place}')
         stumbled = any(m[3] for m in u['members'])
         for (_, e, c, stumble) in u['members']:
@@ -11222,7 +11243,7 @@ def run_banquet(date):
             if favor_rng and c['status'] == 'normal':
                 parts.append(f"圣宠 +{add_favor(c['id'], random.randint(*favor_rng))}")
             add_silver(c['id'], silver)
-            parts.append(f"赏银 {silver} 两（参与奖 {BANQUET_JOIN_SILVER}" + (f"＋名次奖 {prize}" if prize else '') + "）")
+            parts.append(f"赏银 {silver} 两" + ('' if place <= 3 else '（参与奖）'))
             if place == 1 and c['user_id'] and family_row(c['user_id']):
                 add_prestige_uid(c['user_id'], 2, '新年宴会夺魁')
                 parts.append('名望 +2')

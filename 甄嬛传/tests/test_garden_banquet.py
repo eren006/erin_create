@@ -138,7 +138,7 @@ class BanquetTests(Base):
         places = {r['consort_id']: r['place'] for r in game.q('SELECT * FROM banquet_entries')}
         self.assertEqual(places[self.me], 1)
         self.assertEqual(places[self.other], 2)
-        self.assertEqual(game.get_consort(self.me)['silver'], s0[self.me] + game.BANQUET_JOIN_SILVER + game.BANQUET_REWARDS[1][1])
+        self.assertEqual(game.get_consort(self.me)['silver'], s0[self.me] + game.BANQUET_REWARDS[1][1])
         self.assertEqual(game.arts_of(game.get_consort(self.me))['琴'], 16, '献艺也涨熟练度，且只开一次席')
 
 
@@ -308,7 +308,7 @@ class DuetGearTests(Base):
         self.assertEqual((a['place'], b['place'], a['score']), (1, 1, b['score']))
         self.assertIn(a['note'].split('；')[0], ('珠联璧合', '合奏时出了岔子，没配合好'))
         for i in (self.me, self.other):
-            self.assertEqual(game.get_consort(i)['silver'], s0[i] + game.BANQUET_JOIN_SILVER + game.BANQUET_REWARDS[1][1])
+            self.assertEqual(game.get_consort(i)['silver'], s0[i] + game.BANQUET_REWARDS[1][1])
         self.assertEqual(game.relation(self.me, self.other)['affinity'], game.DUET_AFFINITY_AFTER)
 
     def test_one_sided_link_falls_back_to_solo(self):
