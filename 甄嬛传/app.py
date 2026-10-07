@@ -10529,6 +10529,7 @@ def housing_reports(day):
         others = q("""SELECT * FROM consorts WHERE palace=? AND id!=? AND user_id IS NOT NULL
                       AND hall IN ('east','west','back') AND status IN ('normal','confined') ORDER BY id""", (head['palace'], head['id']))
         if others:
+            others = random.sample(list(others), min(len(others), random.randint(1, 2)))      # 每回只回话 1～2 个人
             text = '；'.join(f"{display_name(c)}心计 {c['scheme']}、手头 {c['silver']} 两" for c in others)
             notify(head['id'], f'宫人来回话：{text}。')
 
@@ -10559,7 +10560,6 @@ def apply_discipline(head, target, action, day):
 @app.route('/housing/discipline/<int:tid>', methods=['POST'])
 @login_required
 def housing_discipline(tid):
-            others = random.sample(list(others), min(len(others), random.randint(1, 2)))      # 每回只回话 1～2 个人
     head, target = g.me, get_consort(tid)
     action = request.form.get('action', '')
     err = discipline_error(head, target, action, cur_day())
