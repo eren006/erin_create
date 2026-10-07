@@ -35,9 +35,9 @@ class LivingTests(unittest.TestCase):
 
     def test_pregnancy_chance_by_health_and_age(self):
         base = dict(age_months=240, health=60)
-        self.assertAlmostEqual(game.pregnancy_chance(base), 0.12 + 60 * 0.0008)
-        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=240, health=100)), 0.20)
-        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=35 * 12, health=60)), (0.12 + 0.048) * 0.6)
+        self.assertAlmostEqual(game.pregnancy_chance(base), game.PREGNANCY_BASE + 60 * 0.0008)
+        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=240, health=100)), game.PREGNANCY_BASE + 100 * 0.0008)
+        self.assertAlmostEqual(game.pregnancy_chance(dict(age_months=35 * 12, health=60)), (game.PREGNANCY_BASE + 0.048) * 0.6)
         self.assertEqual(game.pregnancy_chance(dict(age_months=45 * 12, health=100)), 0)
         self.assertLessEqual(game.pregnancy_chance(dict(age_months=240, health=9999)), game.PREGNANCY_MAX)
 
@@ -50,10 +50,10 @@ class LivingTests(unittest.TestCase):
         old = dict(age_months=45 * 12, health=60, blessing=100)
         self.assertEqual(game.pregnancy_chance(old), 0, '福报也救不了年纪')
         old_mother = dict(age_months=36 * 12, health=60, blessing=100)
-        self.assertAlmostEqual(game.pregnancy_chance(old_mother), (0.12 + 0.048 + 0.05) * 0.6)
+        self.assertAlmostEqual(game.pregnancy_chance(old_mother), (game.PREGNANCY_BASE + 0.048 + 0.05) * 0.6)
 
     def test_blessed_player_conceives_where_a_plain_one_would_not(self):
-        with patch.object(game.random, 'random', return_value=0.18):   # 无福报时（16.8%）未孕，福报 50（19.3%）时有孕
+        with patch.object(game.random, 'random', return_value=0.14):   # 无福报时（12.8%）未孕，福报 50（15.3%）时有孕
             game.do_bedding(self.c(), game.cur_day(), True, [])
             self.assertEqual(self.c()['pregnant_since'], 0)
             game.run('UPDATE consorts SET blessing=50 WHERE id=?', (self.atk,))
@@ -61,7 +61,7 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(self.c()['pregnant_since'], game.cur_day())
 
     def test_a_bedding_can_start_a_pregnancy(self):
-        with patch.object(game.random, 'random', return_value=0.08):   # 体质 60 时怀孕率约 16.8%
+        with patch.object(game.random, 'random', return_value=0.08):   # 体质 60 时怀孕率约 12.8%
             game.do_bedding(self.c(), game.cur_day(), True, [])
         self.assertEqual(self.c()['pregnant_since'], game.cur_day())
         self.assertTrue(any('喜脉' in m for m in self.msgs()))
