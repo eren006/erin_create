@@ -29,7 +29,7 @@ rsync -az --delete --exclude='.DS_Store' "$LOCAL_DIR/templates/" "$SERVER:$REMOT
 rsync -az "$LOCAL_DIR/static/" "$SERVER:$REMOTE_DIR/static/"
 
 echo "[2/3] 安装依赖并重启服务"
-ssh "$SERVER" "cd $REMOTE_DIR && ( [ -d venv ] || python3 -m venv venv ) && venv/bin/pip install -q -r requirements.txt && sudo sed -i 's/^SETTLE_HOUR=.*/SETTLE_HOUR=23/' /etc/zhenhuan.env && sudo systemctl restart $SERVICE"
+ssh "$SERVER" "cd $REMOTE_DIR && ( [ -d venv ] || python3 -m venv venv ) && venv/bin/pip install -q -r requirements.txt && sudo sed -i 's/^SETTLE_HOUR=.*/SETTLE_HOUR=0/' /etc/zhenhuan.env && sudo systemctl restart $SERVICE"
 READY=0
 for ATTEMPT in $(seq 1 10); do
   sleep 2
