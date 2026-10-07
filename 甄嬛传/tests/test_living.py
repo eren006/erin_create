@@ -297,7 +297,7 @@ class LivingTests(unittest.TestCase):
             with patch.object(game.random, 'random', return_value=0.99):
                 game.diet_tick(d)
         c = self.c()
-        self.assertEqual((c['health'], c['appearance']), (56, 52))
+        self.assertEqual((c['health'], c['appearance']), (50 + 12 // game.LAVISH_HEALTH_EVERY, 50 + 12 // game.LAVISH_LOOKS_EVERY))
         self.assertEqual(game.get_maid(mid)['loyalty'], 72)
 
     def test_lavish_is_capped(self):
