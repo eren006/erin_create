@@ -63,6 +63,26 @@ class DemotionTests(unittest.TestCase):
         with patch.object(game, 'INTRIGUE_REALTIME', True):
             self.client.post('/intrigue/submit', data={'method': 'impeach', 'target_id': self.tgt})
 
+    def divide(self, roll):
+        with patch.object(game, 'INTRIGUE_REALTIME', True), patch.object(game.random, 'random', return_value=roll):
+            return self.client.post('/intrigue/submit', data={'method': 'divide', 'target_id': self.tgt})
+
+    def test_divide_cuts_target_influence_and_can_push_it_below_the_line(self):
+        self.prep(atk_rank=2, tgt_rank=5)
+        game.run("UPDATE consorts SET influence=30 WHERE id=?", (self.tgt,))
+        before = self.me(self.atk)['influence']
+        self.divide(0.0)
+        self.assertEqual(self.me(self.tgt)['influence'], 30 - game.DIVIDE_INFLUENCE_LOSS)      # 15，已低于嫔位要求 25
+        self.assertEqual(self.me(self.atk)['influence'], before + game.INFLUENCE_GAINS['divide'])
+        self.assertEqual(self.me(self.tgt)['rank'], 5)                                        # 当晚不降位，要连着低 2 晚
+
+    def test_divide_blocked_when_target_has_no_influence(self):
+        self.prep(atk_rank=2, tgt_rank=5)
+        game.run("UPDATE consorts SET influence=0 WHERE id=?", (self.tgt,))
+        silver = self.me(self.atk)['silver']
+        self.divide(0.0)
+        self.assertEqual(self.me(self.atk)['silver'], silver)
+
     def test_impeach_has_no_rank_requirement_but_has_cooldown(self):
         self.prep(atk_rank=6, tgt_rank=5)
         self.impeach(0.0)

@@ -116,7 +116,7 @@ PLAYER_MAX_RANK = 10   # 皇后位是普通位分，跟其他位分一样按圣�
 PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:50,7:70,8:100,9:140,10:180}      # 2026-10-08：四妃及以上各档调高（原 55/70/110/150）
 INFLUENCE_LOW_NIGHTS = 2          # 2026-10-07 起：势力连续这么多晚低于当前位分要求，降一级
 PROMOTE_INFLUENCE_REWARD = 3     # 第一次晋到嫔位及以上的每一级，额外奖励势力（2026-10-07 起）
-INFLUENCE_GAINS = dict(rumor=5,steal=1,frame=10,drug=10,expose=10,witch=18,punish=10)
+INFLUENCE_GAINS = dict(divide=3,rumor=5,steal=1,frame=10,drug=10,expose=10,witch=18,punish=10)
 FIZZLE_INFLUENCE_FRACTION = 0.25    # 计谋没成但也没败露：照成功的四分之一给势力（至少 1 点）；败露、落空不给
 RANDOM_STAT_RANGES = dict(appearance=(30,50),talent=(25,45),scheme=(25,45),virtue=(35,55),health=(60,80))
 
@@ -662,12 +662,15 @@ INTRIGUES = {
                    desc='需先探到对方的秘密。皇上信不信看你的信任。成：按秘密处罚对方，你信任 +5。不信：自己德行 -8，圣宠 -18，信任 -5'),
     'impeach': dict(name='参奏降位', silver=250, energy=1, min_rank=1, base=0.45, npc_ok=False,
                     desc='不限位分，每 3 天一次，同一个人 3 天内只能被参一回。成：对方降一级，圣宠 -12，势力回到降级后位分的最低线。败露：自己德行 -8，圣宠 -18，信任 -8'),
+    'divide': dict(name='离间党羽', silver=120, energy=0, min_rank=1, base=0.50, npc_ok=False,
+                   desc='专削势力：不限位分。成：对方势力 -15（可以被削到晋位要求线以下，连着 2 晚低于要求就会降一级），自己势力 +3。败露：自己德行 -5，圣宠 -12'),
     'witch':  dict(name='构陷巫蛊', silver=300, energy=1, min_rank=4, base=0.40, npc_ok=True,
                    desc='成：对方打入冷宫。败露：打入冷宫的是你'),
     'punish': dict(name='发落宫人', silver=50, energy=1, min_rank=5, base=0.55, npc_ok=False,
                    desc='找个由头，把对方宫里一个宫人拖去慎刑司。要比对方高两级以上，每 3 天一次；'
                         '对方会知道是你。成：那个宫人没了，对方全宫宫人忠心 -5。败露：德行 -8，信任 -5'),
 }
+DIVIDE_INFLUENCE_LOSS = 15      # 离间党羽得手，对方损失的势力
 INTRIGUE_TARGET_DAILY_MAX = 5
 INTRIGUE_DAILY_MAX = None      # 每人每天最多谋划几件事；None = 不限（2026-10-07 起，原来 1）。同一目标每天最多被 5 件事盯上仍算
 
@@ -5077,6 +5080,8 @@ def intrigue_submit():
             err = '你手里没有她的把柄，先去打探。'
     elif method == 'steal' and (t['pregnant_since'] or is_sick(t)):
         err = '她今晚本就侍不了寝。'
+    elif method == 'divide' and (not t['user_id'] or t['influence'] <= 0):
+        err = '她手里已经没有势力可削了。'
     elif method == 'punish':
         err = punish_block(c, t, day)
     elif method == 'impeach':
@@ -7933,6 +7938,13 @@ def resolve_intrigue(it, bed_id=None):
             victim = f"宫里起了关于你的流言，是{who}在背后散播。圣宠 -{loss}，德行 -3。" + \
                      ('皇上信你，没全当真。' if trusted else '')
             gz = f"流言四起：{pick_rumor(tn)}"
+        elif m == 'divide':
+            cut = min(DIVIDE_INFLUENCE_LOSS, tgt['influence'])
+            run("UPDATE consorts SET influence=MAX(0, influence-?) WHERE id=?", (DIVIDE_INFLUENCE_LOSS, tgt['id']))
+            night_mark(tgt['id'], 'victim', trusted=False)
+            victim = f"你手下的人被{who}一个个拉拢离间，纷纷倒向别处。势力 -{cut}。" + \
+                     (f"眼线说，是{an}。" if tell_name else '')
+            gz = None
         elif m == 'frame':
             trusted = tgt['trust'] >= TRUSTED_LINE
             loss = cut_favor(tgt['id'], FAVOR_LOSS['frame_trusted'] if trusted else FAVOR_LOSS['frame'])
@@ -8025,7 +8037,7 @@ def resolve_intrigue(it, bed_id=None):
             if m == 'lethal':
                 send_to_cold(a['id'])
                 pen = '毒害败露，废位并打入冷宫'
-            elif m == 'rumor':
+            elif m in ('rumor', 'divide'):
                 add_stat(a['id'], 'virtue', -5); cut_favor(a['id'], FAVOR_LOSS['caught_rumor'])
                 pen = f"德行 -5，圣宠 -{FAVOR_LOSS['caught_rumor']}"
             elif m == 'frame':
