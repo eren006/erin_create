@@ -105,6 +105,37 @@ class HeirTests(unittest.TestCase):
         game.demote_rank(top)
         self.assertEqual(game.get_consort(top)['rank'], 3)
 
+    def test_labor_risk_grows_with_each_prior_birth(self):
+        healthy={'health':80}; weak={'health':40}
+        self.assertEqual(game.labor_risk(healthy,0),0.0,'头胎体质好的没有难产风险')
+        self.assertAlmostEqual(game.labor_risk(healthy,1),0.15)
+        self.assertAlmostEqual(game.labor_risk(healthy,2),0.30)
+        self.assertAlmostEqual(game.labor_risk(weak,0),0.30)
+        self.assertAlmostEqual(game.labor_risk(weak,2),0.60)
+        self.assertAlmostEqual(game.labor_risk(weak,2,rests=2),0.40,msg='安胎静养每次 -10 个点')
+        self.assertEqual(game.labor_risk(weak,9),game.LABOR_RISK_CAP,'封顶 80%')
+        self.assertEqual(game.labor_risk(healthy,0,rests=3),0.0,'不会变成负数')
+
+    def test_hard_labor_can_kill_mother_but_child_stays(self):
+        game.run('UPDATE consorts SET talent=90, virtue=90, health=90, pregnant_since=? WHERE id=?',
+                (game.cur_day() - game.PREGNANCY_DAYS, self.atk))
+        game.run("UPDATE consorts SET status='cold' WHERE npc_key IS NOT NULL")
+        with patch.object(game, 'labor_risk', return_value=1.0), patch.object(game, 'LABOR_DEATH_CHANCE', 1.0), \
+             patch.object(game, 'npc_schemes'):
+            game.settle_day()
+        self.assertEqual(game.get_consort(self.atk)['status'], 'dead')
+        self.assertEqual(game.get_consort(self.atk)['death_reason'], '难产')
+        self.assertIsNotNone(game.q('SELECT id FROM heirs WHERE mother_id=?', (self.atk,), one=True), '孩子保留')
+
+    def test_hard_labor_without_death_roll_survives(self):
+        game.run('UPDATE consorts SET talent=90, virtue=90, health=90, pregnant_since=? WHERE id=?',
+                (game.cur_day() - game.PREGNANCY_DAYS, self.atk))
+        game.run("UPDATE consorts SET status='cold' WHERE npc_key IS NOT NULL")
+        with patch.object(game, 'labor_risk', return_value=1.0), patch.object(game, 'LABOR_DEATH_CHANCE', 0.0), \
+             patch.object(game, 'npc_schemes'):
+            game.settle_day()
+        self.assertNotEqual(game.get_consort(self.atk)['status'], 'dead')
+
     # ── 抓周 ─────────────────────────────────────────────────────────────────
 
     def test_zhuazhou_grants_stat_and_only_fires_once(self):

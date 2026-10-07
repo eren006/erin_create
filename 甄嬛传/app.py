@@ -238,7 +238,7 @@ AGE_MONTHS_PER_DAY = AGE_YEARS_PER_DAY * 12
 ENERGY_MAX = 8
 STUDY_FAVOR_GAIN = 5
 AUDIENCE_WAIT_DAYS = 3
-PREGNANCY_PITY_ATTEMPTS = 6
+PREGNANCY_PITY_ATTEMPTS = 4      # 连续 4 次有效侍寝没怀上，第 5 次必怀
 PREGNANCY_DAYS = 2      # 旧存档未记录喜脉时刻时沿用两次结算
 PREGNANCY_MIN_SECONDS = 24 * 60 * 60
 FERTILE_BEFORE_AGE = 45 # 四十五岁起不再新怀孕
@@ -8021,6 +8021,14 @@ PRENATAL = {
 TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS = 0.10, 15   # 2026-10-06：每次临盆 10% 是双胞胎，体质再多扣 15
 BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR = 25, 8, 5   # 2026-10-06：每次生产必扣体质，生得越多扣得越狠，防一个人孩子太多
 LABOR_RISK_BASE, LABOR_RISK_PER_REST = 0.30, 0.10    # 体质不到 50 的人难产概率，每次安胎静养减 10 个点
+LABOR_DEATH_CHANCE = 0.05     # 难产了还有这么大概率挺不过来（2026-10-07 起；不大，但不是零）
+LABOR_RISK_PER_PRIOR, LABOR_RISK_CAP = 0.15, 0.80    # 2026-10-07：之前每生过一个孩子，难产概率再 +15 个点（体质好的人也一样），最高 80%
+
+
+def labor_risk(c, prior_births, rests=0):
+    """这次临盆难产的概率：体质不到 50 有 30% 底数，之前生过几个孩子每个再加 15%，安胎静养每次减 10%，限制在 0~80%"""
+    base = LABOR_RISK_BASE if c['health'] < 50 else 0.0
+    return max(0.0, min(LABOR_RISK_CAP, base + LABOR_RISK_PER_PRIOR * prior_births - LABOR_RISK_PER_REST * rests))
 
 
 def pregnancy_chance(c):
@@ -8116,7 +8124,8 @@ def resolve_births(day, include_legacy=True):
         if birth_loss > 0: add_stat(c['id'], 'health', -birth_loss)
         run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day + POSTPARTUM_SICK_DAYS, c['id']))
         extra = f'生产耗去元气，体质 -{birth_loss}。' if birth_loss > 0 else ''
-        if c['health'] < 50 and random.random() < max(0.0, LABOR_RISK_BASE - LABOR_RISK_PER_REST * pre.get('rest', 0)):
+        hard_labor = random.random() < labor_risk(c, prior_births, pre.get('rest', 0))
+        if hard_labor:
             add_stat(c['id'], 'health', -20); extra += '难产了一整夜，元气大伤，体质再 -20。'
         if twins:
             label = '、'.join(b[0] for b in born)
@@ -8146,6 +8155,8 @@ def resolve_births(day, include_legacy=True):
             for hid_ in born_ids: run("UPDATE heirs SET caretaker_id=0, caretaker_affinity=50 WHERE id=?", (hid_,))
             gazette(f"{label}按祖制送入皇嗣养育所，由乳母与师傅照料，嫔位以上可申请领养。", 'decree')
             notify(c['id'], f"按祖制，{RANK_NAMES[mom['rank']]}不能亲自抚养孩子，{label}先由皇嗣养育所照料。周岁抓周前，你可以去「子嗣」页托付给好感不低于 {HEIR_ENTRUST_MIN_AFFINITY} 的嫔位以上姐妹，或者晋到嫔位后领回。", 'info')
+        if hard_labor and random.random() < LABOR_DEATH_CHANCE:      # 难产有小概率没挺过来：孩子保留，由后面的换人规则另派抚养人
+            die(c['id'], '难产')
 
 
 def prenatal_state(c):
