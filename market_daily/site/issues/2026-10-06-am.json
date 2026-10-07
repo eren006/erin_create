@@ -354,37 +354,43 @@
             "who": "OpenAI",
             "title": "DevDay发布GPT-6.1 Sol和Dots智能体",
             "text": "据多家媒体报道，DevDay在9月29日举行。GPT-6.1 Sol主打智能体编码和电脑操作，OpenAI称性能接近GPT-6 Astra而成本约为其五分之一，API定价每百万token输入2美元、输出10美元，上下文105万token。同场还发了常驻后台独立工作的Dots智能体和500美元档的ChatGPT Pro。基准数字是OpenAI自己公布的，我没有第三方复测。",
-            "src": "https://www.business-standard.com/technology/tech-news/openai-devday-2026-dots-gpt-6-1-sol-codex-developer-tools-126093000396_1.html"
+            "src": "https://www.business-standard.com/technology/tech-news/openai-devday-2026-dots-gpt-6-1-sol-codex-developer-tools-126093000396_1.html",
+            "take": "我的看法：这次的重点是价格而不是分数。接近旗舰、成本只有五分之一，是在压缩Anthropic和Google的定价空间；对算力需求是双刃剑，单价降、调用量涨，净效果要看企业用量，目前没有数据。基准是自家公布的，先打折看。"
           },
           {
             "who": "Google",
             "title": "Gemini 4 Argon发布，自称部分基准超过OpenAI与Anthropic",
             "text": "9月30日发布，是2月Gemini 3.1 Pro之后的首个旗舰，主打长任务、编码、法律金融研究和网络安防，单次可输出最多100万token。据聚合站转述的Artificial Analysis综合指数，它排在Claude Opus 5.5和Sonnet 5.5之后。CNBC的原文我读取失败（403），只看到了搜索摘要。",
-            "src": "https://www.cnbc.com/2026/10/02/tech-download-google-argon-frontier-openai-anthropic.html"
+            "src": "https://www.cnbc.com/2026/10/02/tech-download-google-argon-frontier-openai-anthropic.html",
+            "take": "我的看法：Google自称部分基准领先，第三方指数却把它排在Claude之后，说明它是追平，不是超越。对市场更实际的影响是Google自研芯片和云的叙事，这个模型会拉动TPU与Marvell这类定制芯片的需求预期，但今天没有订单层面的证据。"
           },
           {
             "who": "Anthropic",
             "title": "IPO：选定纳斯达克，时间在10月与11月之间摇摆",
             "text": "The Next Web称Anthropic仍希望在10月完成上市，更近的报道指向11月；多家来源称保密递表估值约9,650亿美元，由摩根士丹利和高盛牵头。路透拿到的招股书称其模型可能带来“灾难性或存在性风险”。估值、时间表都是媒体报道，公司没有公开确认；我手上没有招股书原件。",
-            "src": "https://thenextweb.com/news/anthropic-ipo-nasdaq-october-listing"
+            "src": "https://thenextweb.com/news/anthropic-ipo-nasdaq-october-listing",
+            "take": "我的看法：估值接近万亿美元级别、时间落在中期选举前后，这是我关心的两点。如果真上市，会吸走一部分原本投向英伟达、微软等AI龙头的资金，也会让市场第一次拿到头部模型公司的真实亏损和算力合同数字。招股书细节在没有原件前我不下结论。"
           },
           {
             "who": "OpenAI",
             "title": "奥特曼称2026年不上市",
             "text": "据Fortune采访转述，奥特曼说“考虑到安全方面的情况，现在上市是个不明智的时机”；另据报道OpenAI今年6月提交过保密S-1草案，之后把时间表推到至少2027年。这两条来自二手转述，说法有出入时以公司公告为准。",
-            "src": "https://thenextweb.com/news/anthropic-ipo-nasdaq-october-listing"
+            "src": "https://thenextweb.com/news/anthropic-ipo-nasdaq-october-listing",
+            "take": "我的看法：这个表态和Anthropic的动作放一起读，像是在避开先上市的风险披露压力。但这是二手转述，我倾向把它当作信号而不是定论，公司的正式口径才算数。"
           },
           {
             "who": "xAI",
             "title": "Grok-4.7发布",
             "text": "据聚合站llm-stats，xAI已官宣Grok-4.7。具体能力、定价我没有查到第二个来源，不展开。",
-            "src": "https://llm-stats.com/llm-updates"
+            "src": "https://llm-stats.com/llm-updates",
+            "take": "我的看法：只有一个聚合站的来源，没有基准、没有定价，我没法判断它的分量；先记一笔，等第二个来源或第三方评测出来再说它是追平还是落后。"
           },
           {
             "who": "英伟达",
             "title": "追加1,500亿美元回购，推出智能体安全平台",
             "text": "据investinglive等报道，董事会追加批准1,500亿美元回购；同时英伟达推出Open Agent Safety Platform，据称已有100多家机构参与，包括Anthropic、Salesforce、SAP。回购数字为转述，公司公告原文没读到。",
-            "src": "https://investinglive.com/stock-market-update/nvidia-hits-record-high-near-6-trillion-yet-still-trails-the-chip-sector-s-2026-rally"
+            "src": "https://investinglive.com/stock-market-update/nvidia-hits-record-high-near-6-trillion-yet-still-trails-the-chip-sector-s-2026-rally",
+            "take": "我的看法：回购在股价创历史新高时官宣，更多是对市值的托底和对股东的信号，不是新增需求。真正决定估值的还是下季度指引；智能体安全平台则是在把英伟达从卖芯片往企业软件栈延伸，短期不贡献收入。"
           }
         ]
       },
@@ -395,19 +401,22 @@
             "who": "DeepSeek",
             "title": "V4.1-Flash上线，开源昇腾算子库",
             "text": "9月10日发布V4.1-Flash，原生多模态，API降价；V4 Pro原定9月14日跟进切换。9月30日DeepSeek开源了面向华为昇腾的TileLang-Ascend、DeepGEMM-Ascend等算子库，意思是V4架构有了一条不经过英伟达的推理路径。R2至今仍没有发布。以上来自一家聚合博客和Releasebot，我没有读到DeepSeek官方更新页。",
-            "src": "https://blog.mean.ceo/deepseek-news-september-2026/"
+            "src": "https://blog.mean.ceo/deepseek-news-september-2026/",
+            "take": "我的看法：对中国AI最重要的不是模型，而是昇腾算子库开源，它让国产卡真正能跑V4，这是对出口管制的实质性回应。对英伟达的影响短期有限，因为海外客户不受影响；对中国算力股（昇腾链）是有主题价值的利好，但订单没有披露。"
           },
           {
             "who": "阿里",
             "title": "Qwen3.8-Max放出权重",
             "text": "Qwen3.8-Max在8月3日发布，约2.4万亿参数（激活950亿），8月12日开放权重，是首个开源的Max级Qwen，但仅文本、采用自定义许可而非Apache 2.0；定价每百万token输入2美元、输出6美元。这是8月的旧闻，我没有查到阿里10月的新动作。",
-            "src": "https://www.scmp.com/tech/tech-trends/article/3364404/alibabas-lightweight-qwen-model-takes-larger-ai-systems-openai-deepseek-zhipu"
+            "src": "https://www.scmp.com/tech/tech-trends/article/3364404/alibabas-lightweight-qwen-model-takes-larger-ai-systems-openai-deepseek-zhipu",
+            "take": "我的看法：开放权重但限制许可，是阿里在开源声量和商业控制之间的折中。它是8月的旧闻，我放进来是为了说明国内梯队的位置，不是本周催化。"
           },
           {
             "who": "智谱/月之暗面",
             "title": "GLM-5.3（8月14日）与Kimi K3（7月）",
             "text": "智谱GLM-5.3在8月14日发布；月之暗面Kimi K3约2.8万亿参数，被称为目前中国最大的模型。均非本周新闻，放在这里作为国内梯队的位置参照，10月以来我没有查到它们的新版本。",
-            "src": "https://www.cnbc.com/2026/07/17/moonshot-ai-kimi-k3-model-openai-anthropic-china.html"
+            "src": "https://www.cnbc.com/2026/07/17/moonshot-ai-kimi-k3-model-openai-anthropic-china.html",
+            "take": "我的看法：几家在8月之后都没有新版本，说明国内一线厂商的发布节奏已经放缓到季度级，下一轮竞争大概率在价格和智能体产品上，不在参数规模。"
           }
         ]
       },
@@ -418,13 +427,15 @@
             "who": "Mistral（法国）",
             "title": "融资30亿欧元，估值超210亿欧元，三星领投",
             "text": "CNBC报道融资发生在9月8日，是欧洲科技公司迄今最大的一轮股权融资，欧盟支持的Scaleup Europe Fund参与；三星计划把Mistral的模型用在自己的半导体业务里，Mistral用资金扩建数据中心和算力。CNBC称估值240亿美元，其他来源称超过210亿欧元，币种不同，数字大致相当。",
-            "src": "https://www.cnbc.com/2026/09/08/mistral-ai-funding-valuation-samsung.html"
+            "src": "https://www.cnbc.com/2026/09/08/mistral-ai-funding-valuation-samsung.html",
+            "take": "我的看法：三星领投的意义在于买方入股，Mistral拿到了一个半导体制造场景的真实客户；欧洲的“主权AI”叙事有了资金，但融资规模相比美国头部公司仍小一个量级，它的路线更可能是做行业定制而不是正面追旗舰。"
           },
           {
             "who": "日韩及其他",
             "title": "本周没有查到可靠的新进展",
             "text": "我搜了软银、Sakana等，结果里没有10月的有效新闻，所以不写。日本和台湾芯片股今天上涨（日经+1.05%），是资金面，不是这几家公司的消息。",
-            "src": "https://tickmill.com/blog/daily-market-outlook-october-6-2026"
+            "src": "https://tickmill.com/blog/daily-market-outlook-october-6-2026",
+            "take": "我的看法：没有新闻就是没有新闻，不用拿日经、KOSPI今天的涨跌去倒推某家公司的故事；这一栏下一期有可靠消息再补，宁可空着。"
           }
         ]
       }
