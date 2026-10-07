@@ -484,8 +484,8 @@ DRUGS = {
  'qingsi':dict(name='青丝引',rank=4,price=250,case='diag',eat=True,days=3,hours=0,desc='慢毒：第一次发作体质-10，之后每次日结算体质-4，直到解毒；诊脉可解毒；体质耗尽就转成中毒，生死各凭天命'),
  'chunxin':dict(name='春信丹',rank=4,price=300,case='due',eat=True,days=0,hours=24,desc='假孕24小时后揭穿，不会生出孩子；信任不足50时禁足半天、信任-5'),
  'lihun':dict(name='离魂草',rank=5,price=444,case='now',eat=True,days=0,hours=0,desc='致死毒：下次结算判断生死，需及时请太医；离魂草毒性猛烈，治疗后基础存活率25%～45%，不治疗5%～15%，待遇与福报影响存活率'),
- 'honghua':dict(name='红花',rank=3,price=220,case='now',eat=True,days=1,hours=1,desc='专对孕妇：体质-15，60%概率小产，没小产也会提高早产概率；没有身孕用不上，安胎药可挡一次；眼线查不出是谁下的手；暗柜常备、不限购'),
- 'musk':dict(name='麝香',rank=4,price=380,case='now',eat=True,days=1,hours=1,desc='专对孕妇：体质-25，90%概率小产，没小产也会提高早产概率；没有身孕用不上，安胎药可挡一次；眼线查不出是谁下的手；暗柜常备、不限购'),
+ 'honghua':dict(name='红花',rank=3,price=100,case='now',eat=True,days=1,hours=1,desc='专对孕妇：体质-15，60%概率小产，没小产也会提高早产概率；没有身孕用不上，安胎药可挡一次；眼线查不出是谁下的手；暗柜常备、不限购'),
+ 'musk':dict(name='麝香',rank=4,price=180,case='now',eat=True,days=1,hours=1,desc='专对孕妇：体质-25，90%概率小产，没小产也会提高早产概率；没有身孕用不上，安胎药可挡一次；眼线查不出是谁下的手；暗柜常备、不限购'),
  'wuming':dict(name='无名',rank=6,price=800,case='none',eat=False,days=0,hours=0,desc='可配其他药（离魂草除外），24小时后线索浮现，仍可调查；成功后账号冷却1天'),
 }
 DRUG_ENERGY = 1
