@@ -75,6 +75,8 @@ def validate(path: Path, d: dict) -> list:
                     errs.append(f"ainews.{nm} 至少 2 条")
             for r in regs.values():
                 for it in r.get("items") or []:
+                    if len(it.get("take") or "") < 40:
+                        errs.append(f"ainews 条目缺 take（我的看法，至少 40 字）：{it.get('title')}")
                     if not str(it.get("src", "")).startswith("http"):
                         errs.append(f"ainews 条目缺 src：{it.get('title')}")
     ai = d.get("ai") or {}

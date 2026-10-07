@@ -137,6 +137,7 @@
       blocks += '<div class="block wide"><h3>' + esc(r.name) + '</h3><ul class="cat">' + r.items.map(function (it) {
         var u = safeUrl(it.src);
         return '<li><span class="w">' + esc(it.who) + '</span><span><b>' + esc(it.title) + '</b>　' + esc(it.text) +
+          (it.take ? '<span class="take">' + esc(it.take) + '</span>' : '') +
           (u ? ' <a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">来源</a>' : '') + '</span></li>';
       }).join('') + '</ul></div>';
     });
