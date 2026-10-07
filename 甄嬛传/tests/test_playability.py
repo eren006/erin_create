@@ -78,6 +78,9 @@ class PlayabilityTests(unittest.TestCase):
         with patch.object(game.random, 'random', return_value=.99), patch.object(game, 'npc_schemes'):
             game.settle_day()
         self.assertEqual(game.emperor_age_years()-before_emperor, 2)
+        self.assertEqual(game.get_consort(self.atk)['age_months']-216,12)      # 零点涨一岁
+        game.run("UPDATE game_state SET last_noon_age_date=''")
+        game.age_noon_tick(game.datetime(2026,10,5,12,30,tzinfo=game.TZ))      # 中午再涨一岁，合起来一天两岁
         self.assertEqual(game.get_consort(self.atk)['age_months']-216,24)
         self.assertEqual(game.family_row(uid)['head_age_months']-before_head,24)
         self.assertEqual(game.heir_age_years(game.q('SELECT * FROM heirs WHERE id=?',(hid,),one=True))-before_child,2)

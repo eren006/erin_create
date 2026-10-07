@@ -145,7 +145,7 @@ class LifecycleTests(unittest.TestCase):
             game.settle_day()   # 第三晚临盆
         self.assertEqual(len(game.q('SELECT * FROM heirs')), 1)
         self.assertEqual(game.get_consort(self.tgt)['pregnant_since'], 0)
-        self.assertEqual(game.get_consort(self.tgt)['age_months'], 240 + 3 * game.AGE_MONTHS_PER_DAY)
+        self.assertEqual(game.get_consort(self.tgt)['age_months'], 240 + 3 * (game.AGE_MONTHS_PER_DAY // 2))      # 零点结算涨一岁，另一岁在中午 12 点涨（age_noon_tick）
         self.assertEqual(game.get_consort(self.tgt)['health'], 70 - game.BIRTH_HEALTH_LOSS)   # 年龄在 settle_day 里不扣体质，只扣生产的
         self.assertEqual(game.age_text(258), '21岁半')
 

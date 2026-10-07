@@ -16,6 +16,7 @@ class BirthCustodyTests(unittest.TestCase):
         game.run("UPDATE consorts SET pregnant_since=?,pregnancy_started_ts=100000,prenatal='{}' WHERE id=?", (game.cur_day(), cid))
         with patch.object(game.time, 'time', return_value=186400):
             game.resolve_births(game.cur_day(), False)
+        game.run("UPDATE heirs SET born_ts=? WHERE mother_id=?", (game.now_ts(), cid))      # 出生时刻是被 patch 的假时间，改回真实的现在
         return game.q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id DESC", (cid,), one=True)
 
     def keep_low(self, cid):

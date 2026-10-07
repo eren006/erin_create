@@ -1503,7 +1503,7 @@ def init_db():
                      'repair': "TEXT NOT NULL DEFAULT ''",
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'personality': "TEXT NOT NULL DEFAULT ''",
@@ -1550,7 +1550,7 @@ def init_db():
                     'sender_label': "TEXT NOT NULL DEFAULT ''"},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
-        'game_state': {'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
+        'game_state': {'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
                        'reign_no': 'INTEGER NOT NULL DEFAULT 1',
                        'reign_start_day': 'INTEGER NOT NULL DEFAULT 1',
                        'emperor_start_age': 'INTEGER NOT NULL DEFAULT 20',
@@ -1614,6 +1614,7 @@ def init_db():
     migrate_drug_cooldowns(db)
     migrate_drug_balance(db)
     migrate_rank_scale(db)
+    migrate_heir_born_ts(db)
     seed_npcs(db)
     seed_npc_heirs(db)
     migrate_no_clean_secret(db)
@@ -1622,6 +1623,15 @@ def init_db():
     db.close()
     with app.app_context():
         housing_sync()      # 老存档里的玩家第一次启动时分好住处；之后每次都是空操作
+
+def migrate_heir_born_ts(db):
+    """孩子按出生时刻起算年龄（每 12 小时一岁）：老档里只有出生天数的，按「那天零点」折成时间戳；妃嫔中午年龄结算的当天日期补上，免得部署当天多涨一次"""
+    st = db.execute("SELECT day FROM game_state WHERE id=1").fetchone()
+    if st:
+        midnight = datetime.now(TZ).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+        for hid, born_day in db.execute("SELECT id, born_day FROM heirs WHERE born_ts=0").fetchall():
+            db.execute("UPDATE heirs SET born_ts=? WHERE id=?", (midnight - max(0, st[0] - born_day) * 86400, hid))
+        db.execute("UPDATE game_state SET last_noon_age_date=? WHERE id=1 AND last_noon_age_date=''", (datetime.now(TZ).date().isoformat(),))
 
 def migrate_rank_scale(db):
     """2026-10-07 在妃和贵妃之间加「四妃」档：旧档里贵妃(7)及以上全部顺延一位；占了淑德贤惠当封号的人换一个。只做一次"""
@@ -5695,7 +5705,7 @@ def heirs():
     for h in rows:
         a = {}
         if h['mother_id'] == c['id'] and h['caretaker_id'] in (c['id'], 0) and c['rank'] < 5 and c['status'] == 'normal' \
-                and not h['zhuazhou'] and heir_age_days(h, day) < ZHUAZHOU_AGE_DAYS:
+                and not h['zhuazhou'] and heir_age_days(h, day) < zhuazhou_age_days(h):
             a['entrust'] = True
             if h['foster_request_to']: a['waiting_on'] = get_consort(h['foster_request_to'])
         if h['foster_request_to'] == c['id']: a['reply'] = True
@@ -5877,7 +5887,25 @@ HEIR_EVENTS = {
 
 
 def heir_age_days(h, day=None):
+    """孩子出生以来过了几天（可以是小数）：有出生时刻的按真实时间算，每 12 小时一岁；老数据、测试里只有出生天数的按天数算"""
+    ts = h['born_ts'] if 'born_ts' in h.keys() else 0
+    if ts and ts > 0:
+        ref = now_ts()
+        if day is not None and day < cur_day(): ref -= (cur_day() - day) * 86400
+        return max(0.0, (ref - ts) / 86400)
     return (day or cur_day()) - h['born_day']
+
+def zhuazhou_age_days(h):
+    """周岁抓周的门槛：有出生时刻的满 12 小时就是一岁，老数据按整天算"""
+    ts = h['born_ts'] if 'born_ts' in h.keys() else 0
+    return HEIR_DAYS_PER_YEAR if ts and ts > 0 else ZHUAZHOU_AGE_DAYS
+
+def zhuazhou_due(h, day):
+    """该不该抓周了：还没抓过，且刚满周岁（有出生时刻的：满 12 小时到 24 小时之间；老数据：正好第 ZHUAZHOU_AGE_DAYS 天）"""
+    if h['zhuazhou']: return False
+    age = heir_age_days(h, day)
+    start = zhuazhou_age_days(h)
+    return start <= age < start + (1 if start == ZHUAZHOU_AGE_DAYS else HEIR_DAYS_PER_YEAR)
 
 
 def heir_age_years(h, day=None):
@@ -6033,6 +6061,10 @@ HEIR_AUTO_NAME_AGE = 2      # 孩子到这个岁数还没人起名，系统自�
 def heir_growth_tick(day):
     """抓周时低位生母的孩子进入养育所；已经主动托付的维持现有抚养。"""
     heir_looks_grow(day)
+    heir_age_events(day)
+
+def heir_age_events(day):
+    """到岁数的事：2 岁没起名自动起名、周岁抓周。孩子按出生时刻每 12 小时一岁，所以这个每小时也会跑（见 maybe_settle），夜里结算再补一次"""
     for h in q("SELECT * FROM heirs WHERE name=''"):      # 到 2 岁还没人起名，系统从备选字里随机挑一个
         if heir_age_years(h, day) < HEIR_AUTO_NAME_AGE: continue
         ensure_name_choices(h['id'])
@@ -6041,7 +6073,7 @@ def heir_growth_tick(day):
         name = hh['gen_word'] + random.choice(hh['name_choices'])
         run("UPDATE heirs SET name=?, name_choices='' WHERE id=?", (name, h['id']))
         for par in heir_parents(h): notify(par['id'], f"{heir_label(h)}已满 {HEIR_AUTO_NAME_AGE} 岁，一直没起名，宫里按祖制替孩子定了名字：{name}。", 'info')
-    for h in q("SELECT * FROM heirs WHERE zhuazhou='' AND ?-born_day=?", (day, ZHUAZHOU_AGE_DAYS)):
+    for h in [x for x in q("SELECT * FROM heirs WHERE zhuazhou=''") if zhuazhou_due(x, day)]:
         item = random.choice(ZHUAZHOU_ITEMS)
         run(f"UPDATE heirs SET zhuazhou=?, foster_request_to=0, {item['stat']}={item['stat']}+? WHERE id=?",
             (item['key'], ZHUAZHOU_GAIN, h['id']))
@@ -6103,7 +6135,7 @@ def heir_entrust(hid):
     t = get_consort(tid) if tid else None
     err = None
     if not h or h['mother_id'] != c['id'] or h['caretaker_id'] not in (c['id'], 0): err = '这不是你亲自带着的孩子。'
-    elif h['zhuazhou'] or heir_age_days(h) >= ZHUAZHOU_AGE_DAYS: err = '孩子已经周岁，祖制已定，托付不及了。'
+    elif h['zhuazhou'] or heir_age_days(h) >= zhuazhou_age_days(h): err = '孩子已经周岁，祖制已定，托付不及了。'
     elif c['rank'] >= 5: err = '你已是嫔位，本就可以亲自抚养，不必托付。'
     elif c['status'] != 'normal': err = '眼下这个境况，托付不了人。'
     elif not t or t['id'] not in {x['id'] for x in entrust_candidates(c)}:
@@ -6530,7 +6562,7 @@ def heir_family_letter_tick(day):
 
 
 def heir_adult_tick(day):
-    for h in q("SELECT * FROM heirs WHERE adult_day=0 AND ?-born_day>=?", (day, HEIR_ADULT_AGE_DAYS)):
+    for h in [x for x in q("SELECT * FROM heirs WHERE adult_day=0") if heir_age_days(x, day) >= HEIR_ADULT_AGE_DAYS]:
         heir_come_of_age(h, day)
     heir_marriage_deadline_tick(day)
     heir_filial_tick(day)
@@ -7861,10 +7893,10 @@ def resolve_births(day, include_legacy=True):
             ordinal = top + 1
             personality = random.choice(list(HEIR_PERSONALITIES))
             gifts = roll_heir_gifts(c)
-            run("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, born_day, personality, study, riding, virtue, health,
+            run("""INSERT INTO heirs (mother_id, caretaker_id, gender, ordinal, born_day, born_ts, personality, study, riding, virtue, health,
                                     gift_study, gift_riding, gift_virtue)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (c['id'], c['id'], gender, ordinal, day, personality,
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (c['id'], c['id'], gender, ordinal, day, now_ts(), personality,
                  clamp(random.randint(10, 30) + c['talent'] * 0.1 + pre.get('study', 0), 0, 100),
                  clamp(random.randint(10, 30) + pre.get('riding', 0), 0, 100),
                  clamp(random.randint(10, 30) + c['virtue'] * 0.1 + pre.get('virtue', 0), 0, 100),
@@ -8189,7 +8221,7 @@ def _settle_night():
     for c in q("SELECT * FROM consorts WHERE status NOT IN ('xiunv','dead')"):
         c = get_consort(c['id'])
         if not partial:      # 补结算不再算这几笔每晚一次的账
-            run('UPDATE consorts SET age_months=age_months+? WHERE id=?', (AGE_MONTHS_PER_DAY, c['id']))   # 一天 = 宫中两年
+            run('UPDATE consorts SET age_months=age_months+? WHERE id=?', (AGE_MONTHS_PER_DAY // 2, c['id']))   # 一天 = 宫中两年：零点涨一岁，中午 12 点再涨一岁（见 age_noon_tick）
             streak = c['unfavored_days']+1 if c['favor']<FAVOR_LOW else 0
             run('UPDATE consorts SET unfavored_days=? WHERE id=?',(streak,c['id']))
             c=get_consort(c['id'])
@@ -8282,7 +8314,7 @@ def memory_edict(c, day):
             said = f"你说{q_}" if q_.startswith('「') else f"你{q_}"
             return f"你入宫{years}年了。朕还记得殿选那日，{said.rstrip('。')}。"
         return f"你入宫{years}年了。"
-    for h in q("SELECT * FROM heirs WHERE mother_id=? AND ?-born_day=?", (c['id'], day, 6 * HEIR_DAYS_PER_YEAR)):
+    for h in [x for x in q("SELECT * FROM heirs WHERE mother_id=?", (c['id'],)) if 6 * HEIR_DAYS_PER_YEAR <= heir_age_days(x, day) < 6 * HEIR_DAYS_PER_YEAR + 1]:
         return f"{heir_label(h)}六岁了，朕想着该给{'他' if h['gender'] == '皇子' else '她'}挑个师傅。"
     unseen = day - c['last_audience_day']
     if c['status'] == 'normal' and unseen >= LONG_UNSEEN_DAYS and unseen % LONG_UNSEEN_DAYS == 0:
@@ -8486,6 +8518,13 @@ def promotion_tick(key, settle_due=False):
 
 
 @atomic
+def age_noon_tick(now):
+    """每天中午 12 点，所有在世的妃嫔再涨一岁（零点结算已涨一岁，合起来一天两岁，即每 12 小时一岁）；每天只做一次，错过了下一分钟补"""
+    today = now.date().isoformat()
+    if now.hour < 12 or state()['last_noon_age_date'] == today: return
+    run("UPDATE game_state SET last_noon_age_date=? WHERE id=1", (today,))
+    run("UPDATE consorts SET age_months=age_months+? WHERE status NOT IN ('xiunv','dead')", (AGE_MONTHS_PER_DAY // 2,))
+
 def maybe_settle():
     """翻牌每 2 小时一轮（每轮 2 位）、精力和晋封每 4 小时、22点宴会、0点日结算；补执行时也先发宴会奖励。"""
     now=datetime.now(TZ)
@@ -8495,6 +8534,8 @@ def maybe_settle():
     key=latest_bedding_slot(now)
     pace_key=latest_pace_slot(now)
     energy_tick(pace_key)
+    age_noon_tick(now)
+    heir_age_events(st['day'])
     bedding_round(st['day'],key)
     maybe_banquet(now)
     today = now.date().isoformat()
