@@ -351,6 +351,17 @@ class AdulthoodTests(unittest.TestCase):
             game.settle_day()
         self.assertEqual(game.q("SELECT COUNT(*) n FROM heirs WHERE adult_day>0", one=True)['n'], 2)
 
+    def test_persona_grows_up_with_adulthood(self):
+        for pers in game.HEIR_PERSONALITIES:
+            kid = self.row(self.heir(self.atk, personality=pers))
+            adult = self.row(self.adult_prince(self.atk, personality=pers))
+            pk, pa = game.heir_persona(kid), game.heir_persona(adult)
+            self.assertEqual(pk['name'], pa['name'])          # 大类不变
+            self.assertEqual(pa['tag'], game.heir_persona(adult)['tag'])
+            self.assertIn(pa['tag'], [t for t, _ in game.HEIR_PERSONA_ADULT[pers]['tags']])
+            self.assertNotIn(pa['tag'], [t for t, _ in game.HEIR_PERSONA[pers]['tags']])
+            self.assertNotIn('乳母', pa['text'])
+
 
 if __name__ == '__main__':
     unittest.main()
