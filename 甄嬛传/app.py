@@ -660,8 +660,8 @@ INTRIGUES = {
                    desc='用手里的药，交给对方宫里的内应去下，或者自己动手'),
     'expose': dict(name='告发秘密', silver=50, energy=0, min_rank=1, base=0.75, npc_ok=False,
                    desc='需先探到对方的秘密。皇上信不信看你的信任。成：按秘密处罚对方，你信任 +5。不信：自己德行 -8，圣宠 -18，信任 -5'),
-    'impeach': dict(name='参奏降位', silver=250, energy=1, min_rank=5, base=0.45, npc_ok=False,
-                    desc='嫔位以上，要比对方高两级以上，对方得是常在以上，每 3 天一次，同一个人 3 天内只能被参一回。成：对方降一级，圣宠 -12。败露：自己德行 -8，圣宠 -18，信任 -8'),
+    'impeach': dict(name='参奏降位', silver=250, energy=1, min_rank=1, base=0.45, npc_ok=False,
+                    desc='不限位分，每 3 天一次，同一个人 3 天内只能被参一回。成：对方降一级，圣宠 -12，势力回到降级后位分的最低线。败露：自己德行 -8，圣宠 -18，信任 -8'),
     'witch':  dict(name='构陷巫蛊', silver=300, energy=1, min_rank=4, base=0.40, npc_ok=True,
                    desc='成：对方打入冷宫。败露：打入冷宫的是你'),
     'punish': dict(name='发落宫人', silver=50, energy=1, min_rank=5, base=0.55, npc_ok=False,
@@ -5464,10 +5464,6 @@ IMPEACH_COOLDOWN = 3
 IMPEACH_FAVOR_LOSS = 12
 
 def impeach_block(c, t, day):
-    if c['rank'] < t['rank'] + 2:
-        return '要比她高两级以上，才参奏得动她。'
-    if t['rank'] < 3:
-        return '她位分太低，不值得参奏。'
     if c['impeach_ready_day'] > day:
         return f"你上次参奏还没过 {IMPEACH_COOLDOWN} 天，第 {c['impeach_ready_day']} 天才能再动手。"
     if t['impeached_day'] and day - t['impeached_day'] < IMPEACH_COOLDOWN:
@@ -7994,9 +7990,12 @@ def resolve_intrigue(it, bed_id=None):
             old_name = display_name(tgt)
             run('UPDATE consorts SET impeached_day=? WHERE id=?', (cur_day(), tgt['id']))
             lost = cut_favor(tgt['id'], IMPEACH_FAVOR_LOSS)
-            if tgt['rank'] > 1: demote_rank(tgt['id'])
+            if tgt['rank'] > 1:
+                demote_rank(tgt['id'])
+                low = get_consort(tgt['id'])
+                run("UPDATE consorts SET influence=MIN(influence,?) WHERE id=?", (PROMOTE_INFLUENCE.get(low['rank'], 0), tgt['id']))      # 势力一并打回降级后位分的最低线
             now_name = display_name(get_consort(tgt['id']))
-            victim = f"{an}上了一道折子参你，皇上准了：你降为{now_name}，圣宠 -{lost}。" + (f"眼线说，是{an}。" if tell_name else '')
+            victim = f"{an}上了一道折子参你，皇上准了：你降为{now_name}，圣宠 -{lost}，势力回落到该位分的最低线。" + (f"眼线说，是{an}。" if tell_name else '')
             gz = f"{old_name}被参奏失德，皇上降其位分，今称{now_name}。"
         elif m == 'witch':
             send_to_cold(tgt['id'])

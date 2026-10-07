@@ -63,13 +63,19 @@ class DemotionTests(unittest.TestCase):
         with patch.object(game, 'INTRIGUE_REALTIME', True):
             self.client.post('/intrigue/submit', data={'method': 'impeach', 'target_id': self.tgt})
 
-    def test_impeach_needs_two_ranks_higher_and_cooldown(self):
+    def test_impeach_has_no_rank_requirement_but_has_cooldown(self):
         self.prep(atk_rank=6, tgt_rank=5)
         self.impeach(0.0)
-        self.assertEqual(self.me(self.tgt)['rank'], 5)      # 只高一级，参不动
+        self.assertEqual(self.me(self.tgt)['rank'], 4)      # 只高一级也参得动
+        self.prep(atk_rank=2, tgt_rank=5)
+        self.impeach(0.0)
+        self.assertEqual(self.me(self.tgt)['rank'], 4)      # 答应也能参奏嫔
+        self.prep(atk_rank=5, tgt_rank=2)
+        self.impeach(0.0)
+        self.assertEqual(self.me(self.tgt)['rank'], 1)      # 对方位分再低也行（妃位及以上另有「不对常在及以下使计」的限制）
         self.prep(atk_rank=7, tgt_rank=2)
         self.impeach(0.0)
-        self.assertEqual(self.me(self.tgt)['rank'], 2)      # 太低不值得
+        self.assertEqual(self.me(self.tgt)['rank'], 2)      # 妃位以上打不了常在及以下
         self.prep(atk_rank=7, tgt_rank=5)
         self.impeach(0.0)
         self.assertEqual(self.me(self.tgt)['rank'], 4)
@@ -77,6 +83,14 @@ class DemotionTests(unittest.TestCase):
         self.impeach(0.0)
         self.assertEqual(self.me(self.tgt)['rank'], 5)      # 冷却中
         self.assertIsNotNone(game.impeach_block(self.me(self.atk), self.me(self.tgt), game.cur_day()))
+
+    def test_impeach_success_resets_influence_to_lower_rank_floor(self):
+        self.prep(atk_rank=7, tgt_rank=5)
+        game.run("UPDATE consorts SET influence=60 WHERE id=?", (self.tgt,))
+        self.impeach(0.0)
+        t = self.me(self.tgt)
+        self.assertEqual(t['rank'], 4)
+        self.assertEqual(t['influence'], game.PROMOTE_INFLUENCE[4])      # 势力回到贵人的最低线
 
     def settle(self):
         with patch.object(game.random, 'random', return_value=0.99), patch.object(game, 'npc_schemes'):
