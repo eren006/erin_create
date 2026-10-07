@@ -14,26 +14,116 @@
     "公用事业XLU +2.98%领涨板块，生物科技XBI -3.39%垫底；盘后Constellation Brands发财报，我没有查到可靠的数字，不写。"
   ],
   "upcoming": [
-    {"at": "2026-10-07T08:00:00-04:00", "kind": "财报", "importance": "normal", "title": "Constellation Brands财报电话会", "note": "公司已公告周二盘后发2027财年Q2业绩、周三8:00开电话会。财报数字我今晚没查到可靠版本，明早早报再交代。", "src": "https://cbrands.com/blogs/press-releases/constellation-brands-to-report-second-quarter-fiscal-2027-financial-results-on-october-6-2026-after-market-close-and-host-conference-call-on-october-7-2026-at-8-00-am-et"},
-    {"at": "2026-10-07T13:00:00-04:00", "kind": "其他", "importance": "high", "title": "10年期美债拍卖", "note": "收益率刚从24年高位回头，这场拍卖的尾差和间接投标占比，决定回头是不是只是一天的事。", "src": "https://www.livetradingnews.com/weekly-market-outlook-fed-minutes-anthropic-and-openai-ipos-gold-bitcoin-fx"},
-    {"at": "2026-10-07T14:00:00-04:00", "kind": "美联储", "importance": "high", "title": "联储9月15-16日会议纪要", "note": "9月加息到3.75%-4.00%。看“再加一次”的共识有多牢，以及有几个人不同意。", "src": "https://www.federalreserve.gov/newsevents/2026-october.htm"},
-    {"at": "2026-10-08T00:00:00-04:00", "all_day": true, "kind": "其他", "importance": "normal", "title": "A股节后复市", "note": "A股10月1日至7日休市。10月8日要一次消化一周的外盘：纳指和英伟达都在纪录附近，美债却在24年高点。", "src": "https://money.usnews.com/investing/news/articles/2026-10-05/hong-kong-stocks-tick-down-in-thin-trade-as-property-financials-drag"},
-    {"at": "2026-10-08T13:00:00-04:00", "kind": "其他", "importance": "high", "title": "30年期美债拍卖", "note": "30年期现在约5.64%。需求弱的话，长端和高估值科技会一起受压，这是本周我最担心的时间点。", "src": "https://www.livetradingnews.com/weekly-market-outlook-fed-minutes-anthropic-and-openai-ipos-gold-bitcoin-fx"},
-    {"at": "2026-10-14T08:30:00-04:00", "kind": "数据", "importance": "high", "title": "9月CPI", "note": "油价9月一直在90美元上方，这份数据左右12月会不会再加一次。", "src": "https://www.bls.gov/schedule/"},
-    {"at": "2026-10-28T14:00:00-04:00", "kind": "美联储", "importance": "high", "title": "FOMC 10月利率决议", "note": "当前利率3.75%-4.00%。10月按兵不动基本被定价，分歧已经挪到12月。", "src": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"}
+    {
+      "at": "2026-10-07T08:00:00-04:00",
+      "kind": "财报",
+      "importance": "normal",
+      "title": "Constellation Brands财报电话会",
+      "note": "公司已公告周二盘后发2027财年Q2业绩、周三8:00开电话会。财报数字我今晚没查到可靠版本，明早早报再交代。",
+      "src": "https://cbrands.com/blogs/press-releases/constellation-brands-to-report-second-quarter-fiscal-2027-financial-results-on-october-6-2026-after-market-close-and-host-conference-call-on-october-7-2026-at-8-00-am-et"
+    },
+    {
+      "at": "2026-10-07T13:00:00-04:00",
+      "kind": "其他",
+      "importance": "high",
+      "title": "10年期美债拍卖",
+      "note": "收益率刚从24年高位回头，这场拍卖的尾差和间接投标占比，决定回头是不是只是一天的事。",
+      "src": "https://www.livetradingnews.com/weekly-market-outlook-fed-minutes-anthropic-and-openai-ipos-gold-bitcoin-fx"
+    },
+    {
+      "at": "2026-10-07T14:00:00-04:00",
+      "kind": "美联储",
+      "importance": "high",
+      "title": "联储9月15-16日会议纪要",
+      "note": "9月加息到3.75%-4.00%。看“再加一次”的共识有多牢，以及有几个人不同意。",
+      "src": "https://www.federalreserve.gov/newsevents/2026-october.htm"
+    },
+    {
+      "at": "2026-10-08T00:00:00-04:00",
+      "all_day": true,
+      "kind": "其他",
+      "importance": "normal",
+      "title": "A股节后复市",
+      "note": "A股10月1日至7日休市。10月8日要一次消化一周的外盘：纳指和英伟达都在纪录附近，美债却在24年高点。",
+      "src": "https://money.usnews.com/investing/news/articles/2026-10-05/hong-kong-stocks-tick-down-in-thin-trade-as-property-financials-drag"
+    },
+    {
+      "at": "2026-10-08T13:00:00-04:00",
+      "kind": "其他",
+      "importance": "high",
+      "title": "30年期美债拍卖",
+      "note": "30年期现在约5.64%。需求弱的话，长端和高估值科技会一起受压，这是本周我最担心的时间点。",
+      "src": "https://www.livetradingnews.com/weekly-market-outlook-fed-minutes-anthropic-and-openai-ipos-gold-bitcoin-fx"
+    },
+    {
+      "at": "2026-10-14T08:30:00-04:00",
+      "kind": "数据",
+      "importance": "high",
+      "title": "9月CPI",
+      "note": "油价9月一直在90美元上方，这份数据左右12月会不会再加一次。",
+      "src": "https://www.bls.gov/schedule/"
+    },
+    {
+      "at": "2026-10-28T14:00:00-04:00",
+      "kind": "美联储",
+      "importance": "high",
+      "title": "FOMC 10月利率决议",
+      "note": "当前利率3.75%-4.00%。10月按兵不动基本被定价，分歧已经挪到12月。",
+      "src": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm"
+    }
   ],
   "tape_note": "晚报：股指为10月6日收盘；VIX、收益率、美元、原油、黄金、比特币为截稿时（约17:30 ET）Yahoo报价，10年期变动为收盘报道口径",
   "tape": [
-    {"name": "标普500", "value": "7,818.93", "chg": "+0.58%"},
-    {"name": "纳斯达克", "value": "27,599.79", "chg": "+0.45%"},
-    {"name": "道琼斯", "value": "51,521.28", "chg": "+0.49%"},
-    {"name": "罗素2000", "value": "2,830.30", "chg": "-0.59%"},
-    {"name": "VIX", "value": "15.01", "chg": "-3.29%"},
-    {"name": "美国10年期国债收益率", "value": "5.27%", "chg": "-4bp"},
-    {"name": "美元指数", "value": "101.86", "chg": "-0.31%"},
-    {"name": "WTI原油", "value": "89.93", "chg": "+0.56%"},
-    {"name": "黄金", "value": "4,191.30", "chg": "+0.83%"},
-    {"name": "比特币", "value": "85,604.92", "chg": "-0.21%"}
+    {
+      "name": "标普500",
+      "value": "7,818.93",
+      "chg": "+0.58%"
+    },
+    {
+      "name": "纳斯达克",
+      "value": "27,599.79",
+      "chg": "+0.45%"
+    },
+    {
+      "name": "道琼斯",
+      "value": "51,521.28",
+      "chg": "+0.49%"
+    },
+    {
+      "name": "罗素2000",
+      "value": "2,830.30",
+      "chg": "-0.59%"
+    },
+    {
+      "name": "VIX",
+      "value": "15.01",
+      "chg": "-3.29%"
+    },
+    {
+      "name": "美国10年期国债收益率",
+      "value": "5.27%",
+      "chg": "-4bp"
+    },
+    {
+      "name": "美元指数",
+      "value": "101.86",
+      "chg": "-0.31%"
+    },
+    {
+      "name": "WTI原油",
+      "value": "89.93",
+      "chg": "+0.56%"
+    },
+    {
+      "name": "黄金",
+      "value": "4,191.30",
+      "chg": "+0.83%"
+    },
+    {
+      "name": "比特币",
+      "value": "85,604.92",
+      "chg": "-0.21%"
+    }
   ],
   "markets": {
     "title": "市场论述",
@@ -47,33 +137,125 @@
       "海外：欧洲收盘全线收涨，富时100涨0.42%到10,541.69，德国DAX涨0.77%到25,449.19，法国CAC40涨0.40%，斯托克50涨0.48%。亚洲当天盘面据Yahoo报价，日经225涨约1.05%，台湾加权涨约0.22%，韩国KOSPI跌约0.89%，恒指收涨1.00%；A股本周休市到10月7日。VIX降3.29%到15.01，一周累计 -6.42%，市场并不紧张。"
     ],
     "catalysts": [
-      {"when": "周二 10/6 盘中", "where": "美国", "text": "Marvell纽约投资者日，管理层把2028财年收入目标上调到200亿美元，MRVL收涨5.81%，博通+3.67%、AMD+2.80%。"},
-      {"when": "周二 10/6", "where": "美国", "text": "10年期收益率从昨日24年高点回落，收约5.27%；早上WTI曾跌到87.18，收盘回到89.93。"},
-      {"when": "周二 10/6", "where": "美国", "text": "据Yahoo直播稿，CEG涨约13%，原因是和谷歌的核电交易；公用事业XLU涨2.98%。仅一家来源。"},
-      {"when": "周二 10/6", "where": "存储", "text": "据报道东芝计划把数据中心硬盘产能翻倍；希捷-9.18%。彭博另报希捷与东芝竞购TDK磁头业务，东芝否认。"},
-      {"when": "周二 10/6 盘后", "where": "美国", "text": "Constellation Brands发布2027财年Q2业绩，周三8:00电话会；我没有查到可靠的数字。"}
+      {
+        "when": "周二 10/6 盘中",
+        "where": "美国",
+        "text": "Marvell纽约投资者日，管理层把2028财年收入目标上调到200亿美元，MRVL收涨5.81%，博通+3.67%、AMD+2.80%。"
+      },
+      {
+        "when": "周二 10/6",
+        "where": "美国",
+        "text": "10年期收益率从昨日24年高点回落，收约5.27%；早上WTI曾跌到87.18，收盘回到89.93。"
+      },
+      {
+        "when": "周二 10/6",
+        "where": "美国",
+        "text": "据Yahoo直播稿，CEG涨约13%，原因是和谷歌的核电交易；公用事业XLU涨2.98%。仅一家来源。"
+      },
+      {
+        "when": "周二 10/6",
+        "where": "存储",
+        "text": "据报道东芝计划把数据中心硬盘产能翻倍；希捷-9.18%。彭博另报希捷与东芝竞购TDK磁头业务，东芝否认。"
+      },
+      {
+        "when": "周二 10/6 盘后",
+        "where": "美国",
+        "text": "Constellation Brands发布2027财年Q2业绩，周三8:00电话会；我没有查到可靠的数字。"
+      }
     ],
     "sectors": [
-      {"name": "公用事业（XLU）", "chg": "+2.98%", "reason": "收益率回落是共同背景；据一家来源CEG涨约13%与谷歌核电交易有关，其余成分股的原因没有查到。"},
-      {"name": "可选消费（XLY）", "chg": "+1.18%", "reason": "亚马逊 +1.95%贡献大头；板块层面的催化没有查到，更像利率回落带来的估值修复。"},
-      {"name": "房地产（XLRE）", "chg": "+1.06%", "reason": "对长端利率最敏感的板块之一，10年期回落4bp即受益；一周仍 -0.58%。"},
-      {"name": "必选消费（XLP）", "chg": "+0.94%", "reason": "防御板块与公用事业同步走强，和收益率回落、小盘股下跌是同一个方向的资金动作。"},
-      {"name": "工业（XLI）", "chg": "+0.87%", "reason": "没有查到单独催化；AI电力和算力基建相关的成分股可能贡献了一部分，这只是推测。"},
-      {"name": "软件（IGV）", "chg": "+1.31%", "reason": "一周累计 +5.65%，微软一周 +4.00%，软件在补跌后的反弹里；今天没有单一催化。"},
-      {"name": "半导体（SMH）", "chg": "-0.22%", "reason": "MRVL、AVGO、AMD涨，存储与设备（美光、科磊、泛林、应材）跌，互相抵消，详见AI版面。"},
-      {"name": "生物科技（XBI）", "chg": "-3.39%", "reason": "疫苗股回吐只能解释一部分，整体原因没有查到。"}
+      {
+        "name": "公用事业（XLU）",
+        "chg": "+2.98%",
+        "reason": "收益率回落是共同背景；据一家来源CEG涨约13%与谷歌核电交易有关，其余成分股的原因没有查到。"
+      },
+      {
+        "name": "可选消费（XLY）",
+        "chg": "+1.18%",
+        "reason": "亚马逊 +1.95%贡献大头；板块层面的催化没有查到，更像利率回落带来的估值修复。"
+      },
+      {
+        "name": "房地产（XLRE）",
+        "chg": "+1.06%",
+        "reason": "对长端利率最敏感的板块之一，10年期回落4bp即受益；一周仍 -0.58%。"
+      },
+      {
+        "name": "必选消费（XLP）",
+        "chg": "+0.94%",
+        "reason": "防御板块与公用事业同步走强，和收益率回落、小盘股下跌是同一个方向的资金动作。"
+      },
+      {
+        "name": "工业（XLI）",
+        "chg": "+0.87%",
+        "reason": "没有查到单独催化；AI电力和算力基建相关的成分股可能贡献了一部分，这只是推测。"
+      },
+      {
+        "name": "软件（IGV）",
+        "chg": "+1.31%",
+        "reason": "一周累计 +5.65%，微软一周 +4.00%，软件在补跌后的反弹里；今天没有单一催化。"
+      },
+      {
+        "name": "半导体（SMH）",
+        "chg": "-0.22%",
+        "reason": "MRVL、AVGO、AMD涨，存储与设备（美光、科磊、泛林、应材）跌，互相抵消，详见AI版面。"
+      },
+      {
+        "name": "生物科技（XBI）",
+        "chg": "-3.39%",
+        "reason": "疫苗股回吐只能解释一部分，整体原因没有查到。"
+      }
     ],
     "global": [
-      {"name": "标普500", "chg": "+0.58%", "note": "收7,818.93。"},
-      {"name": "富时100", "chg": "+0.42%", "note": "收10,541.69。"},
-      {"name": "德国DAX", "chg": "+0.77%", "note": "收25,449.19，欧洲里最强。"},
-      {"name": "法国CAC40", "chg": "+0.40%", "note": "收7,865.07，一周仍 -2.13%。"},
-      {"name": "欧洲斯托克50", "chg": "+0.48%", "note": "收6,272.23。"},
-      {"name": "日经225", "chg": "+1.05%", "note": "亚洲当日盘面，Yahoo报价70,683.98。"},
-      {"name": "恒生指数", "chg": "+1.00%", "note": "收24,280.56（Yahoo报价）。"},
-      {"name": "台湾加权", "chg": "+0.22%", "note": "Yahoo报价49,822.55。"},
-      {"name": "韩国KOSPI", "chg": "-0.89%", "note": "Yahoo报价6,941.39。"},
-      {"name": "上证综指", "chg": "休市", "note": "A股10月1日至7日休市，10月8日复市。"}
+      {
+        "name": "标普500",
+        "chg": "+0.58%",
+        "note": "收7,818.93。"
+      },
+      {
+        "name": "富时100",
+        "chg": "+0.42%",
+        "note": "收10,541.69。"
+      },
+      {
+        "name": "德国DAX",
+        "chg": "+0.77%",
+        "note": "收25,449.19，欧洲里最强。"
+      },
+      {
+        "name": "法国CAC40",
+        "chg": "+0.40%",
+        "note": "收7,865.07，一周仍 -2.13%。"
+      },
+      {
+        "name": "欧洲斯托克50",
+        "chg": "+0.48%",
+        "note": "收6,272.23。"
+      },
+      {
+        "name": "日经225",
+        "chg": "+1.05%",
+        "note": "亚洲当日盘面，Yahoo报价70,683.98。"
+      },
+      {
+        "name": "恒生指数",
+        "chg": "+1.00%",
+        "note": "收24,280.56（Yahoo报价）。"
+      },
+      {
+        "name": "台湾加权",
+        "chg": "+0.22%",
+        "note": "Yahoo报价49,822.55。"
+      },
+      {
+        "name": "韩国KOSPI",
+        "chg": "-0.89%",
+        "note": "Yahoo报价6,941.39。"
+      },
+      {
+        "name": "上证综指",
+        "chg": "休市",
+        "note": "A股10月1日至7日休市，10月8日复市。"
+      }
     ]
   },
   "ai": {
@@ -94,22 +276,173 @@
       "chg": "+0.34%",
       "week": "+4.66%",
       "days": [
-        {"d": "周三", "chg": "-0.00%"},
-        {"d": "周四", "chg": "+1.59%"},
-        {"d": "周五", "chg": "+2.40%"},
-        {"d": "周一", "chg": "+0.27%"},
-        {"d": "周二", "chg": "+0.34%"}
+        {
+          "d": "周三",
+          "chg": "-0.00%"
+        },
+        {
+          "d": "周四",
+          "chg": "+1.59%"
+        },
+        {
+          "d": "周五",
+          "chg": "+2.40%"
+        },
+        {
+          "d": "周一",
+          "chg": "+0.27%"
+        },
+        {
+          "d": "周二",
+          "chg": "+0.34%"
+        }
       ],
       "note": "10月6日收盘，数据来自Yahoo日线；周涨幅对比上周二（9月29日）收盘12,629.16；52周高14,655.29，距离约9.8%。同日SMH -0.22%、iShares半导体ETF -0.01%、纳指 +0.45%。"
     },
     "stocks": [
-      {"symbol": "AAPL", "name": "苹果", "price": "333.63", "chg": "+0.22%", "note": "没有AI硬件催化，大盘上涨日里只跟了个零头；一周 +1.28%。"},
-      {"symbol": "MSFT", "name": "微软", "price": "529.30", "chg": "+0.78%", "note": "软件反弹的一部分，一周 +4.00%；今天没有单一催化。"},
-      {"symbol": "GOOGL", "name": "谷歌A", "price": "347.68", "chg": "+0.35%", "note": "据一家来源它和Constellation有一笔核电交易，股价只涨0.35%，几乎没反应，我猜是这笔交易对谷歌的体量太小，这只是推测。"},
-      {"symbol": "AMZN", "name": "亚马逊", "price": "256.29", "chg": "+1.95%", "note": "七姐妹里最强，跟可选消费板块同涨；个股催化没有查到。"},
-      {"symbol": "NVDA", "name": "英伟达", "price": "239.24", "chg": "+0.14%", "note": "一周 +5.29%，今天只涨0.14%。涨幅留给了MRVL、AVGO、AMD这些“第二梯队”，这是定制芯片叙事的一个旁证。"},
-      {"symbol": "META", "name": "Meta", "price": "738.88", "chg": "-0.41%", "note": "一周几乎持平（+0.01%）；在整体上涨的市场里是少数下跌的七姐妹，原因没有查到。"},
-      {"symbol": "TSLA", "name": "特斯拉", "price": "380.68", "chg": "+0.51%", "note": "一周 +7.89%，今天温和，没有查到新催化。"}
+      {
+        "symbol": "AAPL",
+        "name": "苹果",
+        "price": "333.63",
+        "chg": "+0.22%",
+        "note": "没有AI硬件催化，大盘上涨日里只跟了个零头；一周 +1.28%。"
+      },
+      {
+        "symbol": "MSFT",
+        "name": "微软",
+        "price": "529.30",
+        "chg": "+0.78%",
+        "note": "软件反弹的一部分，一周 +4.00%；今天没有单一催化。"
+      },
+      {
+        "symbol": "GOOGL",
+        "name": "谷歌A",
+        "price": "347.68",
+        "chg": "+0.35%",
+        "note": "据一家来源它和Constellation有一笔核电交易，股价只涨0.35%，几乎没反应，我猜是这笔交易对谷歌的体量太小，这只是推测。"
+      },
+      {
+        "symbol": "AMZN",
+        "name": "亚马逊",
+        "price": "256.29",
+        "chg": "+1.95%",
+        "note": "七姐妹里最强，跟可选消费板块同涨；个股催化没有查到。"
+      },
+      {
+        "symbol": "NVDA",
+        "name": "英伟达",
+        "price": "239.24",
+        "chg": "+0.14%",
+        "note": "一周 +5.29%，今天只涨0.14%。涨幅留给了MRVL、AVGO、AMD这些“第二梯队”，这是定制芯片叙事的一个旁证。"
+      },
+      {
+        "symbol": "META",
+        "name": "Meta",
+        "price": "738.88",
+        "chg": "-0.41%",
+        "note": "一周几乎持平（+0.01%）；在整体上涨的市场里是少数下跌的七姐妹，原因没有查到。"
+      },
+      {
+        "symbol": "TSLA",
+        "name": "特斯拉",
+        "price": "380.68",
+        "chg": "+0.51%",
+        "note": "一周 +7.89%，今天温和，没有查到新催化。"
+      }
+    ]
+  },
+  "ainews": {
+    "title": "AI动态",
+    "sub": "美国、中国与全球各家AI公司的最新进展",
+    "lede": "今天白天的新消息主要在芯片侧：Marvell投资者日把定制AI芯片推上台前。模型和上市的动态沿用早报，没有查到今天新增的发布；中国和其他地区今天也没有查到新的模型发布。",
+    "regions": [
+      {
+        "name": "美国",
+        "items": [
+          {
+            "who": "Marvell",
+            "title": "投资者日：2028财年营收目标上调到200亿美元",
+            "text": "据Startup Fortune等报道，CEO Matt Murphy讲了围绕Google、微软、亚马逊的定制芯片路线图；管理层称定制AI芯片收入2029财年将超过100亿美元，2026财年约15亿美元，占总销售约18%。与Google的定制芯片协议被报道价值约1,200亿美元，这个数字是媒体报道，我没有读到公司原文。",
+            "src": "https://startupfortune.com/marvell-lays-out-its-custom-ai-chip-case-to-wall-street-at-investor-day/"
+          },
+          {
+            "who": "OpenAI",
+            "title": "DevDay发布GPT-6.1 Sol和Dots智能体",
+            "text": "据多家媒体报道，DevDay在9月29日举行。GPT-6.1 Sol主打智能体编码和电脑操作，OpenAI称性能接近GPT-6 Astra而成本约为其五分之一，API定价每百万token输入2美元、输出10美元，上下文105万token。同场还发了常驻后台独立工作的Dots智能体和500美元档的ChatGPT Pro。基准数字是OpenAI自己公布的，我没有第三方复测。",
+            "src": "https://www.business-standard.com/technology/tech-news/openai-devday-2026-dots-gpt-6-1-sol-codex-developer-tools-126093000396_1.html"
+          },
+          {
+            "who": "Google",
+            "title": "Gemini 4 Argon发布，自称部分基准超过OpenAI与Anthropic",
+            "text": "9月30日发布，是2月Gemini 3.1 Pro之后的首个旗舰，主打长任务、编码、法律金融研究和网络安防，单次可输出最多100万token。据聚合站转述的Artificial Analysis综合指数，它排在Claude Opus 5.5和Sonnet 5.5之后。CNBC的原文我读取失败（403），只看到了搜索摘要。",
+            "src": "https://www.cnbc.com/2026/10/02/tech-download-google-argon-frontier-openai-anthropic.html"
+          },
+          {
+            "who": "Anthropic",
+            "title": "IPO：选定纳斯达克，时间在10月与11月之间摇摆",
+            "text": "The Next Web称Anthropic仍希望在10月完成上市，更近的报道指向11月；多家来源称保密递表估值约9,650亿美元，由摩根士丹利和高盛牵头。路透拿到的招股书称其模型可能带来“灾难性或存在性风险”。估值、时间表都是媒体报道，公司没有公开确认；我手上没有招股书原件。",
+            "src": "https://thenextweb.com/news/anthropic-ipo-nasdaq-october-listing"
+          },
+          {
+            "who": "OpenAI",
+            "title": "奥特曼称2026年不上市",
+            "text": "据Fortune采访转述，奥特曼说“考虑到安全方面的情况，现在上市是个不明智的时机”；另据报道OpenAI今年6月提交过保密S-1草案，之后把时间表推到至少2027年。这两条来自二手转述，说法有出入时以公司公告为准。",
+            "src": "https://thenextweb.com/news/anthropic-ipo-nasdaq-october-listing"
+          },
+          {
+            "who": "xAI",
+            "title": "Grok-4.7发布",
+            "text": "据聚合站llm-stats，xAI已官宣Grok-4.7。具体能力、定价我没有查到第二个来源，不展开。",
+            "src": "https://llm-stats.com/llm-updates"
+          },
+          {
+            "who": "英伟达",
+            "title": "追加1,500亿美元回购，推出智能体安全平台",
+            "text": "据investinglive等报道，董事会追加批准1,500亿美元回购；同时英伟达推出Open Agent Safety Platform，据称已有100多家机构参与，包括Anthropic、Salesforce、SAP。回购数字为转述，公司公告原文没读到。",
+            "src": "https://investinglive.com/stock-market-update/nvidia-hits-record-high-near-6-trillion-yet-still-trails-the-chip-sector-s-2026-rally"
+          }
+        ]
+      },
+      {
+        "name": "中国",
+        "items": [
+          {
+            "who": "DeepSeek",
+            "title": "V4.1-Flash上线，开源昇腾算子库",
+            "text": "9月10日发布V4.1-Flash，原生多模态，API降价；V4 Pro原定9月14日跟进切换。9月30日DeepSeek开源了面向华为昇腾的TileLang-Ascend、DeepGEMM-Ascend等算子库，意思是V4架构有了一条不经过英伟达的推理路径。R2至今仍没有发布。以上来自一家聚合博客和Releasebot，我没有读到DeepSeek官方更新页。",
+            "src": "https://blog.mean.ceo/deepseek-news-september-2026/"
+          },
+          {
+            "who": "阿里",
+            "title": "Qwen3.8-Max放出权重",
+            "text": "Qwen3.8-Max在8月3日发布，约2.4万亿参数（激活950亿），8月12日开放权重，是首个开源的Max级Qwen，但仅文本、采用自定义许可而非Apache 2.0；定价每百万token输入2美元、输出6美元。这是8月的旧闻，我没有查到阿里10月的新动作。",
+            "src": "https://www.scmp.com/tech/tech-trends/article/3364404/alibabas-lightweight-qwen-model-takes-larger-ai-systems-openai-deepseek-zhipu"
+          },
+          {
+            "who": "智谱/月之暗面",
+            "title": "GLM-5.3（8月14日）与Kimi K3（7月）",
+            "text": "智谱GLM-5.3在8月14日发布；月之暗面Kimi K3约2.8万亿参数，被称为目前中国最大的模型。均非本周新闻，放在这里作为国内梯队的位置参照，10月以来我没有查到它们的新版本。",
+            "src": "https://www.cnbc.com/2026/07/17/moonshot-ai-kimi-k3-model-openai-anthropic-china.html"
+          }
+        ]
+      },
+      {
+        "name": "全球其他地区",
+        "items": [
+          {
+            "who": "Mistral（法国）",
+            "title": "融资30亿欧元，估值超210亿欧元，三星领投",
+            "text": "CNBC报道融资发生在9月8日，是欧洲科技公司迄今最大的一轮股权融资，欧盟支持的Scaleup Europe Fund参与；三星计划把Mistral的模型用在自己的半导体业务里，Mistral用资金扩建数据中心和算力。CNBC称估值240亿美元，其他来源称超过210亿欧元，币种不同，数字大致相当。",
+            "src": "https://www.cnbc.com/2026/09/08/mistral-ai-funding-valuation-samsung.html"
+          },
+          {
+            "who": "日韩及其他",
+            "title": "本周没有查到可靠的新进展",
+            "text": "我搜了软银、Sakana等，结果里没有10月的有效新闻，所以不写。日本和台湾芯片股今天上涨（日经+1.05%），是资金面，不是这几家公司的消息。",
+            "src": "https://tickmill.com/blog/daily-market-outlook-october-6-2026"
+          }
+        ]
+      }
     ]
   },
   "china": {
@@ -122,11 +455,41 @@
       "存储方面，希捷 -9.18%、闪迪 -2.56%、美光 -1.73%。如果东芝扩产的报道属实，对国内存储和硬盘链是利空情绪，但东芝扩产的说法本身没有读到公司原文，只能算传闻，我不会拿它去判断具体公司。"
     ],
     "mapping": [
-      {"driver": "纳指、英伟达近纪录，SOX一周 +4.66%", "sector": "A股算力/半导体（复市）", "names": "中芯国际、寒武纪、北方华创", "dir": "利好", "note": "情绪映射，10月8日复市可能补涨；没有查到订单或政策依据。"},
-      {"driver": "Marvell 2028财年目标200亿美元，定制芯片走强", "sector": "光模块/先进封装", "names": "没有查到具体订单标的", "dir": "利好", "note": "逻辑成立，但今天没有找到任何国内公司的订单证据，只能算概念层面的利好。"},
-      {"driver": "10年期5.27%、30年期约5.64%", "sector": "港股成长股", "names": "腾讯、阿里、百度、小米", "dir": "利空", "note": "利率压估值，但港股今天已先涨1.2%-3.3%，这条压力部分被抵消。"},
-      {"driver": "硬盘/存储股重挫", "sector": "国内存储链", "names": "没有逐只核对", "dir": "中性", "note": "东芝扩产说法来自报道，没有公司原文，且彭博另一条被东芝否认。"},
-      {"driver": "公用事业 +2.98%，AI用电话题", "sector": "A股电力/核电设备", "names": "没有逐只核对", "dir": "中性", "note": "美股的催化主要是一家来源的CEG交易，对中国电力链缺乏直接映射。"}
+      {
+        "driver": "纳指、英伟达近纪录，SOX一周 +4.66%",
+        "sector": "A股算力/半导体（复市）",
+        "names": "中芯国际、寒武纪、北方华创",
+        "dir": "利好",
+        "note": "情绪映射，10月8日复市可能补涨；没有查到订单或政策依据。"
+      },
+      {
+        "driver": "Marvell 2028财年目标200亿美元，定制芯片走强",
+        "sector": "光模块/先进封装",
+        "names": "没有查到具体订单标的",
+        "dir": "利好",
+        "note": "逻辑成立，但今天没有找到任何国内公司的订单证据，只能算概念层面的利好。"
+      },
+      {
+        "driver": "10年期5.27%、30年期约5.64%",
+        "sector": "港股成长股",
+        "names": "腾讯、阿里、百度、小米",
+        "dir": "利空",
+        "note": "利率压估值，但港股今天已先涨1.2%-3.3%，这条压力部分被抵消。"
+      },
+      {
+        "driver": "硬盘/存储股重挫",
+        "sector": "国内存储链",
+        "names": "没有逐只核对",
+        "dir": "中性",
+        "note": "东芝扩产说法来自报道，没有公司原文，且彭博另一条被东芝否认。"
+      },
+      {
+        "driver": "公用事业 +2.98%，AI用电话题",
+        "sector": "A股电力/核电设备",
+        "names": "没有逐只核对",
+        "dir": "中性",
+        "note": "美股的催化主要是一家来源的CEG交易，对中国电力链缺乏直接映射。"
+      }
     ]
   },
   "policy": {
@@ -139,25 +502,80 @@
       "政府方面，今天我没有查到新的关税、出口管制或财政部公告，所以不写。9月CPI在10月14日8:30公布，10月27-28日是下一次FOMC。"
     ],
     "outlook": [
-      {"item": "10月7日10年期美债拍卖", "dir": "中性", "horizon": "明日13:00", "note": "收益率刚从5.349%回头，拍卖结果决定回落能否延续。"},
-      {"item": "10月7日联储会议纪要", "dir": "中性", "horizon": "明日14:00", "note": "关注“年内再加息”的共识强度；偏鹰则长端和高估值科技承压。"},
-      {"item": "10月8日30年期美债拍卖", "dir": "利空", "horizon": "后天13:00", "note": "30年期约5.64%，需求弱时对长久期成长股最不利；这是我的判断，不是已发生的事。"},
-      {"item": "10月14日9月CPI", "dir": "中性", "horizon": "下周三8:30", "note": "油价9月一直在90美元上方，决定12月是否再加息。"},
-      {"item": "10月27-28日FOMC", "dir": "中性", "horizon": "三周内", "note": "10月按兵不动基本被定价，分歧在12月。"}
+      {
+        "item": "10月7日10年期美债拍卖",
+        "dir": "中性",
+        "horizon": "明日13:00",
+        "note": "收益率刚从5.349%回头，拍卖结果决定回落能否延续。"
+      },
+      {
+        "item": "10月7日联储会议纪要",
+        "dir": "中性",
+        "horizon": "明日14:00",
+        "note": "关注“年内再加息”的共识强度；偏鹰则长端和高估值科技承压。"
+      },
+      {
+        "item": "10月8日30年期美债拍卖",
+        "dir": "利空",
+        "horizon": "后天13:00",
+        "note": "30年期约5.64%，需求弱时对长久期成长股最不利；这是我的判断，不是已发生的事。"
+      },
+      {
+        "item": "10月14日9月CPI",
+        "dir": "中性",
+        "horizon": "下周三8:30",
+        "note": "油价9月一直在90美元上方，决定12月是否再加息。"
+      },
+      {
+        "item": "10月27-28日FOMC",
+        "dir": "中性",
+        "horizon": "三周内",
+        "note": "10月按兵不动基本被定价，分歧在12月。"
+      }
     ],
     "calendar": [
-      {"when": "10月7日", "event": "Constellation Brands电话会8:00；10年期美债拍卖13:00；联储9月会议纪要14:00"},
-      {"when": "10月8日", "event": "30年期美债拍卖13:00；A股复市；百事可乐财报（时间待公司确认）"},
-      {"when": "10月14日", "event": "9月CPI 8:30"},
-      {"when": "10月28日", "event": "FOMC 10月利率决议 14:00"}
+      {
+        "when": "10月7日",
+        "event": "Constellation Brands电话会8:00；10年期美债拍卖13:00；联储9月会议纪要14:00"
+      },
+      {
+        "when": "10月8日",
+        "event": "30年期美债拍卖13:00；A股复市；百事可乐财报（时间待公司确认）"
+      },
+      {
+        "when": "10月14日",
+        "event": "9月CPI 8:30"
+      },
+      {
+        "when": "10月28日",
+        "event": "FOMC 10月利率决议 14:00"
+      }
     ]
   },
   "sources": [
-    {"title": "Stock market today: Tuesday, October 6 - Yahoo Finance", "url": "https://finance.yahoo.com/markets/live/stock-market-today-tuesday-october-6-dow-sp-500-nasdaq-080526166.html"},
-    {"title": "Marvell Rallies 6% as Investor Day Presses the Custom AI Silicon Case; Broadcom Advances 4% - 24/7 Wall St.", "url": "https://247wallst.com/investing/2026/10/06/marvell-rallies-6-as-investor-day-presses-the-custom-ai-silicon-case-broadcom-advances-4/"},
-    {"title": "Fed officials lean hawkish, though Williams sees no urgency for another hike (2026-09-29) - investingLive", "url": "https://investinglive.com/central-banks/fed-officials-lean-hawkish-though-williams-sees-no-urgency-for-another-hike/"},
-    {"title": "Seagate, Western Digital stocks are falling again on Tuesday - Invezz", "url": "https://invezz.com/ca/news/2026/10/06/seagate-western-digital-stocks-are-falling-again-on-tuesday-heres-why/"},
-    {"title": "Constellation Brands to report Q2 fiscal 2027 results on October 6 - Constellation Brands", "url": "https://cbrands.com/blogs/press-releases/constellation-brands-to-report-second-quarter-fiscal-2027-financial-results-on-october-6-2026-after-market-close-and-host-conference-call-on-october-7-2026-at-8-00-am-et"},
-    {"title": "Federal Reserve Board calendar, October 2026", "url": "https://www.federalreserve.gov/newsevents/2026-october.htm"}
+    {
+      "title": "Stock market today: Tuesday, October 6 - Yahoo Finance",
+      "url": "https://finance.yahoo.com/markets/live/stock-market-today-tuesday-october-6-dow-sp-500-nasdaq-080526166.html"
+    },
+    {
+      "title": "Marvell Rallies 6% as Investor Day Presses the Custom AI Silicon Case; Broadcom Advances 4% - 24/7 Wall St.",
+      "url": "https://247wallst.com/investing/2026/10/06/marvell-rallies-6-as-investor-day-presses-the-custom-ai-silicon-case-broadcom-advances-4/"
+    },
+    {
+      "title": "Fed officials lean hawkish, though Williams sees no urgency for another hike (2026-09-29) - investingLive",
+      "url": "https://investinglive.com/central-banks/fed-officials-lean-hawkish-though-williams-sees-no-urgency-for-another-hike/"
+    },
+    {
+      "title": "Seagate, Western Digital stocks are falling again on Tuesday - Invezz",
+      "url": "https://invezz.com/ca/news/2026/10/06/seagate-western-digital-stocks-are-falling-again-on-tuesday-heres-why/"
+    },
+    {
+      "title": "Constellation Brands to report Q2 fiscal 2027 results on October 6 - Constellation Brands",
+      "url": "https://cbrands.com/blogs/press-releases/constellation-brands-to-report-second-quarter-fiscal-2027-financial-results-on-october-6-2026-after-market-close-and-host-conference-call-on-october-7-2026-at-8-00-am-et"
+    },
+    {
+      "title": "Federal Reserve Board calendar, October 2026",
+      "url": "https://www.federalreserve.gov/newsevents/2026-october.htm"
+    }
   ]
 }
