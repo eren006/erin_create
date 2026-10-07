@@ -72,6 +72,7 @@
     <td>
       {% if r.status == 'dead' %}<span class="muted">已故 · {{ age_text(r.age_months) }} · {{ r.death_reason }}</span>{% else %}
       <form method="post" action="{{ url_for('admin_edit', cid=r.id) }}" class="row" style="gap:4px">
+        <input type="hidden" name="orig_favor" value="{{ r.favor }}"><input type="hidden" name="orig_silver" value="{{ r.silver }}"><input type="hidden" name="orig_rank" value="{{ r.rank }}"><input type="hidden" name="orig_status" value="{{ r.status }}">
         <input name="favor" type="number" value="{{ r.favor }}" style="width:72px" aria-label="圣宠">
         <input name="silver" type="number" value="{{ r.silver }}" style="width:72px" aria-label="银子">
         <input name="energy" type="number" min="0" max="99" value="{{ r.energy }}" style="width:56px" aria-label="精力" title="精力">

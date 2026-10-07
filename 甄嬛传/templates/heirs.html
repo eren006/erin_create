@@ -8,7 +8,7 @@
 <div class="scroll"><table>
   <tr><th>皇嗣</th><th>生母</th><th>抚养</th><th>性格</th><th>资质</th><th>年龄</th><th>学问/骑射/品行/体质/容貌</th><th>情分</th><th></th></tr>
   {% for h in rows %}{% set m = get_consort(h.mother_id) %}{% set fo = get_consort(h.caretaker_id) %}
-  <tr><td style="font-family:var(--kai);font-size:17px">{{ heir_label(h) }}{% if h.name %}<span class="muted" style="font-family:var(--song)">（{{ heir_rank_title(h) }}）</span>{% endif %}{% if h.zhuazhou %}<br><span class="muted" style="font-family:var(--song);font-size:12px">周岁抓周</span>{% endif %}</td>
+  <tr><td style="font-family:var(--kai);font-size:17px;white-space:nowrap">{{ heir_label(h) }}{% if h.name %}<br><span class="muted" style="font-family:var(--song);font-size:13px;white-space:nowrap">{{ heir_rank_title(h) }}</span>{% endif %}{% if h.zhuazhou %}<br><span class="muted" style="font-family:var(--song);font-size:12px">周岁抓周</span>{% endif %}</td>
     <td>{{ dn(m) if m else '（早逝）' }}</td>
     <td>{{ (dn(fo) if fo.id != h.mother_id else '（自己养）') if fo else '皇嗣养育所（NPC）' }}</td>
     <td>{% set pe = heir_persona(h) %}{% if pe %}<span title="{{ pe.effect }}">{{ pe.name }}·{{ pe.tag }}</span><br><span class="muted" style="font-size:12px">{{ pe.text }}</span>{% endif %}</td>

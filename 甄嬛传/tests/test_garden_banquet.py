@@ -440,7 +440,8 @@ class AchievementRankingTests(Base):
         game.run('UPDATE consorts SET silver=9000 WHERE id=?', (self.me,))
         game.run("UPDATE consorts SET arts=? WHERE id=?", ('{"琴": 3, "棋": 4}', self.other))
         boards = {b['title']: b for b in game.rankings_boards()}
-        self.assertEqual(boards['财富榜']['rows'][0]['c']['id'], self.me)
+        self.assertNotIn('财富榜', boards)      # 财富榜、心计榜已隐藏
+        self.assertNotIn('心计榜', boards)
         self.assertEqual([r['c']['id'] for r in boards['才艺榜']['rows']], [self.other])
         self.assertEqual(boards['种菜榜']['rows'], [])
 

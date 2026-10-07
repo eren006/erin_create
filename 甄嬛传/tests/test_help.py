@@ -40,7 +40,7 @@ class HelpTests(unittest.TestCase):
         self.assertIn(f"精力每天 {game.ENERGY_MAX} 点", page)
         self.assertIn(f"每一届最多送 {game.FAMILY_MAX_MEMBERS} 位", page)
         self.assertIn('22:00', page)
-        self.assertIn('每轮翻 2 位', page)
+        self.assertIn('每轮翻 3 位', page)
 
     def test_numbers_follow_when_the_game_changes(self):
         from unittest.mock import patch

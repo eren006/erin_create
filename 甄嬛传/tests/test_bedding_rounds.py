@@ -13,6 +13,7 @@ class BeddingRoundsTests(unittest.TestCase):
     login=fixtures.LifecycleTests.login
 
     def enable(self):
+        if not hasattr(self, 'third'): self.third = self.player('丙', rank=4)      # 每轮翻 3 位，得有至少 3 个人
         game.run('UPDATE game_state SET event_started=1,emperor_death_day=0,maintenance=0,mourning=0,day=1')
 
     def test_twelve_rounds_cap_three_and_do_not_run_daily_effects(self):
@@ -21,7 +22,7 @@ class BeddingRoundsTests(unittest.TestCase):
         with patch.object(game.random,'random',return_value=.99999):
             for hour in game.BED_ROUND_HOURS:
                 game.bedding_round(1,f'2026-10-05:{hour:02}')
-        for cid in (self.atk,self.tgt):
+        for cid in (self.atk,self.tgt,self.third):
             c=game.get_consort(cid)
             self.assertEqual(c['bed_daily_count'],game.BED_DAILY_MAX)
             self.assertEqual(c['pregnancy_misses'],game.BED_DAILY_MAX)
@@ -31,7 +32,7 @@ class BeddingRoundsTests(unittest.TestCase):
         self.assertEqual(game.cur_day(),1)
         with patch.object(game.random,'random',return_value=.99999):
             self.assertEqual(len(game.bedding_round(2,'2026-10-06:02')),game.BED_PER_ROUND)
-        self.assertEqual(sum(game.get_consort(cid)['bedded_count'] for cid in (self.atk,self.tgt)),2*game.BED_DAILY_MAX+game.BED_PER_ROUND)
+        self.assertEqual(sum(game.get_consort(cid)['bedded_count'] for cid in (self.atk,self.tgt,self.third)),3*game.BED_DAILY_MAX+game.BED_PER_ROUND)
 
     def test_round_key_is_persisted_and_idempotent(self):
         self.enable()
@@ -39,7 +40,7 @@ class BeddingRoundsTests(unittest.TestCase):
             self.assertEqual(len(game.bedding_round(1,'2026-10-05:02')),game.BED_PER_ROUND)
             self.assertEqual(game.bedding_round(1,'2026-10-05:02'),[])
         self.assertEqual(game.state()['last_bed_round_key'],'2026-10-05:02')
-        self.assertEqual(sum(game.get_consort(cid)['bedded_count'] for cid in (self.atk,self.tgt)),game.BED_PER_ROUND)
+        self.assertEqual(sum(game.get_consort(cid)['bedded_count'] for cid in (self.atk,self.tgt,self.third)),game.BED_PER_ROUND)
 
     def test_paused_or_unstarted_round_does_not_consume_key(self):
         for field in ('maintenance','mourning'):

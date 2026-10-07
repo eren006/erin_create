@@ -103,7 +103,7 @@ class ReignTests(unittest.TestCase):
     def test_healthy_emperor_still_beds_someone(self):
         with patch.object(game, 'npc_schemes'):
             game.settle_day()
-        self.assertEqual(game.q('SELECT SUM(bedded_count) n FROM consorts', one=True)['n'], game.BED_PER_ROUND)
+        self.assertEqual(game.q('SELECT SUM(bedded_count) n FROM consorts', one=True)['n'], 2)      # 只有两位玩家，全都翻到
 
     # ── 侍疾 ─────────────────────────────────────────────────────────────────
 

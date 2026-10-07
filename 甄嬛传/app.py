@@ -7732,7 +7732,7 @@ def reigns():
 # ── 生育：侍寝人数、怀孕率、孕期 ─────────────────────────────────────────────────
 BED_TRUST_GAIN = 3      # 每次被翻牌侍寝（没被惊梦香搅黄）涨的信任
 BED_DAILY_MAX = 3      # 每人每游戏日最多被翻几次（原来 2，2026-10-06 放宽）
-BED_PER_ROUND = 2      # 2026-10-07 起：每轮翻 2 位（原来按玩家数 1~6 位）
+BED_PER_ROUND = 3      # 2026-10-07 起：每轮翻 3 位（先改成 2 位，后又改成 3 位；最早按玩家数 1~6 位）
 PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.06, 0.0005, 0.0005   # 福报每 1 点再 +0.2%，攒满 100 点 +20%
 OLD_MOTHER_AGE, OLD_MOTHER_FACTOR, PREGNANCY_MAX = 35, 0.6, 0.15
 PRENATAL_ENERGY, PRENATAL_STAT_CAP = 1, 6
@@ -7829,7 +7829,7 @@ def resolve_births(day, include_legacy=True):
         if '皇子' in genders:
             add_prestige(c, PRESTIGE_BORN_PRINCE, f"{full_name(c)}诞下皇子")
             add_favor(c['id'], 100, gain_mult=False)
-            if c['rank'] < PLAYER_MAX_RANK and slot_free(c['rank'] + 1, c['id']) and c['influence']>=PROMOTE_INFLUENCE[c['rank']+1]:
+            if c['rank'] < PLAYER_MAX_RANK and slot_free(c['rank'] + 1, c['id']):      # 母凭子贵只看名额，不看势力门槛（2026-10-07 起）
                 set_rank(c['id'], c['rank'] + 1)
                 extra += f"母凭子贵，晋为{display_name(get_consort(c['id']))}。"
         else:
@@ -8619,8 +8619,17 @@ def admin_edit(cid):
             except ValueError:
                 flash('属性数值有误。', 'bad')
                 return redirect(url_for('admin'))
-    run("UPDATE consorts SET favor=?, silver=?, rank=?, status=? WHERE id=?",
-        (max(0, favor), max(0, silver), max(0, min(9, rank)), status, cid))
+    # 页面打开期间游戏在继续（晋封、被罚、花银子……），所以只改后台里真正动过的格子，没动的保持库里的最新值
+    def changed(field, new, orig_key):
+        raw = (f.get(orig_key) or '').strip()
+        try: return new != int(raw) if raw else True
+        except ValueError: return True
+    favor_new = max(0, favor) if changed('favor', favor, 'orig_favor') else c['favor']
+    silver_new = max(0, silver) if changed('silver', silver, 'orig_silver') else c['silver']
+    rank_new = max(0, min(9, rank)) if changed('rank', rank, 'orig_rank') else c['rank']
+    if f.get('orig_status') and f.get('orig_status') == f.get('status'): status = c['status']
+    run("UPDATE consorts SET favor=?, silver=?, rank=?, status=? WHERE id=?", (favor_new, silver_new, rank_new, status, cid))
+    rank = rank_new
     raw = (f.get('energy') or '').strip()                  # 精力：表单里有就改，空着不动；可以超过日常上限
     if raw:
         try: run("UPDATE consorts SET energy=? WHERE id=?", (max(0, min(99, int(raw))), cid))
@@ -11335,7 +11344,8 @@ def rankings_boards():
         board('才艺榜', '总熟练度', lambda p: sum(arts_of(p).values())),
         board('宴会榜', '夺魁（登台）', lambda p: wins.get(p['id'], 0) * 1000 + shows.get(p['id'], 0),
               fmt=lambda v: f"{v // 1000} 次（登台 {v % 1000} 场）"),
-        board('财富榜', '银子', lambda p: p['silver']),
+        # 财富榜已隐藏（2026-10-07），和心计榜一样不公开排名；想恢复就取消下面这行注释
+        # board('财富榜', '银子', lambda p: p['silver']),
         board('种菜榜', '累计收获', lambda p: harvest.get(p['id'], 0)),
         board('成就榜', '已得成就', lambda p: ach.get(p['id'], 0)),
         # 心计榜已隐藏（2026-10-07）：心计是暗牌，不公开排名。想恢复就取消下面这行注释

@@ -83,10 +83,10 @@ class LivingTests(unittest.TestCase):
         return [dict(user_id=1)] * players + [dict(user_id=None)] * npcs
 
     def test_bed_count_is_two_per_round_whatever_the_crowd(self):
-        self.assertEqual(game.BED_PER_ROUND, 2)
-        self.assertEqual([game.bed_count(self.cands(n)) for n in (1, 5, 6, 11, 12, 17, 18, 29, 30, 60)], [2] * 10)
-        self.assertEqual(game.bed_count(self.cands(2, npcs=30)), 2)
-        self.assertEqual(game.bed_count([]), 2)
+        self.assertEqual(game.BED_PER_ROUND, 3)
+        self.assertEqual([game.bed_count(self.cands(n)) for n in (1, 5, 6, 11, 12, 17, 18, 29, 30, 60)], [3] * 10)
+        self.assertEqual(game.bed_count(self.cands(2, npcs=30)), 3)
+        self.assertEqual(game.bed_count([]), 3)
 
     def test_crowded_palace_still_beds_two_per_round(self):
         for i in range(11):
@@ -94,7 +94,7 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(game.q("SELECT COUNT(*) n FROM consorts WHERE user_id IS NOT NULL", one=True)['n'], 13)
         self.settle()
         bedded = game.q("SELECT id FROM consorts WHERE bedded_count>0")
-        self.assertEqual(len(bedded), game.BED_PER_ROUND, '13 位玩家 → 每轮也只翻 2 位')
+        self.assertEqual(len(bedded), game.BED_PER_ROUND, '13 位玩家 → 每轮也只翻 3 位')
         self.assertEqual(len(game.q("SELECT id FROM gazette WHERE kind='bed'")), game.BED_PER_ROUND)
 
     def test_small_palace_beds_everyone_it_has_up_to_two(self):
@@ -104,9 +104,9 @@ class LivingTests(unittest.TestCase):
     def test_every_bedded_player_gets_favor_and_a_scene_but_only_one_is_the_primary(self):
         for i in range(5):
             self.player(f'玩{i}', rank=3)
-        self.settle()   # 7 位玩家 → 2 位
+        self.settle()   # 7 位玩家 → 每轮 BED_PER_ROUND 位
         bedded = [r['id'] for r in game.q("SELECT id FROM consorts WHERE bedded_count>0")]
-        self.assertEqual(len(bedded), 2)
+        self.assertEqual(len(bedded), game.BED_PER_ROUND)
         st = game.state()
         self.assertIn(st['last_bed_id'], bedded)
         self.assertEqual(json.loads(st['last_bed_pool']).count(st['last_bed_id']), 1)
