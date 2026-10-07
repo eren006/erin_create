@@ -48,6 +48,10 @@
         {% for key, cfg in CUSTODY_ACTIONS.items() %}<button class="plain" name="action" value="{{ key }}">{{ cfg.name }}{% if cfg.silver %}（{{ cfg.silver }} 两）{% endif %}</button>{% endfor %}
         <button class="plain" name="action" value="yield">主动让步</button></form>{% endif %}
       </div>{% endif %}
+      {% if a.raise %}<form method="post" action="{{ url_for('heir_raise', hid=h.id) }}" class="row" style="margin:4px 0"><input type="hidden" name="back" value="heirs">
+        {% for k, r in HEIR_RAISE.items() if not (k == 'ride' and h.gender == '公主') and not (k == 'ride_girl' and h.gender == '皇子') %}
+        <button name="opt" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'raise:' ~ h.id) or c.silver < r.get('silver', 0) or (r.get('looks') and h.appearance >= 100) }}{% if r.get('looks') %} title="容貌 +{{ r.looks }}，抚养人容貌 ≥{{ HEIR_GROOM_BEAUTY_LINE }} 时 +{{ r.looks_beauty }}"{% endif %}>{{ r.name }}{% if r.get('silver') %}（{{ r.silver }} 两）{% endif %}</button>
+        {% endfor %}</form>{% endif %}
       {% if a.can_ban %}<form method="post" action="{{ url_for('heir_ban', hid=h.id) }}" class="row" style="display:inline"><button class="plain">{{ '允许探视' if h.visit_banned else '不许探视' }}</button></form>{% endif %}
       {% if a.marry %}<form method="post" action="{{ url_for('heir_marry', hid=h.id) }}" class="row">
         <span>指婚：</span><button class="plain" name="kind" value="capital" title="留京下嫁：天天回宫请安，你的圣宠流失减半">留京下嫁</button>

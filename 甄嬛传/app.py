@@ -6096,6 +6096,7 @@ def heirs():
             if h['foster_request_to']: a['waiting_on'] = get_consort(h['foster_request_to'])
         if h['foster_request_to'] == c['id']: a['reply'] = True
         if h['caretaker_id'] == c['id'] and h['marriage'] == 'choice': a['marry'] = True
+        if h['caretaker_id'] == c['id'] and not h['adult_day']: a['raise'] = True      # 日常教养按钮（本宫页也有一份）
         ev = errand_view(h) if h['errand'] else None
         if ev and h['caretaker_id'] == c['id'] and ev.get('key') in ERRANDS:
             a['errand'] = dict(name=ERRANDS[ev['key']]['name'], line=ERRANDS[ev['key']]['line'], approach=ev.get('approach'),
@@ -6115,7 +6116,7 @@ def heirs():
             a['battle_participant'] = c['id'] in (battle['challenger_id'],battle['defender_id'])
         if a: acts[h['id']] = a
     targets_for = {h['id']: entrust_candidates(c, raise_min_rank(h)) for h in rows if acts.get(h['id'], {}).get('entrust')}
-    return render_template('heirs.html', c=c, rows=rows, get_consort=get_consort, acts=acts, targets_for=targets_for, raise_rank_name=raise_rank_name, name_choice_view=name_choice_view, cur_gen={g_: gen_word_for(state()['reign_no'], g_) for g_ in NAME_GENERATIONS},
+    return render_template('heirs.html', HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, c=c, rows=rows, get_consort=get_consort, acts=acts, targets_for=targets_for, raise_rank_name=raise_rank_name, name_choice_view=name_choice_view, cur_gen={g_: gen_word_for(state()['reign_no'], g_) for g_ in NAME_GENERATIONS},
                            ERRAND_APPROACHES=ERRAND_APPROACHES, MONGOL_LETTER_INTERVAL=MONGOL_LETTER_INTERVAL, CUSTODY_ACTIONS=CUSTODY_ACTIONS)
 
 # ── 皇嗣成长（九点六节 A~D：还没做成年、抚养关系博弈、夺嫡） ─────────────────────
@@ -7665,9 +7666,10 @@ def heir_raise(hid):
     elif c['silver'] < cfg.get('silver', 0): err = f"银子不够，需要 {cfg['silver']} 两。"
     elif cfg.get('looks') and h['appearance'] >= 100: err = '孩子的容貌已经到头了，再梳洗也没有更多好处。'
     elif daily_count(c['id'], f'raise:{hid}'): err = '今天已经教养过他了。'
+    back = url_for('heirs') if request.form.get('back') == 'heirs' else url_for('place', key='home')
     if err:
         flash(err, 'bad')
-        return redirect(url_for('place', key='home'))
+        return redirect(back)
     run('UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?', (HEIR_RAISE_ENERGY, cfg.get('silver', 0), c['id']))
     daily_inc(c['id'], f'raise:{hid}')
     parts = []
@@ -7691,7 +7693,7 @@ def heir_raise(hid):
         add_heir_affinity(hid, 'caretaker', aff)
         parts.append(f"情分 {aff:+d}")
     flash(f"{cfg['name']}：" + '，'.join(parts) + '。', 'good')
-    return redirect(url_for('place', key='home'))
+    return redirect(back)
 
 
 def roll_heir_event(c):
