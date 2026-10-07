@@ -8121,7 +8121,7 @@ def prenatal_state(c):
     except ValueError: return {}
 
 
-def do_bedding(bed, day, primary, tray):
+def do_bedding(bed, day, primary, tray, quiet=False):
     """一位被翻牌的人：圣宠、怀孕、通知、场景。primary 那位还负责记「昨夜宫中」的绿头牌盘"""
     if bed['bed_daily_day']==day and bed['bed_daily_count']>=BED_DAILY_MAX: return
     run('UPDATE consorts SET bed_daily_count=CASE WHEN bed_daily_day=? THEN bed_daily_count+1 ELSE 1 END,bed_daily_day=? WHERE id=?',(day,day,bed['id']))
@@ -8143,7 +8143,7 @@ def do_bedding(bed, day, primary, tray):
     else:
         ids = json.loads(state()['last_bed_ids'] or '[]')
         run("UPDATE game_state SET last_bed_ids=? WHERE id=1", (json.dumps(ids + [bed['id']]),))
-    gazette(f"敬事房：本轮皇上翻了{display_name(bed)}的牌子。", 'bed')
+    if not quiet: gazette(f"敬事房：本轮皇上翻了{display_name(bed)}的牌子。", 'bed')      # 行宫随驾由 bedding_round 统一发一条
     if bed['user_id']:
         msg = f"敬事房来传话：本轮皇上翻了你的牌子。圣宠 +{gain}" + ('。' if dream else f"，信任 +{BED_TRUST_GAIN}。")
         newly_pregnant = False
@@ -8189,7 +8189,7 @@ def last_bed_consorts(st):
     if not ids and st['last_bed_id']: ids = [st['last_bed_id']]
     return [x for x in (get_consort(i) for i in ids) if x]
 
-XINGGONG_CHANCE = 0.03       # 每轮翻牌有这么大概率变成「皇上带妃子去行宫」，每个游戏日最多一次
+XINGGONG_CHANCE = 0.10       # 每轮翻牌有这么大概率变成「皇上带妃子去行宫」，每个游戏日最多一次
 XINGGONG_COUNT = 6           # 随驾的人数；符合侍寝条件的人不到这个数就不触发
 XINGGONG_PLACES = ['畅春园', '汤泉行宫', '承德避暑山庄', '圆明园', '西苑行宫', '木兰围场行宫']
 
@@ -8223,7 +8223,7 @@ def bedding_round(day,key):
             if new_bed:bed=get_consort(new_bed)
         tray=[c['id'] for c in sorted(pool,key=lambda c:-bed_weight(c,day))[:7]]
         if bed['id'] not in tray:tray.append(bed['id'])
-        do_bedding(bed,day,not beds,tray)
+        do_bedding(bed,day,not beds,tray,quiet=trip)
         used.add(bed['id']);beds.append(get_consort(bed['id']))
     if trip and beds:
         place=random.choice(XINGGONG_PLACES)

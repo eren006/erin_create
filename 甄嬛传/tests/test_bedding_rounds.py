@@ -113,7 +113,8 @@ class BeddingRoundsTests(unittest.TestCase):
         self.assertEqual(len(beds),game.XINGGONG_COUNT)
         self.assertEqual(len({b['id'] for b in beds}),game.XINGGONG_COUNT)
         self.assertEqual(sum(game.get_consort(cid)['bed_daily_count'] for cid in [self.atk,self.tgt,self.third]+extra),game.XINGGONG_COUNT)
-        self.assertTrue(any('行宫' in r['text'] or '驾幸' in r['text'] for r in game.q("SELECT text FROM gazette")))
+        self.assertEqual(len([r for r in game.q("SELECT text FROM gazette WHERE text LIKE '%驾幸%'")]),1)
+        self.assertEqual(len(game.q("SELECT id FROM gazette WHERE text LIKE '敬事房：本轮皇上翻了%'")),0,'随驾不再逐人发敬事房邸报')
         with patch.object(game.random,'random',return_value=0.0):
             beds2=game.bedding_round(1,'2026-10-05:04')
         self.assertLessEqual(len(beds2),game.BED_MAX_PER_ROUND,'同一游戏日不再触发第二次，回到普通的 1~3 位')
