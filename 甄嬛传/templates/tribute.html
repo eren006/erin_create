@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}选贡品{% endblock %}
+{% block head %}<style>
+.tribute-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px;margin:14px 0}
+.tribute-card{padding:14px;border:1px solid var(--line);background:var(--paper)}
+.tribute-card.taken{opacity:.65}.tribute-grade{font-size:13px;color:var(--jin)}
+</style>{% endblock %}
+{% block body %}
+<h2>六宫选贡品</h2>
+<p class="muted">内务府进呈76件贡品，分雅品、精品、珍品、御品、瑰宝五等。按活动开启时的位分从高到低，同位分按圣宠排序；嫔及以上最多3件，贵人最多2件，贵人以下最多1件。免费领取，不耗精力。挑选时隐藏品级，确认并传给下一位后揭晓；确认后不可重选。</p>
+{% if event %}
+{% if turn %}<div class="sheet"><b>当前轮到：{{ dn(get_consort(turn.consort_id)) }}</b> · 最多{{ turn.quota }}件
+<p>{% if event.timeout_hours %}每人有{{ event.timeout_hours }}小时；超时自动让给下一位。{% else %}本轮不自动跳过。{% endif %}可以少选，也可以主动让过。</p>
+{% if is_turn %}<p style="color:var(--good)">现在轮到你了！请在下面挑选后确认。</p>{% else %}<p class="muted">还没轮到你，可先看看剩余贡品。</p>{% endif %}</div>{% endif %}
+<details><summary>查看本轮顺位</summary><ol>{% for r in queue %}<li>{{ dn(get_consort(r.consort_id)) }} · 最多{{ r.quota }}件 · {{ '已选完' if r.status=='done' else '已跳过' if r.status=='skipped' else '正在挑选' if turn and r.consort_id==turn.consort_id else '等待' }}</li>{% endfor %}</ol></details>
+<form method="post" action="{{ url_for('tribute_choose') }}">
+<input type="hidden" name="event_id" value="{{ event.id }}">
+<div class="tribute-grid">{% for it in items %}<label class="tribute-card {{ 'taken' if it.holder_id }}">
+<span class="tribute-grade">{% if it.holder_id %}{{ grades[it.grade] }} · {{ it.grade }}等{% else %}品级待揭晓{% endif %}</span><br>
+{% if is_turn and not it.holder_id %}<input type="checkbox" name="item_id" value="{{ it.id }}">{% endif %}<b>{{ it.name }}</b><br>
+<span class="muted">{{ it.description }}</span>
+{% if it.holder_id %}<br>已由{{ dn(get_consort(it.holder_id)) }}领取{% endif %}
+</label>{% endfor %}</div>
+{% if is_turn %}<button>确认所选并传给下一位</button><button class="plain" name="pass" value="1" formnovalidate>主动让过</button>{% endif %}
+</form>
+{% else %}<p>目前没有进行中的选贡品活动，等内务府开启下一轮。</p>{% endif %}
+<h3>我领到的贡品</h3>
+{% if mine %}<div class="tribute-grid">{% for it in mine %}<div class="tribute-card"><b>{{ it.name }}</b> · {{ grades[it.grade] }}<br>
+{% if it.display_slot %}<span class="muted">已摆在{{ DISPLAY_SLOTS[it.display_slot] }}</span>{% endif %}
+<form method="post" action="{{ url_for('tribute_display') }}"><input type="hidden" name="item_id" value="{{ it.id }}"><select name="slot" aria-label="贡品摆放位置">{% for key,label in DISPLAY_SLOTS.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select><button class="plain">摆进宫中</button></form></div>{% endfor %}</div>
+{% else %}<p class="muted">还没有领到贡品。</p>{% endif %}
+<p><a href="{{ url_for('room') }}">查看寝宫陈设</a> · <a href="{{ url_for('daily_page') }}">查看各宫领取日常</a></p>
+{% endblock %}

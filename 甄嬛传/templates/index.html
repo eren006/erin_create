@@ -53,6 +53,14 @@
 </style>
 {% endblock %}
 {% block body %}
+{% if tribute_reminder %}
+<section role="status" aria-label="轮到你选贡品" style="margin:0 0 20px;padding:22px;background:var(--jin-soft);border:3px double var(--jin);border-left:8px solid var(--zhu);box-shadow:0 5px 15px var(--shadow)">
+  <b style="font-family:var(--kai);font-size:26px;color:var(--zhu-deep)">轮到你选贡品了！</b>
+  <p style="margin:8px 0">本轮最多选 <b>{{ tribute_reminder.quota }} 件</b>，挑好确认后揭晓品级，再传给下一位。</p>
+  {% if tribute_reminder.deadline %}<p style="margin:8px 0">还剩 <b>{{ tribute_reminder.hours }} 小时 {{ tribute_reminder.minutes }} 分钟</b> · 截止 {{ tribute_reminder.deadline }}（北京时间），超时自动让过。</p>{% endif %}
+  <a href="{{ url_for('tribute') }}" style="display:inline-block;padding:10px 24px;background:var(--gate);color:var(--ivory);border:2px solid var(--roof);text-decoration:none;font-size:18px">现在去选贡品 →</a>
+</section>
+{% endif %}
 {% macro skin_form() %}
 <section class="sheet" style="margin-top:18px">
   <b>皮相</b>{% if c.skin %}　<span style="font-family:var(--kai);font-size:18px">{{ c.skin }}</span>{% endif %}

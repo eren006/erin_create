@@ -28,6 +28,13 @@
 {% endfor %}
 </div>
 
+<h3>贡品陈设</h3>
+<div class="slots">{% for key,label in DISPLAY_SLOTS.items() %}<div class="slot"><h4>{{ label }}</h4>
+{% set placed = tribute_owned | selectattr('display_slot','equalto',key) | list %}
+{% if placed %}{% set it=placed[0] %}<div class="nm">{{ it.name }} · {{ TRIBUTE_GRADES[it.grade] }}</div><p class="prov">第{{ it.acquired_day }}天选贡品所得</p>
+{% if mine %}<form method="post" action="{{ url_for('tribute_undisplay') }}"><input type="hidden" name="item_id" value="{{ it.id }}"><button class="plain">收起来</button></form>{% endif %}
+{% else %}<p class="muted">空着</p>{% endif %}</div>{% endfor %}</div>
+{% if mine %}<h3>收着的贡品</h3>{% for it in tribute_owned if not it.display_slot %}<p>{{ it.name }} · {{ TRIBUTE_GRADES[it.grade] }}</p><form method="post" action="{{ url_for('tribute_display') }}" class="row"><input type="hidden" name="item_id" value="{{ it.id }}"><select name="slot" aria-label="贡品摆放位置">{% for key,label in DISPLAY_SLOTS.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}</select><button class="plain">摆进去</button></form>{% else %}<p class="muted">暂无收着的贡品。</p>{% endfor %}<p><a href="{{ url_for('tribute') }}">去选贡品</a></p>{% endif %}
 {% if mine %}
 <h3>手里还有的</h3>
 {% set unplaced = held | rejectattr('id', 'in', displayed_ids) | list %}

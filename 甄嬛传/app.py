@@ -661,8 +661,8 @@ INTRIGUES = {
                    desc='找个由头，把对方宫里一个宫人拖去慎刑司。要比对方高两级以上，每 3 天一次；'
                         '对方会知道是你。成：那个宫人没了，对方全宫宫人忠心 -5。败露：德行 -8，信任 -5'),
 }
-INTRIGUE_TARGET_DAILY_MAX = 2
-INTRIGUE_DAILY_MAX = None      # 每人每天最多谋划几件事；None = 不限（2026-10-07 起，原来 1）。同一目标每天最多被 2 件事盯上仍算
+INTRIGUE_TARGET_DAILY_MAX = 5
+INTRIGUE_DAILY_MAX = None      # 每人每天最多谋划几件事；None = 不限（2026-10-07 起，原来 1）。同一目标每天最多被 5 件事盯上仍算
 
 def intrigue_capped(cid):
     return INTRIGUE_DAILY_MAX is not None and daily_count(cid, 'intrigue') >= INTRIGUE_DAILY_MAX
@@ -3349,7 +3349,7 @@ def index():
     for h in unnamed_heirs: ensure_name_choices(h['id'])      # 老档里没点过字的，补上，提醒才有的选
     confine_until = datetime.fromtimestamp(c['confine_until_ts'], TZ).strftime('%m-%d %H:%M') if c['confine_until_ts'] else ''
     tryst_leaks = [dict(cl, knower=display_name(get_consort(cl['knower_id'])), left=cl['day'] + TRYST_CLUE_DAYS - day) for cl in tryst_clues_on(c['id']) if not cl['hushed']]
-    return render_template('index.html', tryst_leaks=tryst_leaks, TRYST_HUSH_COST=TRYST_HUSH_COST, TRYST_HUSH_STEP=TRYST_HUSH_STEP, TRYST_HUSH_GOAL=TRYST_HUSH_GOAL, TRYST_HUSH_INFLUENCE=TRYST_HUSH_INFLUENCE, DYING_HOURS=DYING_HOURS, HEALTH_DYING_AT=HEALTH_DYING_AT, c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs, confine_until=confine_until,
+    return render_template('index.html', tribute_reminder=tribute_home_reminder(c), tryst_leaks=tryst_leaks, TRYST_HUSH_COST=TRYST_HUSH_COST, TRYST_HUSH_STEP=TRYST_HUSH_STEP, TRYST_HUSH_GOAL=TRYST_HUSH_GOAL, TRYST_HUSH_INFLUENCE=TRYST_HUSH_INFLUENCE, DYING_HOURS=DYING_HOURS, HEALTH_DYING_AT=HEALTH_DYING_AT, c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs, confine_until=confine_until,
                            sick=is_sick(c), eyes=eyes_active(c), secret=SECRETS[c['secret']], guide=guide_view(c),
                            day=day, PREGNANCY_DAYS=PREGNANCY_DAYS, tiles=map_tiles(c))
 
@@ -12608,6 +12608,18 @@ def tribute_tick():
             feed(person['id'], '本轮选贡品' + ('已超时未选' if expired else '已无法参与') + '，顺位交给下一位。')
             notify(person['id'], '本轮选贡品已跳过，轮到下一位了。', 'info')
         tribute_advance(event)
+
+
+def tribute_home_reminder(c):
+    tribute_tick()
+    event = active_tribute()
+    turn = tribute_current(event) if event else None
+    if not turn or turn['consort_id'] != c['id']: return None
+    remaining = q('SELECT COUNT(*) n FROM tribute_items WHERE event_id=? AND holder_id=0', (event['id'],), one=True)['n']
+    if not remaining: return None
+    minutes = max(1, math.ceil((event['turn_started_ts'] + event['timeout_hours'] * 3600 - now_ts()) / 60)) if event['timeout_hours'] else None
+    return dict(quota=min(turn['quota'], remaining), hours=minutes // 60 if minutes else None,
+                minutes=minutes % 60 if minutes else None, deadline=datetime.fromtimestamp(event['turn_started_ts'] + event['timeout_hours'] * 3600, TZ).strftime('%m-%d %H:%M') if minutes else '')
 
 
 def start_tribute(low_quota=1, timeout_hours=8):

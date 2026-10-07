@@ -21,6 +21,13 @@
 </div>
 {% endif %}
 
+<h3>临时活动 · 选贡品</h3>
+<p class="muted">开启一轮76件贡品，按开启时玩家位分、圣宠排序。嫔及以上最多3件、贵人2件、贵人以下1件，确认后揭晓品级。每位确认后记入日常；结束或关闭后已领物品保留。</p>
+<form method="post" action="{{ url_for('admin_tribute') }}" class="row"><input type="hidden" name="action" value="start">
+<input type="hidden" name="low_quota" value="1">
+<label>每人时限<select name="timeout_hours"><option value="8">8小时</option><option value="12">12小时</option><option value="24">24小时</option><option value="0">不自动跳过</option></select></label><button>开启本轮选贡品</button></form>
+<form method="post" action="{{ url_for('admin_tribute') }}" class="row"><button class="plain" name="action" value="skip">跳过当前人</button><button class="plain" name="action" value="close">关闭本轮</button></form>
+<p><a href="{{ url_for('tribute') }}">查看贡品与当前顺位</a></p>
 <h3>下旨（发到邸报）</h3>
 <form method="post" action="{{ url_for('admin_decree') }}" class="row">
   <input name="text" style="flex:1;min-width:220px" placeholder="例如：中秋家宴，六宫同庆。"><button class="plain">发布</button>
