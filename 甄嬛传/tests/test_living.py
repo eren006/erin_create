@@ -174,22 +174,34 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(json.loads(self.c()['prenatal'])['rest'], 3)
         self.assertEqual(self.c()['health'], 65, '前三次各 +5，之后不再加')
 
-    def test_prenatal_teaching_caps_each_stat(self):
+    def test_prenatal_costs_silver_and_teaching_do_not_share_daily_limit(self):
+        self.pregnant(health=50)
+        game.run('UPDATE consorts SET silver=1000, energy=8 WHERE id=?', (self.atk,))
+        for kind in ('rest', 'study', 'ride', 'virtue'):
+            self.client.post('/prenatal', data=dict(kind=kind))
+        self.assertEqual(self.c()['silver'], 1000 - 100 - 50 * 3, '安胎静养 100，其余各 50，同一天可以都做')
+        game.run('UPDATE consorts SET silver=40, energy=8 WHERE id=?', (self.atk,))
+        game.run('DELETE FROM daily_counters')
+        self.client.post('/prenatal', data=dict(kind='rest'))
+        self.assertEqual(self.c()['silver'], 40, '银子不够不能安胎')
+
+    def test_prenatal_teaching_once_each_per_pregnancy(self):
         self.pregnant()
         for i in range(5):
             game.run('DELETE FROM daily_counters'); game.run('UPDATE consorts SET energy=5 WHERE id=?', (self.atk,))
             self.client.post('/prenatal', data=dict(kind='study'))
-        self.assertEqual(json.loads(self.c()['prenatal'])['study'], game.PRENATAL_STAT_CAP)
+        self.assertEqual(json.loads(self.c()['prenatal'])['study'], 2, '每个孕期只能做一次，+2')
 
-    def test_prenatal_once_a_day_costs_energy_and_needs_a_pregnancy(self):
+    def test_prenatal_costs_energy_needs_a_pregnancy_and_each_once(self):
         e0 = self.c()['energy']
         self.client.post('/prenatal', data=dict(kind='rest'))
         self.assertEqual(self.c()['energy'], e0, '没有身孕')
         self.pregnant()
         self.client.post('/prenatal', data=dict(kind='ride'))
         self.client.post('/prenatal', data=dict(kind='study'))
-        self.assertEqual(self.c()['energy'], e0 - 1)
-        self.assertEqual(json.loads(self.c()['prenatal']), dict(riding=2))
+        self.client.post('/prenatal', data=dict(kind='study'))      # 同一样这个孕期只能一次
+        self.assertEqual(self.c()['energy'], e0 - 2)
+        self.assertEqual(json.loads(self.c()['prenatal']), dict(riding=2, study=2))
         self.client.post('/prenatal', data=dict(kind='nope'))
 
     def deliver(self, **prenatal):

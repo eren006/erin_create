@@ -7285,11 +7285,13 @@ def prenatal():
     elif not cfg: err = '选一样安胎的法子。'
     elif c['status'] not in ('normal', 'confined'): err = '现在做不了这个。'
     elif c['energy'] < PRENATAL_ENERGY: err = '精力不够了。'
-    elif daily_count(c['id'], 'prenatal'): err = '今天已经安过胎了。'
+    elif c['silver'] < cfg['silver']: err = f"银子不够，{cfg['name']}要 {cfg['silver']} 两。"
+    elif kind == 'rest' and daily_count(c['id'], 'prenatal'): err = '今天已经安过胎了。'
+    elif kind != 'rest' and prenatal_state(c).get(cfg['stat'], 0) > 0: err = f"这一胎已经{cfg['name']}过了，每个孕期各一次。"
     if err:
         flash(err, 'bad'); return redirect(url_for('place', key='home'))
-    run('UPDATE consorts SET energy=energy-? WHERE id=?', (PRENATAL_ENERGY, c['id']))
-    daily_inc(c['id'], 'prenatal')
+    run('UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?', (PRENATAL_ENERGY, cfg['silver'], c['id']))
+    if kind == 'rest': daily_inc(c['id'], 'prenatal')
     st = prenatal_state(c)
     if kind == 'rest':
         if st.get('rest', 0) < 3:      # 调养到第三次就到头了，再躺也没有更多好处
@@ -8013,20 +8015,20 @@ PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.12, 0.0008, 0.0
 OLD_MOTHER_AGE, OLD_MOTHER_FACTOR, PREGNANCY_MAX = 35, 0.6, 0.22      # 上限 15% 提到 20%，不然体质高的人都顶在上限上，体质就没差别了
 PRENATAL_ENERGY, PRENATAL_STAT_CAP = 1, 6
 PRENATAL = {
-    'rest':   dict(name='安胎静养', line='你卧床静养，一步不出，体质 +5，难产的风险小了些。'),
-    'study':  dict(name='诵读诗书', stat='study', gain=2, line='你日日诵诗读书，孩子出世后学问底子更好。'),
-    'ride':   dict(name='听乐观射', stat='riding', gain=2, line='你常让人在院里演武、奏乐，孩子出世后骑射底子更好。'),
-    'virtue': dict(name='礼佛积德', stat='virtue', gain=2, line='你日日礼佛抄经，孩子出世后品行底子更好。'),
+    'rest':   dict(name='安胎静养', silver=100, line='你卧床静养，一步不出，体质 +5，难产的风险小了些。'),
+    'study':  dict(name='诵读诗书', silver=50, stat='study', gain=2, line='你日日诵诗读书，孩子出世后学问底子更好。'),
+    'ride':   dict(name='听乐观射', silver=50, stat='riding', gain=2, line='你常让人在院里演武、奏乐，孩子出世后骑射底子更好。'),
+    'virtue': dict(name='礼佛积德', silver=50, stat='virtue', gain=2, line='你日日礼佛抄经，孩子出世后品行底子更好。'),
 }
 TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS = 0.10, 15   # 2026-10-06：每次临盆 10% 是双胞胎，体质再多扣 15
 BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR = 25, 8, 5   # 2026-10-06：每次生产必扣体质，生得越多扣得越狠，防一个人孩子太多
 LABOR_RISK_BASE, LABOR_RISK_PER_REST = 0.30, 0.10    # 体质不到 50 的人难产概率，每次安胎静养减 10 个点
 LABOR_DEATH_CHANCE = 0.05     # 难产了还有这么大概率挺不过来（2026-10-07 起；不大，但不是零）
-LABOR_RISK_PER_PRIOR, LABOR_RISK_CAP = 0.15, 0.80    # 2026-10-07：之前每生过一个孩子，难产概率再 +15 个点（体质好的人也一样），最高 80%
+LABOR_RISK_PER_PRIOR, LABOR_RISK_CAP = 0.20, 0.80    # 2026-10-07：之前每生过一个孩子，难产概率再 +20 个点（体质好的人也一样），最高 80%
 
 
 def labor_risk(c, prior_births, rests=0):
-    """这次临盆难产的概率：体质不到 50 有 30% 底数，之前生过几个孩子每个再加 15%，安胎静养每次减 10%，限制在 0~80%"""
+    """这次临盆难产的概率：体质不到 50 有 30% 底数，之前生过几个孩子每个再加 20%，安胎静养每次减 10%，限制在 0~80%"""
     base = LABOR_RISK_BASE if c['health'] < 50 else 0.0
     return max(0.0, min(LABOR_RISK_CAP, base + LABOR_RISK_PER_PRIOR * prior_births - LABOR_RISK_PER_REST * rests))
 
@@ -8162,6 +8164,9 @@ def resolve_births(day, include_legacy=True):
 def prenatal_state(c):
     try: return json.loads(c['prenatal'] or '{}')
     except ValueError: return {}
+
+
+app.jinja_env.globals['prenatal_state'] = prenatal_state
 
 
 def do_bedding(bed, day, primary, tray, quiet=False):

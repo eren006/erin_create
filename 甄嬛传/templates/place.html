@@ -71,9 +71,9 @@
   {% set pregnancy = pregnancy_progress(c) %}
   <p><b>{{ pregnancy.stage }}</b>{% if not pregnancy.legacy %}　孕期进度 {{ pregnancy.percent }}%　距临盆约 {{ pregnancy.hours }}小时{{ pregnancy.minutes }}分钟{% endif %}</p>
   {% if not pregnancy.legacy %}<progress value="{{ pregnancy.percent }}" max="100" style="width:100%" aria-label="孕期进度">{{ pregnancy.percent }}%</progress>{% endif %}
-  <p class="muted">{{ pregnancy_due_text(c) }}。孕中可以安胎、胎教，每天一样，1 精力。安胎静养能降低难产的风险，其余三样让孩子出世时的学问、骑射、品行多一点底子（每样最多 +6）。</p>
+  <p class="muted">{{ pregnancy_due_text(c) }}。孕中可以安胎、胎教，每次 1 精力。安胎静养（100 两，每天一次）能降低难产的风险；其余三样各 50 两，每个孕期各做一次，让孩子出世时的学问、骑射、品行多 2 点底子。</p>
   <form method="post" action="{{ url_for('prenatal') }}" class="row">
-    {% for k, pn in PRENATAL.items() %}<button name="kind" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'prenatal') }}>{{ pn.name }}</button>{% endfor %}
+    {% for k, pn in PRENATAL.items() %}<button name="kind" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or c.silver < pn.silver or (k == 'rest' and daily_count(c.id, 'prenatal')) or (k != 'rest' and prenatal_state(c).get(pn.stat, 0) > 0) }}>{{ pn.name }}（{{ pn.silver }} 两）</button>{% endfor %}
   </form>
 </div>
 {% endif %}

@@ -108,11 +108,11 @@ class HeirTests(unittest.TestCase):
     def test_labor_risk_grows_with_each_prior_birth(self):
         healthy={'health':80}; weak={'health':40}
         self.assertEqual(game.labor_risk(healthy,0),0.0,'头胎体质好的没有难产风险')
-        self.assertAlmostEqual(game.labor_risk(healthy,1),0.15)
-        self.assertAlmostEqual(game.labor_risk(healthy,2),0.30)
+        self.assertAlmostEqual(game.labor_risk(healthy,1),0.20)
+        self.assertAlmostEqual(game.labor_risk(healthy,2),0.40)
         self.assertAlmostEqual(game.labor_risk(weak,0),0.30)
-        self.assertAlmostEqual(game.labor_risk(weak,2),0.60)
-        self.assertAlmostEqual(game.labor_risk(weak,2,rests=2),0.40,msg='安胎静养每次 -10 个点')
+        self.assertAlmostEqual(game.labor_risk(weak,2),0.70)
+        self.assertAlmostEqual(game.labor_risk(weak,2,rests=2),0.50,msg='安胎静养每次 -10 个点')
         self.assertEqual(game.labor_risk(weak,9),game.LABOR_RISK_CAP,'封顶 80%')
         self.assertEqual(game.labor_risk(healthy,0,rests=3),0.0,'不会变成负数')
 
