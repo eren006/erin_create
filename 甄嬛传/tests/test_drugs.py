@@ -241,6 +241,9 @@ class DrugTests(unittest.TestCase):
         self.assertEqual(result,'caught')
         self.assertEqual(len(game.q('SELECT * FROM cases')),0)
         self.assertEqual(game.get_consort(self.tgt)['pregnant_since'],9)
+        warn=game.q("SELECT text FROM messages WHERE consort_id=? AND text LIKE '%想在你的饮食里下红花%' ORDER BY id DESC",(self.tgt,),one=True)
+        self.assertIsNotNone(warn)                                    # 只告知
+        self.assertNotIn(game.display_name(game.get_consort(self.atk)),warn['text'])      # 不写是谁
 
     def test_honghua_blocked_by_antai(self):
         game.run('UPDATE consorts SET pregnant_since=9 WHERE id=?',(self.tgt,))

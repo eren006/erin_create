@@ -10926,6 +10926,8 @@ def resolve_drug(it):
             notify(t['id'],'银针挡下了异样，折了一根。')
         caught = not m or bool(m['counter']) or random.random()<0.5
         if caught and it['drug'] not in PREGNANCY_DRUGS: open_drug_case(it)      # 红花、麝香没得手不开案子，只有得手才开
+        if caught and it['drug'] in PREGNANCY_DRUGS and t['user_id']:      # 只告知受害者有人想动手脚，不写是谁、不查案
+            notify(t['id'],f"有人想在你的饮食里下{DRUGS[it['drug']]['name']}，被察觉了，没有得逞。不知道是谁，也不会开案子，只是提个醒。",'bad')
         return done('caught' if caught else 'fizzle')
     if DRUGS[it['drug']]['eat']:
         tasters = [m for m in active_maids(t['id']) if m['loyalty']>=TASTER_LOYALTY and m['sick_until_day']<day]
@@ -10937,6 +10939,7 @@ def resolve_drug(it):
             else: run('UPDATE maids SET sick_until_day=? WHERE id=?', (day+3,m['id']))
             notify(t['id'],f"{m['name']}尝出了异样，替你挡下一劫。",'bad')
             if it['drug'] not in PREGNANCY_DRUGS: open_drug_case(it)
+            elif t['user_id']: notify(t['id'],f"有人想在你的饮食里下{DRUGS[it['drug']]['name']}，被{m['name']}尝出来了，没有得逞。不知道是谁，也不会开案子，只是提个醒。",'bad')
             return done('fizzle')
     drug = it['drug']
     run('UPDATE consorts SET drugged_day=?,drugged_until_day=? WHERE id=?', (day,day+(2 if drug=='lihun' else 1),t['id']))
