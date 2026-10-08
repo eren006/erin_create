@@ -78,5 +78,48 @@ class ItemDailyLimitTests(unittest.TestCase):
             self.assertEqual(game.get_consort(self.atk)[col], 50 + gain * 2, key)      # 隔天又能用
 
 
+class HarmLogTests(unittest.TestCase):
+    setUp = fixtures.LifecycleTests.setUp
+    tearDown = fixtures.LifecycleTests.tearDown
+    player = fixtures.LifecycleTests.player
+    login = fixtures.LifecycleTests.login
+
+    def add(self, method, result, drug='', ts=1000):
+        return game.run("INSERT INTO intrigues (day, attacker_id, target_id, method, status, result, created_ts, drug) VALUES (?,?,?,?,'done',?,?,?)",
+                        (game.cur_day(), self.atk, self.tgt, method, result, ts, drug)).lastrowid
+
+    def test_names_shown_only_when_known(self):
+        self.add('rumor', 'success', ts=1)                 # 得手，没眼线：未知
+        self.add('rumor', 'caught', ts=2)                  # 败露：看得到
+        self.add('steal', 'success', ts=3)                 # 明面上的事：看得到
+        self.add('rumor', 'fizzle', ts=4)                  # 没成没人察觉：不记
+        game.run("UPDATE consorts SET eyes_until_day=0 WHERE id=?", (self.tgt,))
+        log = game.recent_harm(game.get_consort(self.tgt))
+        self.assertEqual(len(log), 3)
+        self.assertEqual([h['known'] for h in log], [True, True, False])      # id 倒序
+        name = game.display_name(game.get_consort(self.atk))
+        self.assertEqual(log[0]['who'], name)
+        self.assertEqual(log[2]['who'], '未知')
+        game.run("UPDATE consorts SET eyes_until_day=99999 WHERE id=?", (self.tgt,))
+        self.assertTrue(all(h['known'] for h in game.recent_harm(game.get_consort(self.tgt))))      # 有眼线全看得到
+
+    def test_pregnancy_drug_is_always_unknown_and_limit_is_ten(self):
+        game.run("UPDATE consorts SET eyes_until_day=99999 WHERE id=?", (self.tgt,))
+        self.add('drug', 'success', drug='honghua')
+        self.add('drug', 'caught', drug='musk')
+        for _ in range(12): self.add('rumor', 'success')
+        self.assertEqual(len(game.recent_harm(game.get_consort(self.tgt))), 10)
+        game.run("DELETE FROM intrigues WHERE method='rumor'")
+        log = game.recent_harm(game.get_consort(self.tgt))
+        self.assertEqual([h['who'] for h in log], ['未知', '未知'])
+
+    def test_home_page_shows_the_section(self):
+        self.add('rumor', 'caught')
+        self.login(self.tgt)
+        page = self.client.get('/').get_data(as_text=True)
+        self.assertIn('近来害过我的人', page)
+        self.assertIn(game.display_name(game.get_consort(self.atk)), page)
+
+
 if __name__ == '__main__':
     unittest.main()

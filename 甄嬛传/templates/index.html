@@ -89,6 +89,9 @@
   <form method="post" action="{{ url_for('guide_skip') }}"><button class="plain">不必了</button></form>
 </section>
 {% endif %}
+{% if harm_log %}<details class="sheet" style="margin:14px 0"><summary><b>近来害过我的人</b>（最近 {{ harm_log|length }} 次）</summary>
+<ul style="margin:8px 0;padding-left:20px">{% for h in harm_log %}<li>{{ h.when }} · {{ h.what }} · {{ h.result }} · {% if h.known %}<b>{{ h.who }}</b>{% else %}<span class="muted">未知</span>{% endif %}</li>{% endfor %}</ul>
+<p class="muted" style="margin:6px 0">败露的、明面上的事（截宠、参奏、发落），以及你安插了眼线时，会写出是谁；否则记「未知」。红花、麝香眼线也查不出。</p></details>{% endif %}
 {% if open_cases_count %}<p class="state-conf" role="alert">你被卷进了 {{ open_cases_count }} 桩案子，<a href="{{ url_for('drug_cases') }}">去慎刑司陈情</a>。</p>{% endif %}
 <form method="post" action="{{ url_for('diagnose') }}"><button class="plain">请太医诊脉（20 两，每日一次，不一定诊得出）</button></form>
 

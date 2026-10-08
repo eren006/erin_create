@@ -3428,7 +3428,7 @@ def index():
     for h in unnamed_heirs: ensure_name_choices(h['id'])      # 老档里没点过字的，补上，提醒才有的选
     confine_until = datetime.fromtimestamp(c['confine_until_ts'], TZ).strftime('%m-%d %H:%M') if c['confine_until_ts'] else ''
     tryst_leaks = [dict(cl, knower=display_name(get_consort(cl['knower_id'])), left=cl['day'] + TRYST_CLUE_DAYS - day) for cl in tryst_clues_on(c['id']) if not cl['hushed']]
-    return render_template('index.html', tribute_reminder=tribute_home_reminder(c), tryst_leaks=tryst_leaks, TRYST_HUSH_COST=TRYST_HUSH_COST, TRYST_HUSH_STEP=TRYST_HUSH_STEP, TRYST_HUSH_GOAL=TRYST_HUSH_GOAL, TRYST_HUSH_INFLUENCE=TRYST_HUSH_INFLUENCE, DYING_HOURS=DYING_HOURS, HEALTH_DYING_AT=HEALTH_DYING_AT, c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs, confine_until=confine_until,
+    return render_template('index.html', harm_log=recent_harm(c), tribute_reminder=tribute_home_reminder(c), tryst_leaks=tryst_leaks, TRYST_HUSH_COST=TRYST_HUSH_COST, TRYST_HUSH_STEP=TRYST_HUSH_STEP, TRYST_HUSH_GOAL=TRYST_HUSH_GOAL, TRYST_HUSH_INFLUENCE=TRYST_HUSH_INFLUENCE, DYING_HOURS=DYING_HOURS, HEALTH_DYING_AT=HEALTH_DYING_AT, c=c, msgs=msgs, promo=promo, heirs=heirs, edict=edict, maid_gap=maid_gap, unnamed_heirs=unnamed_heirs, confine_until=confine_until,
                            sick=is_sick(c), eyes=eyes_active(c), secret=SECRETS[c['secret']], guide=guide_view(c),
                            day=day, PREGNANCY_DAYS=PREGNANCY_DAYS, tiles=map_tiles(c))
 
@@ -13131,6 +13131,22 @@ def tribute_group_open(event, rank, consort_id):
     """这一批里是否还有人在等（rank=0 的旧活动一人一批，不存在「这一批」）"""
     if not rank: return False
     return bool(q("SELECT 1 FROM tribute_turns WHERE event_id=? AND status='waiting' AND rank=?", (event['id'], rank), one=True))
+
+
+def recent_harm(c, limit=10):
+    """首页「近来害过我的人」：最近 limit 条得手或败露的使计。看得出是谁（败露、明面上的事、或你有眼线）才写名字，否则记「未知」；红花、麝香眼线也查不出"""
+    eyes = eyes_active(c)
+    out = []
+    for it in q("SELECT * FROM intrigues WHERE target_id=? AND status='done' AND result IN ('success','caught') ORDER BY id DESC LIMIT ?", (c['id'], limit)):
+        hidden = it['drug'] in PREGNANCY_DRUGS
+        known = not hidden and (it['result'] == 'caught' or eyes or it['method'] in ('steal', 'impeach', 'punish'))
+        who = '未知'
+        if known:
+            names = [display_name(get_consort(it['attacker_id']))]
+            if it['partner_id'] and get_consort(it['partner_id']): names.append(display_name(get_consort(it['partner_id'])))
+            who = '、'.join(names)
+        out.append(dict(when=datetime.fromtimestamp(it['created_ts'], TZ).strftime('%m-%d %H:%M'), what=intrigue_label(it), result='得手' if it['result'] == 'success' else '败露被拿住', who=who, known=known))
+    return out
 
 
 def tribute_home_reminder(c):
