@@ -159,7 +159,7 @@ class HeirTests(unittest.TestCase):
         game.heir_growth_tick(8 + game.ZHUAZHOU_AGE_DAYS - 1)
         self.assertFalse(game.q('SELECT zhuazhou FROM heirs WHERE id=?', (hid,), one=True)['zhuazhou'])
         game.heir_growth_tick(8 + game.ZHUAZHOU_AGE_DAYS + 1)
-        self.assertFalse(game.q('SELECT zhuazhou FROM heirs WHERE id=?', (hid,), one=True)['zhuazhou'], '错过那天就不再补触发')
+        self.assertTrue(game.q('SELECT zhuazhou FROM heirs WHERE id=?', (hid,), one=True)['zhuazhou'], '时间换算后年龄会一下跳过周岁，错过那一天也要补抓周')
 
     def test_low_rank_mother_loses_custody_at_zhuazhou(self):
         game.run('UPDATE consorts SET rank=3 WHERE id=?', (self.atk,))
@@ -262,12 +262,14 @@ class HeirTests(unittest.TestCase):
         r = self.client.post(f'/heirs/raise/{hid}', data=dict(opt='study'))
         self.assertEqual(game.q('SELECT study FROM heirs WHERE id=?', (hid,), one=True)['study'], 20)
 
-    def test_once_per_day_per_heir(self):
+    def test_limited_times_per_day_per_heir(self):
         hid = self.heir(self.atk, study=20)
+        game.run('UPDATE consorts SET energy=20 WHERE id=?', (self.atk,))
+        for _ in range(game.HEIR_RAISE_DAILY): self.client.post(f'/heirs/raise/{hid}', data=dict(opt='study'))
+        after_all = game.q('SELECT study FROM heirs WHERE id=?', (hid,), one=True)['study']
+        self.assertGreater(after_all, 20)
         self.client.post(f'/heirs/raise/{hid}', data=dict(opt='study'))
-        after_first = game.q('SELECT study FROM heirs WHERE id=?', (hid,), one=True)['study']
-        self.client.post(f'/heirs/raise/{hid}', data=dict(opt='study'))
-        self.assertEqual(game.q('SELECT study FROM heirs WHERE id=?', (hid,), one=True)['study'], after_first)
+        self.assertEqual(game.q('SELECT study FROM heirs WHERE id=?', (hid,), one=True)['study'], after_all, '一天最多教养 HEIR_RAISE_DAILY 次')
 
     # ── 小事件 ───────────────────────────────────────────────────────────────
 

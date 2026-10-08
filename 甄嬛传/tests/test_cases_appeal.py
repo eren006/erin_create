@@ -35,7 +35,7 @@ class AppealTests(unittest.TestCase):
         case = game.q('SELECT * FROM cases WHERE id=?', (cid,), one=True)
         self.assertFalse(game.can_appeal(game.get_consort(self.tgt), case), '受害人自己不能替被定罪的人申诉')
         self.assertTrue(game.can_appeal(game.get_consort(self.atk), case))
-        boss = self.player('丙', rank=6)
+        boss = self.player('丙', rank=7)
         game.run("INSERT INTO relations(a_id,b_id,affinity,sister) VALUES(?,?,?,1)", (min(self.atk, boss), max(self.atk, boss), 60))
         self.assertTrue(game.can_appeal(game.get_consort(boss), case), '姐妹能替她申诉')
 
@@ -156,7 +156,7 @@ class FramePrinceTests(unittest.TestCase):
         pass
 
     def frame(self, target, roll=0.0, roll2=0.99):
-        game.run('UPDATE consorts SET rank=6, silver=1000, energy=5 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET rank=7, silver=1000, energy=5 WHERE id=?', (self.atk,))
         seq = iter([roll, roll2])
         with patch.object(game.random, 'random', side_effect=lambda: next(seq, 0.99)):
             return self.client.post('/succession/move', data=dict(move='frame', target_id=target))
@@ -175,12 +175,12 @@ class FramePrinceTests(unittest.TestCase):
         self.assertEqual((self.row(own)['status'], self.row(fostered)['status']), ('', ''))
 
     def test_success_deposes_the_prince_and_demotes_the_caretaker(self):
-        boss = self.player('丙', rank=6)
+        boss = self.player('丙', rank=7)
         hid = self.prince(boss)
         self.frame(hid, roll=0.0)
         h = self.row(hid)
         self.assertEqual(h['status'], 'deposed')
-        self.assertEqual(game.get_consort(boss)['rank'], 5)
+        self.assertEqual(game.get_consort(boss)['rank'], 6)      # 妃 → 降一级是贵嫔
         self.assertTrue(any('圈禁出局' in t for t in self.msgs(boss)))
         self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%图谋不轨%'"))
 
@@ -190,7 +190,7 @@ class FramePrinceTests(unittest.TestCase):
         self.assertNotIn(hid, [h['id'] for h in game.rival_princes()])
 
     def test_failure_costs_silver_but_leaves_the_prince_alone(self):
-        game.run('UPDATE consorts SET rank=6, silver=1600, energy=5 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET rank=7, silver=1600, energy=5 WHERE id=?', (self.atk,))
         hid = self.prince(self.tgt)
         seq = iter([0.99, 0.99])
         with patch.object(game.random, 'random', side_effect=lambda: next(seq, 0.99)):
@@ -207,7 +207,7 @@ class FramePrinceTests(unittest.TestCase):
         self.assertTrue(any('构陷' in t for t in self.msgs(self.tgt)))
 
     def test_higher_scheme_raises_success_but_is_capped(self):
-        boss = self.player('丙', rank=6)
+        boss = self.player('丙', rank=7)
         hid = self.prince(boss)
         game.run('UPDATE consorts SET scheme=100 WHERE id=?', (self.atk,))
         p = min(0.75, game.FRAME_PRINCE_BASE + 100 * game.FRAME_PRINCE_PER_SCHEME)
@@ -216,7 +216,7 @@ class FramePrinceTests(unittest.TestCase):
         self.assertEqual(self.row(hid)['status'], 'deposed')
 
     def test_needs_a_target(self):
-        game.run('UPDATE consorts SET rank=6, silver=1000, energy=5 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET rank=7, silver=1000, energy=5 WHERE id=?', (self.atk,))
         r = self.client.post('/succession/move', data=dict(move='frame', target_id=0))
         self.assertEqual(game.get_consort(self.atk)['silver'], 1000)
 

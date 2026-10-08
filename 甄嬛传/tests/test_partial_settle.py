@@ -35,7 +35,7 @@ class PartialSettleTests(unittest.TestCase):
         with patch.object(game.random, 'random', return_value=0.99):
             game.settle_day(bed_key='x')
         after = self.snap()
-        self.assertGreater(after['age'], before['age'])
+        self.assertEqual(after['age'], before['age'], '年龄现在由每 6 小时一次的 age_tick 涨，不再跟结算')
         self.assertLess(after['favor'], before['favor'])
 
     def test_partial_still_resolves_pending_intrigue(self):
@@ -51,7 +51,7 @@ class PartialSettleTests(unittest.TestCase):
         before = self.snap()
         with patch.object(game.random, 'random', return_value=0.99):
             game.settle_day(bed_key='y')
-        self.assertGreater(self.snap()['age'], before['age'])
+        self.assertEqual(self.snap()['age'], before['age'], '年龄不在结算里涨')
 
 
 if __name__ == '__main__':

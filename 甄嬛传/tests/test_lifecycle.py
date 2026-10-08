@@ -156,13 +156,13 @@ class LifecycleTests(unittest.TestCase):
         self.assertIsNone(game.lethal_block(game.get_consort(self.atk), c, 15))
 
     def test_death_frees_slot_and_sisters(self):
-        game.run('UPDATE consorts SET rank=11 WHERE id=?', (self.tgt,))
-        self.assertFalse(game.slot_free(11))
+        game.run('UPDATE consorts SET rank=10 WHERE id=?', (self.tgt,))
+        self.assertFalse(game.slot_free(10))
         game.run('INSERT INTO relations(a_id,b_id,sister) VALUES(?,?,1)', (self.atk, self.tgt))
         self.assertIn(self.tgt, game.sisters_of(self.atk))
         game.die(self.tgt, '测试')
         self.assertNotIn(self.tgt, game.sisters_of(self.atk))
-        self.assertTrue(game.slot_free(11))
+        self.assertTrue(game.slot_free(10))
         self.assertNotIn(self.tgt, [c['id'] for c in game.intrigue_targets(game.get_consort(self.atk))])
 
     def test_age_and_pregnancy_two_days(self):

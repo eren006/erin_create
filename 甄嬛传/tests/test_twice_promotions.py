@@ -24,7 +24,9 @@ class TwicePromotionTests(unittest.TestCase):
         self.eligible()
         game.run('UPDATE game_state SET event_started=1,maintenance=0')
         before=game.get_consort(self.atk)
-        self.tick(4)                      # 04:00 就检查，不再只有中午
+        game.run("UPDATE game_state SET last_age_key='2026-10-05:00'")      # 年龄归 age_tick 管（每 6 小时涨一岁），这里只看晋封不动年龄
+        with patch.object(game, 'age_tick'):
+            self.tick(4)                      # 04:00 就检查，不再只有中午
         after=game.get_consort(self.atk)
         self.assertEqual(after['rank'],2)
         self.assertEqual(game.cur_day(),10)

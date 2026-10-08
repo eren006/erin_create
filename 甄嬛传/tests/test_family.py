@@ -297,7 +297,7 @@ class FamilyTests(unittest.TestCase):
         uid = self.new_user()
         game.create_family(uid, '沈', 'dali')
         prev = self.past_member(uid, silver=100, death_day=1)
-        game.run("UPDATE consorts SET appearance=100,talent=40,scheme=10,virtue=60,health=80,peak_rank=6 WHERE id=?", (prev,))
+        game.run("UPDATE consorts SET appearance=100,talent=40,scheme=10,virtue=60,health=80,peak_rank=7 WHERE id=?", (prev,))
         self.set_day(10)
         self.create_member('云')
         c = game.q('SELECT * FROM consorts WHERE user_id=?', (uid,), one=True)
@@ -397,7 +397,7 @@ class FamilyTests(unittest.TestCase):
         aunt = self.player('姨', rank=6)
         game.run("UPDATE consorts SET user_id=?, archived_user_id=NULL WHERE id=?", (uid, aunt))
         foster = self.player('丙', rank=6)
-        hid = self.heir(sister, caretaker=foster, mother_affinity=30, caretaker_affinity=60, born=game.cur_day() - 6)
+        hid = self.heir(sister, caretaker=foster, mother_affinity=30, caretaker_affinity=60, born=game.cur_day() - 2)      # 还没成年（14 岁 = 3.5 天）
         self.login(aunt)
         h = game.q('SELECT * FROM heirs WHERE id=?', (hid,), one=True)
         self.assertTrue(game.maternal_kin(game.get_consort(aunt), h))
@@ -430,9 +430,9 @@ class FamilyTests(unittest.TestCase):
         game.set_rank(self.atk, 4)
         game.set_rank(self.atk, 5)
         self.assertEqual(self.frow(uid)['prestige'], 5, '降了再升不重复算')
-        game.set_rank(self.atk, 8)
-        self.assertEqual(self.frow(uid)['prestige'], 5 + 10 + 15 + 20)
-        self.assertEqual(game.get_consort(self.atk)['peak_rank'], 8)
+        game.set_rank(self.atk, game.RANK_GUIFEI)
+        self.assertEqual(self.frow(uid)['prestige'], sum(game.PRESTIGE_RANK_GAIN[r] for r in range(5, game.RANK_GUIFEI + 1)))
+        self.assertEqual(game.get_consort(self.atk)['peak_rank'], game.RANK_GUIFEI)
 
     def test_births_cold_secret_and_old_age_move_prestige(self):
         uid = self.fam(self.atk, prestige=50)
@@ -529,7 +529,7 @@ class FamilyTests(unittest.TestCase):
         self.assertEqual(self.frow(uid)['head_gen'], 1)
 
     def test_head_promotion_and_demotion(self):
-        uid = self.fam(self.atk, head_office=4, head_age_months=45 * 12)
+        uid = self.fam(self.atk, head_office=4, head_age_months=40 * 12)      # 一晚涨四岁，两晚后还不到 50 岁，不掷病
         with patch.object(game.random, 'random', return_value=0.0):
             game.family_tick(10)
         f = self.frow(uid)
@@ -1015,7 +1015,7 @@ class FamilyTests(unittest.TestCase):
         princess = self.heir(self.atk, gender='公主', born=1, title='固伦公主', adult_day=1, marriage='mongol')
         prince2 = self.prince(self.atk, age_years=17, adult_day=1, title='亲王', favor=1)
         game.end_reign(game.cur_day())
-        b = self.frow(uid_b)
+        b = game.q('SELECT * FROM family_pool WHERE last_user_id=?', (uid_b,), one=True)      # 新帝登基，家族退回家族池，名望留在家族身上
         self.assertEqual(b['prestige'], 10 + game.PRESTIGE_DOWAGER + game.BACKING_WIN_PRESTIGE, '养母成太后，家里又押对了')
         self.assertEqual(game.q('SELECT dowager_uid FROM game_state', one=True)['dowager_uid'], uid_b)
         honors_a = [r['text'] for r in game.q('SELECT text FROM family_log WHERE user_id=? AND honor=1', (uid_a,))]
@@ -1061,8 +1061,16 @@ class FamilyTests(unittest.TestCase):
         uid = self.fam(self.atk, prestige=33, estate=44)
         for i in range(3): self.past_member(uid, given=f'前{i}', death_day=1)
         game.end_reign(game.cur_day())
-        f = self.frow(uid)
+        f = game.q('SELECT * FROM family_pool WHERE last_user_id=?', (uid,), one=True)      # 家族退回家族池，名望、家底都留着
         self.assertEqual((f['prestige'], f['estate']), (33, 44))
+        self.assertIsNone(self.frow(uid))
+        game.run("UPDATE game_state SET reign_no=2")
+        with patch.object(game.random, 'random', return_value=0.0):
+            offers = game.ensure_family_offers(uid)
+        self.assertTrue(any(o['surname'] == f['surname'] for o in offers))      # 它可能再被抽到，抽到了还是那份名望
+        mine = next(o for o in offers if o['surname'] == f['surname'])
+        self.assertIsNone(game.take_family_offer(uid, mine['id']))
+        self.assertEqual((self.frow(uid)['prestige'], self.frow(uid)['estate']), (33, 44))
         self.assertTrue(game.family_gate(uid)[0])
 
     # ── 族谱与各家 ───────────────────────────────────────────────────────────
@@ -1244,9 +1252,9 @@ class EmpressRankTests(unittest.TestCase):
     player = test_heirs.fixtures.LifecycleTests.player
     login = test_heirs.fixtures.LifecycleTests.login
 
-    def promote(self, cid, prestige_top=9):
-        game.run('UPDATE consorts SET rank=9, prestige_top=?, favor=?, virtue=?, rank_since_day=1 WHERE id=?',
-                 (prestige_top, game.PROMOTE_FAVOR[10], game.PROMOTE_VIRTUE[10], cid))
+    def promote(self, cid, prestige_top=10):
+        game.run('UPDATE consorts SET rank=10, prestige_top=?, favor=?, virtue=?, rank_since_day=1 WHERE id=?',
+                 (prestige_top, game.PROMOTE_FAVOR[11], game.PROMOTE_VIRTUE[11], cid))
         # 晋位本身不靠掷骰，但同一次结算里家主升迁、时疫这些不相关的概率事件会消耗全局的 random 状态——
         # 不摁住它们，这条用例会不会 flaky 全看别的测试文件先跑了几次随机数，摁到 0.99 让那些支线都不触发
         with patch.object(game, 'npc_schemes'), patch.object(game.random, 'random', return_value=0.99):
@@ -1256,28 +1264,28 @@ class EmpressRankTests(unittest.TestCase):
     def test_cannot_reach_empress_while_the_npc_holds_the_slot(self):
         game.run("UPDATE consorts SET status='normal' WHERE npc_key='huanghou'")
         self.promote(self.atk)
-        self.assertEqual(game.get_consort(self.atk)['rank'], 9, 'npc 占着唯一的名额')
+        self.assertEqual(game.get_consort(self.atk)['rank'], 10, 'npc 占着唯一的名额')
 
     def test_reaches_empress_once_the_slot_is_free(self):
         game.run("UPDATE consorts SET status='cold' WHERE npc_key='huanghou'")
         self.promote(self.atk)
         c = game.get_consort(self.atk)
-        self.assertEqual(c['rank'], 10)
+        self.assertEqual(c['rank'], 11)
         self.assertEqual(game.display_name(c), '皇后')
 
     def test_only_one_empress_slot(self):
         game.run("UPDATE consorts SET status='cold' WHERE npc_key='huanghou'")
         self.promote(self.atk)
-        self.assertEqual(game.get_consort(self.atk)['rank'], 10)
+        self.assertEqual(game.get_consort(self.atk)['rank'], 11)
         self.promote(self.tgt)
-        self.assertEqual(game.get_consort(self.tgt)['rank'], 9, '名额已经被占了')
+        self.assertEqual(game.get_consort(self.tgt)['rank'], 10, '名额已经被占了')
 
     def test_reaching_empress_grants_family_prestige_once(self):
         game.run("UPDATE consorts SET status='cold' WHERE npc_key='huanghou'")
         uid = game.consort_uid(game.get_consort(self.atk))
         game.create_family(uid, '沈', 'dali')
-        self.promote(self.atk, prestige_top=9)   # 之前几级的名望已经拿过了，只看这一步新加的
-        self.assertEqual(game.family_row(uid)['prestige'], game.PRESTIGE_RANK_GAIN[10])
+        self.promote(self.atk, prestige_top=10)   # 之前几级的名望已经拿过了，只看这一步新加的
+        self.assertEqual(game.family_row(uid)['prestige'], game.PRESTIGE_RANK_GAIN[11])
 
     def test_no_venture_outcome_is_break_even(self):
         for k, v in game.VENTURES.items():

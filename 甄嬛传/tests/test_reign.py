@@ -59,7 +59,7 @@ class ReignTests(unittest.TestCase):
         st = self.st()
         self.assertEqual((st['reign_no'], st['emperor_start_age'], st['emperor_death_day'], st['mourning']), (1, 20, 0, 0))
         self.set_day(11)
-        self.assertEqual(game.emperor_age_years(), 40)   # 每晚半岁
+        self.assertEqual(game.emperor_age_years(), 20 + 10 * game.AGE_YEARS_PER_DAY)      # 每晚 AGE_YEARS_PER_DAY 岁
 
     def test_no_random_early_death(self):
         for day in range(1, 12):
@@ -235,7 +235,7 @@ class ReignTests(unittest.TestCase):
         self.client.post('/succession/move', data=dict(move='peek'))
         self.assertEqual(game.get_consort(low)['silver'], 2000)
 
-    def make_boss(self, rank=8, scheme=100, name='丙'):
+    def make_boss(self, rank=game.RANK_GUIFEI, scheme=100, name='丙'):
         boss = self.player(name, rank=rank)
         game.run('UPDATE consorts SET scheme=? WHERE id=?', (scheme, boss))
         self.login(boss)
@@ -273,7 +273,7 @@ class ReignTests(unittest.TestCase):
             self.start_illness()
             self.client.post('/succession/move', data=dict(move='forge', target_id=theirs))   # 别人的孩子
             self.assertEqual(self.row(theirs)['forged'], 0)
-        low = self.make_boss(rank=6, name='丁')   # 妃，不够格
+        low = self.make_boss(rank=8, name='丁')   # 四妃，不够格
         kid = self.prince(low)
         with patch.object(game.random, 'random', return_value=0.0):
             self.client.post('/succession/move', data=dict(move='forge', target_id=kid))
@@ -283,7 +283,7 @@ class ReignTests(unittest.TestCase):
 
     def scene(self):
         """甲生母、乙养母，阿哥圣眷最高；丙明站他，丁明站别人，戊暗站他"""
-        game.run('UPDATE consorts SET rank=6, trust=0 WHERE id IN (?,?)', (self.atk, self.tgt))
+        game.run('UPDATE consorts SET rank=7, trust=0 WHERE id IN (?,?)', (self.atk, self.tgt))
         self.hid = self.prince(self.atk, caretaker=self.tgt, favor=90, mother_affinity=30, caretaker_affinity=70, name='承稷')
         self.rival = self.prince(self.atk, favor=10, ambition=90, adult_day=1, title='贝勒', faction=6)
         self.fan = self.player('丙', rank=4)
@@ -317,7 +317,7 @@ class ReignTests(unittest.TestCase):
         self.assertEqual([game.support_title(d) for d in (0, 5, 6, 11, 12, 30)], ['太妃', '太妃', '贵太妃', '贵太妃', '皇贵太妃', '皇贵太妃'])
 
     def test_mother_becomes_dowager_when_child_closer_to_her(self):
-        game.run('UPDATE consorts SET rank=6, trust=0 WHERE id IN (?,?)', (self.atk, self.tgt))
+        game.run('UPDATE consorts SET rank=7, trust=0 WHERE id IN (?,?)', (self.atk, self.tgt))
         self.prince(self.atk, caretaker=self.tgt, favor=90, mother_affinity=80, caretaker_affinity=20)
         game.end_reign(game.cur_day())
         by_cid = {f['cid']: f['fate'] for f in json.loads(self.reign_row()['fates'])}
@@ -325,7 +325,7 @@ class ReignTests(unittest.TestCase):
         self.assertIn(game.full_name(game.get_consort(self.atk)), self.st()['dowager'])
 
     def test_dead_parent_cannot_be_dowager(self):
-        game.run('UPDATE consorts SET rank=6, trust=0 WHERE id IN (?,?)', (self.atk, self.tgt))
+        game.run('UPDATE consorts SET rank=7, trust=0 WHERE id IN (?,?)', (self.atk, self.tgt))
         self.prince(self.atk, caretaker=self.tgt, favor=90, mother_affinity=90, caretaker_affinity=10)
         game.run("UPDATE consorts SET status='dead', death_day=5, death_reason='病逝', archived_user_id=user_id WHERE id=?", (self.atk,))
         game.end_reign(game.cur_day())
@@ -355,7 +355,7 @@ class ReignTests(unittest.TestCase):
         self.assertEqual(game.q('SELECT COUNT(*) n FROM users', one=True)['n'], 5, '账号保留')
         mine = game.q('SELECT * FROM reign_letters WHERE user_id=?', (uid,))
         self.assertEqual([m['body'] for m in mine], ['姐姐安好'])
-        self.assertEqual(mine[0]['from_name'], '甲妃', '存档时用的是当时的称呼')
+        self.assertIn(mine[0]['from_name'], ['甲' + w for w in game.NINE_CONSORT_TITLES] + ['甲九昭'], '存档时用的是当时的称呼（九昭位有名号的叫封号+名号，没分到名号的先叫位分名）')
 
     @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_end_reign_installs_next_reign(self):
@@ -412,7 +412,7 @@ class ReignTests(unittest.TestCase):
 
     def test_records_pick_top_players(self):
         game.run('UPDATE consorts SET bedded_count=7 WHERE id=?', (self.tgt,))
-        game.run('UPDATE consorts SET rank=9 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET rank=10 WHERE id=?', (self.atk,))
         self.heir(self.tgt, gender='皇子')
         game.end_reign(game.cur_day())
         rec = json.loads(self.reign_row()['records'])

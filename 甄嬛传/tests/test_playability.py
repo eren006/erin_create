@@ -1,4 +1,5 @@
 """统一时间线、自由日常与成长补偿的行为回归。"""
+import math
 import unittest
 from unittest.mock import patch
 import test_lifecycle as fixtures
@@ -77,22 +78,29 @@ class PlayabilityTests(unittest.TestCase):
         before_child = game.heir_age_years(game.q('SELECT * FROM heirs WHERE id=?',(hid,),one=True))
         with patch.object(game.random, 'random', return_value=.99), patch.object(game, 'npc_schemes'):
             game.settle_day()
-        self.assertEqual(game.emperor_age_years()-before_emperor, 2)
-        self.assertEqual(game.get_consort(self.atk)['age_months']-216,12)      # 零点涨一岁
-        game.run("UPDATE game_state SET last_noon_age_date=''")
-        game.age_noon_tick(game.datetime(2026,10,5,12,30,tzinfo=game.TZ))      # 中午再涨一岁，合起来一天两岁
-        self.assertEqual(game.get_consort(self.atk)['age_months']-216,24)
-        self.assertEqual(game.family_row(uid)['head_age_months']-before_head,24)
-        self.assertEqual(game.heir_age_years(game.q('SELECT * FROM heirs WHERE id=?',(hid,),one=True))-before_child,2)
+        R = game.AGE_YEARS_PER_DAY
+        self.assertEqual(game.emperor_age_years()-before_emperor, R)
+        self.assertEqual(game.get_consort(self.atk)['age_months']-216,0)      # 妃嫔的年龄不在结算里涨，由 age_tick 每 6 小时涨一岁
+        game.run("UPDATE game_state SET last_age_key=''")
+        for h in game.AGE_TICK_HOURS:
+            game.age_tick(game.datetime(2026,10,5,h,2,tzinfo=game.TZ))      # 一天四次，合起来一天四岁
+        self.assertEqual(game.get_consort(self.atk)['age_months']-216,12*R)
+        self.assertEqual(game.family_row(uid)['head_age_months']-before_head,game.AGE_MONTHS_PER_DAY)
+        self.assertEqual(game.heir_age_years(game.q('SELECT * FROM heirs WHERE id=?',(hid,),one=True))-before_child,R)
 
     def test_newborn_can_reach_succession_and_adulthood_in_fifteen_days(self):
         hid = game.run("INSERT INTO heirs(mother_id,caretaker_id,gender,ordinal,born_day,zhuazhou) VALUES(?,?,'皇子',7,3,'book')", (self.atk,self.atk)).lastrowid
         h = game.q('SELECT * FROM heirs WHERE id=?',(hid,),one=True)
-        self.assertEqual(game.heir_age_years(h,9),12)
-        self.assertEqual(game.heir_age_years(h,10),14)
-        game.run('UPDATE game_state SET day=10')
-        game.heir_adult_tick(10)
-        self.assertEqual(game.q('SELECT adult_day FROM heirs WHERE id=?',(hid,),one=True)['adult_day'],10)
+        R = game.AGE_YEARS_PER_DAY
+        self.assertEqual(game.heir_age_years(h,9),6*R)
+        self.assertEqual(game.heir_age_years(h,10),7*R)
+        day = 3 + math.ceil(14 / R)      # 出生后第 ceil(14/R) 天满十四岁
+        game.run('UPDATE game_state SET day=?', (day-1,))
+        game.heir_adult_tick(day-1)
+        self.assertEqual(game.q('SELECT adult_day FROM heirs WHERE id=?',(hid,),one=True)['adult_day'],0)
+        game.run('UPDATE game_state SET day=?', (day,))
+        game.heir_adult_tick(day)
+        self.assertEqual(game.q('SELECT adult_day FROM heirs WHERE id=?',(hid,),one=True)['adult_day'],day)
 
     def test_new_field_migration_is_idempotent(self):
         game.init_db()
@@ -104,14 +112,15 @@ class PlayabilityTests(unittest.TestCase):
         game.run('UPDATE game_state SET day=15')
         game.run("INSERT INTO heirs(mother_id,caretaker_id,gender,ordinal,born_day,zhuazhou) VALUES(?,?,'皇子',7,3,'book')", (self.atk,self.atk))
         game.end_reign(15)
-        self.assertEqual(game.state()['emperor_start_age'],24)
+        self.assertEqual(game.state()['emperor_start_age'],12*game.AGE_YEARS_PER_DAY)
 
     def test_fourteen_year_adulthood_boundary_and_last_day_window(self):
         hid = game.run("INSERT INTO heirs(mother_id,caretaker_id,gender,ordinal,born_day,zhuazhou) VALUES(?,?,'皇子',7,8,'book')", (self.atk,self.atk)).lastrowid
-        game.run('UPDATE game_state SET day=14')
-        game.heir_adult_tick(14)
+        day = 8 + math.ceil(14 / game.AGE_YEARS_PER_DAY)
+        game.run('UPDATE game_state SET day=?', (day-1,))
+        game.heir_adult_tick(day-1)
         self.assertEqual(game.q('SELECT adult_day FROM heirs WHERE id=?',(hid,),one=True)['adult_day'],0)
-        game.run('UPDATE game_state SET day=15')
-        game.heir_adult_tick(15)
-        self.assertEqual(game.q('SELECT adult_day FROM heirs WHERE id=?',(hid,),one=True)['adult_day'],15)
+        game.run('UPDATE game_state SET day=?', (day,))
+        game.heir_adult_tick(day)
+        self.assertEqual(game.q('SELECT adult_day FROM heirs WHERE id=?',(hid,),one=True)['adult_day'],day)
         self.assertEqual(game.HEIR_ADULT_AGE_YEARS,14)

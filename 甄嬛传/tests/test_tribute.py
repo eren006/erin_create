@@ -38,7 +38,7 @@ class TributeTests(unittest.TestCase):
         queue = game.q('SELECT * FROM tribute_turns WHERE event_id=? ORDER BY position', (eid,))
         self.assertEqual([r['consort_id'] for r in queue], [third, self.atk, self.tgt])
         self.assertEqual([r['quota'] for r in queue], [3, 3, 2])
-        game.run('UPDATE consorts SET rank=10 WHERE id=?', (self.tgt,))
+        game.run('UPDATE consorts SET rank=11 WHERE id=?', (self.tgt,))
         self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], third)
 
     def test_wrong_turn_does_not_claim_and_overquota_is_atomic(self):

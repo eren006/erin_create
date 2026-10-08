@@ -13,12 +13,13 @@ class PregnancyClockTests(unittest.TestCase):
     def conceive(self):
         game.run("UPDATE consorts SET pregnant_since=10,pregnancy_started_ts=100000,prenatal='{}' WHERE id=?",(self.atk,))
 
-    def test_exact_24_hours_and_idempotent(self):
+    def test_exact_pregnancy_hours_and_idempotent(self):
         self.conceive()
-        with patch.object(game.time,'time',return_value=186399),patch.object(game,'preterm_chance',return_value=0):game.resolve_births(10,False)
+        T = game.PREGNANCY_MIN_SECONDS
+        with patch.object(game.time,'time',return_value=100000+T-1),patch.object(game,'preterm_chance',return_value=0):game.resolve_births(10,False)
         self.assertEqual(game.q('SELECT COUNT(*) n FROM heirs',one=True)['n'],0)
         before=game.get_consort(self.atk)
-        with patch.object(game.time,'time',return_value=186400):
+        with patch.object(game.time,'time',return_value=100000+T):
             game.resolve_births(10,False)
             game.resolve_births(10,False)
         self.assertEqual(game.q('SELECT COUNT(*) n FROM heirs',one=True)['n'],1)
@@ -75,7 +76,8 @@ class PregnancyClockTests(unittest.TestCase):
 
     def test_progress_stages(self):
         self.conceive()
-        for elapsed,percent,stage in ((0,0,'初孕'),(8*3600,33,'安胎'),(16*3600,66,'待产'),(86400,100,'临盆')):
+        T = game.PREGNANCY_MIN_SECONDS
+        for elapsed,percent,stage in ((0,0,'初孕'),(T//3,33,'安胎'),(2*T//3,66,'待产'),(T,100,'临盆')):
             with patch.object(game.time,'time',return_value=100000+elapsed):
                 progress=game.pregnancy_progress(game.get_consort(self.atk))
             self.assertEqual(progress['percent'],percent)
@@ -106,11 +108,12 @@ class PregnancyClockTests(unittest.TestCase):
 
     def test_new_pregnancy_page_shows_process_and_due_time(self):
         self.conceive()
-        started=game.time.time()-8*3600
+        T = game.PREGNANCY_MIN_SECONDS
+        started=game.time.time()-T//3
         game.run('UPDATE consorts SET pregnancy_started_ts=? WHERE id=?',(started,self.atk))
-        with patch.object(game.time,'time',return_value=started+8*3600):
+        with patch.object(game.time,'time',return_value=started+T//3):
             page=self.client.get('/place/home').get_data(as_text=True)
-        for label in ('安胎·胎息渐稳','孕期进度 33%','16小时0分钟','预计临盆','安胎静养'):
+        for label in ('安胎·胎息渐稳','孕期进度 33%',f'{T*2//3//3600}小时0分钟','预计临盆','安胎静养'):
             self.assertTrue(label in page,label)
 
     def test_bedding_records_real_diagnosis_time(self):

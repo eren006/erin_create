@@ -131,6 +131,22 @@ class PrematureHeirTests(fixtures.unittest.TestCase):
         self.assertIsNone(game.get_heir(hid))
         self.assertTrue(game.q("SELECT 1 FROM birth_losses WHERE mother_id=? AND reason LIKE '%急惊风%'", (mother,), one=True))
 
+    def test_orphanage_death_rate_is_fifteen_percent_for_any_illness(self):
+        mother = self.player('母', 4)
+        self.assertEqual(game.HEIR_ILL_ORPHAN_DEATH, 0.15)
+        cold = self.sick(mother, 'cold', caretaker=0, health=100)
+        with patch.object(game.random, 'random', lambda: 0.14):      # 轻症也会夭折
+            game.heir_illness_tick(game.cur_day())
+        self.assertIsNone(game.get_heir(cold))
+        surv = self.sick(mother, 'cold', caretaker=0, health=100)
+        with patch.object(game.random, 'random', lambda: 0.16):
+            game.heir_illness_tick(game.cur_day())
+        self.assertIsNotNone(game.get_heir(surv))
+        view = game.heir_ill_outcomes(dict(health=100, caretaker_id=0))
+        self.assertEqual(dict(view)['夭折'], round((1 - game.HEIR_ILL_SEVERE_SHARE) * 15 + game.HEIR_ILL_SEVERE_SHARE * 20))      # 轻症 15%、重症 20%，不知道轻重时按占比加权
+        self.assertEqual(dict(game.heir_ill_outcomes(dict(health=100, caretaker_id=0), True))['夭折'], 20)
+        self.assertEqual(dict(game.heir_ill_outcomes(dict(health=100, caretaker_id=0), False))['夭折'], 15)
+
     def test_orphanage_severe_can_become_weak(self):
         mother = self.player('母', 4)
         hid = self.sick(mother, 'fright', caretaker=0, health=40)
@@ -144,11 +160,11 @@ class PrematureHeirTests(fixtures.unittest.TestCase):
         mother = self.player('母', 4)
         self.assertEqual(game.HEIR_ILL_ORPHAN_LIGHT_WEAK, 0.5)
         hid = self.sick(mother, 'cold', caretaker=0, health=100)
-        with patch.object(game.random, 'random', lambda: 0.49):
+        with patch.object(game.random, 'random', lambda: 0.64):      # 死亡线 0.15，病弱线 0.65
             game.heir_illness_tick(game.cur_day())
         self.assertEqual(game.get_heir(hid)['health_max'], 100 - game.HEIR_ILL_WEAK['cap'])
         hid2 = self.sick(mother, 'cold', caretaker=0, health=100)
-        with patch.object(game.random, 'random', lambda: 0.51):
+        with patch.object(game.random, 'random', lambda: 0.66):
             game.heir_illness_tick(game.cur_day())
         self.assertEqual(game.get_heir(hid2)['health_max'], 100)
 

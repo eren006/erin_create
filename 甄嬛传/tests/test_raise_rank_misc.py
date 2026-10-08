@@ -29,7 +29,7 @@ class RaiseRankMiscTests(unittest.TestCase):
         self.login(self.atk)
         before = game.get_consort(self.atk)['pregnancy_started_ts']
         self.client.post('/shop/use/cuisheng')
-        self.assertAlmostEqual(before - game.get_consort(self.atk)['pregnancy_started_ts'], 6 * 3600, delta=1)
+        self.assertAlmostEqual(before - game.get_consort(self.atk)['pregnancy_started_ts'], game.CUISHENG_HOURS * 3600, delta=1)
 
     def test_contraception_needs_two_births(self):
         self.login(self.atk)

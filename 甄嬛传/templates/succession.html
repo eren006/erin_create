@@ -9,7 +9,7 @@
   <tr><th>阿哥</th><th>年龄</th><th>抚养</th><th>圣眷</th><th>党羽</th><th>站队</th></tr>
   {% for r in board %}{% set h = r.h %}
   <tr>
-    <td style="font-family:var(--kai);font-size:17px">{{ heir_label(h) }}{% if h.title %}<span class="muted" style="font-family:var(--song)">（{{ h.title }}）</span>{% endif %}{% if h.status == 'crown' %} <b>太子</b>{% endif %}</td>
+    <td style="font-family:var(--kai);font-size:17px">{{ heir_label(h) }}{% if h.title %}<span class="muted" style="font-family:var(--song)">（{{ h.title }}）</span>{% endif %}{% if h.status == 'crown' %} <b>太子</b>{% endif %}{% if r.allies %}<br><span class="muted" style="font-family:var(--song);font-size:12px">助力：{% for a in r.allies %}{{ heir_label(a) }}{{ '、' if not loop.last }}{% endfor %}（{{ r.allies|length }}/{{ ALLY_MAX }}）</span>{% endif %}</td>
     <td>{{ heir_age_years(h) }} 岁</td>
     <td>{{ dn(r.cared_by) if r.cared_by else '皇嗣养育所' }}</td>
     <td>{{ r.standing }}</td>
@@ -66,7 +66,7 @@
 {% for h in orphans %}
 <div class="sheet" style="margin:8px 0">
   <b style="font-family:var(--kai)">{{ heir_label(h) }}</b>　{{ heir_age_years(h) }} 岁　学问 {{ h.study }}　骑射 {{ h.riding }}　品行 {{ h.virtue }}　容貌 {{ h.appearance }}{% if h.temperament %}　气质 {{ h.temperament }}{% endif %}
-  <span class="muted">由乳母和师傅照料，皇子须妃位以上、公主须嫔位以上才可申请领养；无申请时继续留所。</span>
+  <span class="muted">由乳母和师傅照料，皇子须贵嫔位以上、公主须嫔位以上才可申请领养；无申请时继续留所。</span>
   {% if h.id in my_claims %}<span class="muted">你已求过，{{ HEIR_CLAIM_WAIT_HOURS }} 小时内皇上就会定夺。</span>
   {% elif c.rank >= (6 if h.gender == '皇子' else 5) %}<form method="post" action="{{ url_for('succession_claim', hid=h.id) }}" style="display:inline"><button class="plain">申请领养（1 精力）</button></form>
   {% else %}<span class="muted">{{ '妃' if h.gender == '皇子' else '嫔' }}位以上才能求。</span>{% endif %}
@@ -99,7 +99,7 @@
   {% if c.rank >= SUCCESSION_MOVES.frame.min_rank %}
   <form method="post" action="{{ url_for('succession_move') }}" class="row">
     <input type="hidden" name="move" value="frame">
-    <b>构陷皇子</b>（{{ SUCCESSION_MOVES.frame.silver }} 两，妃位以上）
+    <b>构陷皇子</b>（{{ SUCCESSION_MOVES.frame.silver }} 两，九昭位以上）
     <select name="target_id" aria-label="构陷谁">{% for r in board if not r.mine %}<option value="{{ r.h.id }}">{{ heir_label(r.h) }}</option>{% endfor %}</select>
     <button class="plain">安排罪证</button><span class="muted">查实就圈禁出局、抚养人降一级；没坐实有两成可能被查出是你，信任、德行都要掉。</span>
   </form>

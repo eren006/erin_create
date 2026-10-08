@@ -52,16 +52,18 @@ class BeddingRoundsTests(unittest.TestCase):
         game.run('UPDATE game_state SET event_started=0')
         self.assertEqual(game.bedding_round(1,'test'),[])
 
-    def test_schedule_every_hour_for_bedding_and_promotion(self):
-        self.assertEqual(game.BED_ROUND_HOURS,tuple(range(24)))
+    def test_schedule_half_hour_for_bedding_and_hourly_for_promotion(self):
+        self.assertEqual(len(game.BED_ROUND_SLOTS),48)
         self.assertEqual(game.PACE_ROUND_HOURS,tuple(range(24)))
         self.assertEqual(game.latest_pace_slot(datetime(2026,10,5,7,30,tzinfo=game.TZ)),'2026-10-05:07')
-        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,7,30,tzinfo=game.TZ)),'2026-10-05:07')
-        for hour in game.BED_ROUND_HOURS:
-            now=datetime(2026,10,5,hour,0,tzinfo=game.TZ)
-            self.assertEqual(game.latest_bedding_slot(now),f'2026-10-05:{hour:02}')
-        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,0,30,tzinfo=game.TZ)),'2026-10-05:00')
-        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,23,30,tzinfo=game.TZ)),'2026-10-05:23')
+        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,7,30,tzinfo=game.TZ)),'2026-10-05:0730')
+        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,7,29,59,tzinfo=game.TZ)),'2026-10-05:0700')
+        for hour,minute in game.BED_ROUND_SLOTS:
+            now=datetime(2026,10,5,hour,minute,tzinfo=game.TZ)
+            self.assertEqual(game.latest_bedding_slot(now),f'2026-10-05:{hour:02}{minute:02}')
+        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,0,29,tzinfo=game.TZ)),'2026-10-05:0000')
+        self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,23,59,tzinfo=game.TZ)),'2026-10-05:2330')
+        self.assertEqual([game.bed_slot_index(k) for k in ('2026-10-05:0000','2026-10-05:0030','2026-10-05:2330')],[0,1,47])
 
     def test_direct_bedding_also_respects_cap(self):
         with patch.object(game.random,'random',return_value=.99999):
@@ -85,14 +87,14 @@ class BeddingRoundsTests(unittest.TestCase):
                 clock.now.return_value=now
                 game.maybe_settle()
                 settle.assert_not_called()
-                bed.assert_called_once_with(1,f'2026-10-05:{hour:02}')
+                bed.assert_called_once_with(1,f'2026-10-05:{hour:02}00')
         now=datetime(2026,10,6,0,0,tzinfo=game.TZ)      # 0 点：这一轮同时是日结算，换新一天
         with patch.object(game,'datetime') as clock, patch.object(game,'bedding_round') as bed, patch.object(game,'settle_day') as settle:
             clock.now.return_value=now
             game.maybe_settle()
-            settle.assert_called_once_with(bed_key='2026-10-06:00')
-            bed.assert_called_once_with(1,'2026-10-06:00')
-            game.run("UPDATE game_state SET last_settle_date='2026-10-06',last_bed_round_key='2026-10-06:00',day=2")
+            settle.assert_called_once_with(bed_key='2026-10-06:0000')
+            bed.assert_called_once_with(1,'2026-10-06:0000')
+            game.run("UPDATE game_state SET last_settle_date='2026-10-06',last_bed_round_key='2026-10-06:0000',day=2")
         with patch.object(game,'datetime') as clock:
             clock.now.return_value=now
             with patch.object(game,'do_bedding') as effect:
@@ -100,7 +102,7 @@ class BeddingRoundsTests(unittest.TestCase):
                 effect.assert_not_called()
 
     def test_queen_eligible_but_pregnant_and_ill_excluded(self):
-        game.run('UPDATE consorts SET rank=9 WHERE id=?',(self.atk,))
+        game.run('UPDATE consorts SET rank=11 WHERE id=?',(self.atk,))
         self.assertTrue(game.eligible_bedding(game.get_consort(self.atk),10))
         game.run('UPDATE consorts SET pregnant_since=9 WHERE id=?',(self.atk,))
         self.assertFalse(game.eligible_bedding(game.get_consort(self.atk),10))

@@ -42,7 +42,7 @@ class EmptyCourtTests(unittest.TestCase):
         self.assertEqual(self.row(hid)['study'], before + 2)
         game.heir_adult_tick(10)
         self.assertEqual(self.row(hid)['adult_day'], 10)
-        self.assertEqual(game.heir_age_years(self.row(hid), 10), 14)
+        self.assertEqual(game.heir_age_years(self.row(hid), 10), 7 * game.AGE_YEARS_PER_DAY)      # 早已过了十四岁
 
     def test_eligible_other_player_adopts_at_settlement(self):
         hid = self.heir(self.tgt, caretaker=0, born=9, zhuazhou='book')

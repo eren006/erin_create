@@ -39,11 +39,11 @@ class HelpTests(unittest.TestCase):
         self.assertIn(f"圣宠 {game.PROMOTE_FAVOR[8]}，德行 {game.PROMOTE_VIRTUE[8]}", page)
         self.assertIn(f"精力每天 {game.ENERGY_MAX} 点", page)
         self.assertIn(f"每一届最多送 {game.FAMILY_MAX_MEMBERS} 位", page)
-        self.assertIn('23:00', page)
+        self.assertIn('23:30', page)
         from unittest.mock import patch
-        with patch.object(game, 'BED_COUNT_WEIGHTS', ((1, 0.1), (2, 0.6), (3, 0.3))):      # 测试默认压成固定 2 位，这里换回正式分布
+        with patch.object(game, 'BED_COUNT_WEIGHTS', ((0, 0.2), (1, 0.5), (2, 0.3))):      # 测试默认压成固定 2 位，这里换回正式分布
             page = self.page()
-        for part in ('10% 翻 1 位', '60% 翻 2 位', '30% 翻 3 位'): self.assertIn(part, page)
+        for part in ('50% 翻 1 位', '30% 翻 2 位', '20% 概率皇上这一轮不翻牌'): self.assertIn(part, page)
 
     def test_numbers_follow_when_the_game_changes(self):
         from unittest.mock import patch

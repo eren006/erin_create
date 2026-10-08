@@ -47,17 +47,17 @@ class FavorCareTests(unittest.TestCase):
         c=game.get_consort(self.atk);self.assertEqual(c['ill_treatment'],1)
         self.assertEqual(c['silver'],silver)
         game.run('UPDATE consorts SET health=20 WHERE id=?',(self.atk,))
-        self.cure(6)
+        self.cure(game.ILL_CURE_HOURS)
         self.assertFalse(game.get_consort(self.atk)['ill_day'])
         self.assertEqual(game.get_consort(self.atk)['health'],50)
 
-    def test_low_treated_recovers_six_hours_after_treatment(self):
+    def test_low_treated_recovers_after_cure_hours(self):
         self.set_care(0);game.fall_ill(self.atk,10,'风寒')
         self.client.post(f'/treat/{self.atk}')
         with patch.object(game.random,'random',return_value=.99):
             game.resolve_illness_crises(11)          # 请了太医：夜里不掷生死
             self.assertTrue(game.get_consort(self.atk)['ill_day'])
-        self.cure(6)
+        self.cure(game.ILL_CURE_HOURS)
         self.assertFalse(game.get_consort(self.atk)['ill_day'])
 
     def test_untreated_low_risk_and_sister_paid_treatment(self):
@@ -69,7 +69,7 @@ class FavorCareTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['ill_treatment'],1)
         with patch.object(game.random,'random',return_value=.99):game.resolve_illness_crises(12)
         self.assertEqual(game.get_consort(self.atk)['status'],'normal')      # 请了太医的不会病死
-        self.cure(6)
+        self.cure(game.ILL_CURE_HOURS)
         self.assertFalse(game.get_consort(self.atk)['ill_day'])
 
     def test_untreated_low_dies_next_night(self):
@@ -82,7 +82,7 @@ class FavorCareTests(unittest.TestCase):
         with patch.object(game.random,'random',return_value=.79):game.resolve_illness_crises(11)
         self.assertEqual(game.get_consort(self.atk)['ill_care'],'hot')      # 重新得宠，升级成免费诊治
         self.assertEqual(game.get_consort(self.atk)['ill_treatment'],1)
-        self.cure(6)
+        self.cure(game.ILL_CURE_HOURS)
         self.assertFalse(game.get_consort(self.atk)['ill_day'])
 
     def test_income_streak_grace_then_recovers(self):
@@ -202,3 +202,38 @@ class FavorCareTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['rank'],4,'嫔降为贵人')
         self.assertEqual(game.get_consort(guis[0])['rank'],3,'贵人满员，圣宠最低的被挤下去')
         self.assertEqual(sum(1 for cid in guis+[self.atk] if game.get_consort(cid)['rank']==4),game.RANK_SLOTS[4])
+
+
+class UntreatedIllnessTickTests(FavorCareTests):
+    """没请太医的病：病倒满 ILL_UNTREATED_HOURS 小时就判，不等夜里结算"""
+
+    def test_untreated_judged_after_six_hours_not_before(self):
+        self.set_care(0)
+        game.run('UPDATE consorts SET blessing=0 WHERE id=?', (self.atk,))
+        game.fall_ill(self.atk, 10, '风寒')
+        t0 = game.get_consort(self.atk)['ill_since_ts']
+        with patch.object(game.random, 'random', return_value=.99), patch.object(game, 'now_ts', return_value=t0 + game.ILL_UNTREATED_HOURS * 3600 - 5):
+            game.illness_untreated_tick()
+        self.assertTrue(game.get_consort(self.atk)['ill_day'], '没满时间不判')
+        with patch.object(game.random, 'random', return_value=.0), patch.object(game, 'now_ts', return_value=t0 + game.ILL_UNTREATED_HOURS * 3600 + 5):
+            game.illness_untreated_tick()
+        c = game.get_consort(self.atk)
+        self.assertEqual((c['status'], c['ill_day']), ('normal', 0), '熬过去了，病好了')
+
+    def test_untreated_can_die_at_the_six_hour_mark(self):
+        self.set_care(0)
+        game.run('UPDATE consorts SET blessing=0 WHERE id=?', (self.atk,))
+        game.fall_ill(self.atk, 10, '风寒')
+        t0 = game.get_consort(self.atk)['ill_since_ts']
+        with patch.object(game.random, 'random', return_value=.999), patch.object(game, 'now_ts', return_value=t0 + game.ILL_UNTREATED_HOURS * 3600 + 5):
+            game.illness_untreated_tick()
+        self.assertEqual(game.get_consort(self.atk)['status'], 'dead')
+
+    def test_treated_ones_are_left_to_the_cure_tick(self):
+        self.set_care(0)
+        game.fall_ill(self.atk, 10, '风寒')
+        self.client.post(f'/treat/{self.atk}')
+        t0 = game.get_consort(self.atk)['ill_since_ts']
+        with patch.object(game.random, 'random', return_value=.999), patch.object(game, 'now_ts', return_value=t0 + 10 * 3600):
+            game.illness_untreated_tick()
+        self.assertEqual(game.get_consort(self.atk)['status'], 'normal')

@@ -17,13 +17,38 @@ class OldAgeTests(unittest.TestCase):
 
     def test_higher_lifespan_reduces_same_age_death_risk(self):
         game.run('UPDATE consorts SET age_months=648, health=50, life_loss_months=0 WHERE id=?', (self.atk,))
-        with patch.object(game.random, 'random', return_value=0.02):
+        with patch.object(game.random, 'random', return_value=0.02 * game.AGE_YEARS_PER_DAY / game.OLD_AGE_YEARS_PER_DAY - 0.005):
             game.old_age_tick(game.cur_day())
         self.assertEqual(game.get_consort(self.atk)['status'], 'normal')
         game.run('UPDATE consorts SET life_loss_months=60 WHERE id=?', (self.atk,))
-        with patch.object(game.random, 'random', return_value=0.02):
+        with patch.object(game.random, 'random', return_value=0.02 * game.AGE_YEARS_PER_DAY / game.OLD_AGE_YEARS_PER_DAY - 0.005):
             game.old_age_tick(game.cur_day())
         self.assertEqual(game.get_consort(self.atk)['status'], 'dead')
+
+    def test_posthumous_honor_only_for_pin_and_above_or_favored_guiren(self):
+        day = game.cur_day()
+        def eligible(rank, tier):
+            game.run("UPDATE consorts SET rank=? WHERE id=?", (rank, self.atk))
+            with patch.object(game, 'favor_care_tier', return_value=tier):
+                return game.posthumous_eligible(game.get_consort(self.atk), day)
+        self.assertTrue(eligible(5, 'normal'))       # 嫔
+        self.assertTrue(eligible(8, 'low'))          # 贵妃
+        self.assertTrue(eligible(4, 'hot'))          # 贵人，特别受宠
+        self.assertFalse(eligible(4, 'normal'))      # 贵人，不算受宠
+        self.assertFalse(eligible(3, 'hot'))         # 常在，再受宠也没有
+        self.assertFalse(eligible(1, 'hot'))
+
+    def test_old_age_death_gives_honor_only_to_the_eligible(self):
+        day = game.cur_day()
+        game.run("UPDATE consorts SET rank=4, trust=80, age_months=9999, title='' WHERE id=?", (self.atk,))
+        with patch.object(game, 'favor_care_tier', return_value='normal'):
+            game.old_age_tick(day)
+        self.assertEqual(game.get_consort(self.atk)['status'], 'dead')
+        self.assertEqual(game.get_consort(self.atk)['rank'], 4, '普通贵人老死没有追封')
+        game.run("UPDATE consorts SET status='normal', death_day=0, rank=4, trust=80, age_months=9999 WHERE id=?", (self.atk,))
+        with patch.object(game, 'favor_care_tier', return_value='hot'):
+            game.old_age_tick(day)
+        self.assertEqual(game.get_consort(self.atk)['rank'], 5, '受宠的贵人老死追封一级')
 
     def test_folded_life_does_not_change_age(self):
         game.run('UPDATE consorts SET age_months=360, life_loss_months=12 WHERE id=?', (self.atk,))

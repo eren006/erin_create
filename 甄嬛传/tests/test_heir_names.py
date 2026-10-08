@@ -14,7 +14,7 @@ class HeirNameTests(unittest.TestCase):
 
     def birth(self, gender='皇子'):
         game.run("UPDATE consorts SET pregnant_since=10,pregnancy_started_ts=100000,prenatal='{}' WHERE id=?", (self.atk,))
-        with patch.object(game.time, 'time', return_value=186400), \
+        with patch.object(game.time, 'time', return_value=186400), patch.object(game, 'TWIN_CHANCE', 0), \
              patch.object(game.random, 'choice', side_effect=lambda seq: gender if seq == ['皇子', '公主'] else seq[0]):
             game.resolve_births(10, False)
         return game.q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id DESC", (self.atk,), one=True)

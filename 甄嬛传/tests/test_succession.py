@@ -62,7 +62,7 @@ class SuccessionTests(unittest.TestCase):
     # ── 圣眷公式与党羽 ────────────────────────────────────────────────────────
 
     def test_standing_formula(self):
-        game.run('UPDATE consorts SET rank=6, trust=50 WHERE id=?', (self.atk,))   # 妃 +10，信任 50 × 0.1 = 5
+        game.run('UPDATE consorts SET rank=7, trust=50 WHERE id=?', (self.atk,))   # 妃 +10，信任 50 × 0.1 = 5
         hid = self.prince(self.atk, study=100, riding=50, virtue=100, favor=7)
         self.assertEqual(game.heir_standing(self.row(hid)), 30 + 10 + 30 + 7 + 10 + 5)
 
@@ -80,15 +80,15 @@ class SuccessionTests(unittest.TestCase):
         game.run('UPDATE consorts SET trust=0 WHERE id=?', (queen,))
         npc = self.prince(0, caretaker=queen, study=0, riding=0, virtue=0, favor=0, npc_key='fourth')
         mine = self.prince(0, caretaker=0, study=0, riding=0, virtue=0, favor=0)
-        game.run('UPDATE consorts SET rank=9 WHERE id=?', (queen,))
+        game.run('UPDATE consorts SET rank=10 WHERE id=?', (queen,))
         self.assertEqual(game.heir_standing(self.row(npc)), game.NPC_CARETAKER_BONUS_CAP)
-        boss = self.player('丙', rank=8)
+        boss = self.player('丙', rank=10)
         game.run('UPDATE consorts SET trust=0 WHERE id=?', (boss,))
         game.run('UPDATE heirs SET caretaker_id=? WHERE id=?', (boss, mine))
         self.assertEqual(game.heir_standing(self.row(mine)), 20, '玩家抚养的照实给：皇贵妃 +20')
 
     def test_a_well_raised_player_prince_can_outrank_the_system_princes(self):
-        game.run('UPDATE consorts SET rank=6, trust=40 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET rank=7, trust=40 WHERE id=?', (self.atk,))
         npc = self.prince(0, caretaker=0, study=70, riding=65, virtue=70, favor=500, npc_key='fourth')   # 功绩再高也只算 15
         mine = self.prince(self.atk, study=70, riding=65, virtue=70, favor=60)
         self.assertGreater(game.heir_standing(self.row(mine)), game.heir_standing(self.row(npc)))
@@ -141,7 +141,7 @@ class SuccessionTests(unittest.TestCase):
         self.seed()
         fourth = game.q("SELECT * FROM heirs WHERE npc_key='fourth'", one=True)
         game.run('UPDATE consorts SET trust=1, rank=5 WHERE id=?', (self.atk,))
-        boss = self.player('丙', rank=8)
+        boss = self.player('丙', rank=game.RANK_GUIFEI)
         game.run('UPDATE consorts SET trust=99 WHERE id=?', (boss,))
         for cid in (self.atk, boss):
             game.run('INSERT INTO heir_claims(consort_id,heir_id,day) VALUES(?,?,?)', (cid, fourth['id'], 1))
@@ -361,7 +361,7 @@ class SuccessionTests(unittest.TestCase):
         self.assertEqual(self.row(a)['status'], 'crown')
 
     def test_crown_deposed_when_favor_collapses(self):
-        game.run('UPDATE consorts SET rank=6, trust=0 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET rank=7, trust=0 WHERE id=?', (self.atk,))
         a = self.prince(self.atk, age_years=13, favor=0, status='crown', study=0, riding=0, virtue=0)
         rank0 = game.get_consort(self.atk)['rank']
         game.heir_court_tick(21)   # 圣眷 = 0 + 妃位加成 10 = 10 < 50

@@ -13,7 +13,25 @@
 {% endblock %}
 {% block body %}
 <p>本届随机基础属性：{% for k,v in entry_stat_roll(session.uid).items() %}{{ STAT_NAMES[k] }} {{ v }}　{% endfor %}。先抽天资，再选家族与性格调整。</p>
-{% if not fam %}
+{% if not fam and offers %}
+<h2>新帝登基　挑一户人家</h2>
+<p class="muted">新帝登基，天下重新选秀。各家的名望都留在各家，这一届从下面三户人家里挑一户，家里的女儿将入宫。往届留下的家族带着当年攒下的名望和家底；名望高的家族，女儿殿选最好能直接封到嫔位。</p>
+<form method="post">
+  <input type="hidden" name="step" value="pick_family">
+  <div class="pick">
+  {% for o in offers %}
+    <label><input type="radio" name="offer_id" value="{{ o.id }}" required {{ 'checked' if loop.first }}>
+      <b>{{ o.surname }}氏</b>　{{ FAMILIES[o.tier].name }}<br>{{ o.background }}<br>
+      {% if o.from_pool %}<span>往届留下的家族 · 名望 {{ o.prestige }}（{{ prestige_label(o.prestige) }}）</span>{% else %}<span>新立的家族 · 名望 0</span>{% endif %}<br>
+      <span class="muted">{% for s, v in FAMILIES[o.tier].mods.items() %}{{ STAT_NAMES[s] }}{{ '%+d'|format(v) }} {% endfor %}起始银子 {{ FAMILIES[o.tier].silver }}　殿选 {{ '%+d'|format(FAMILIES[o.tier].dx) }}</span>
+      {% if o.prestige >= 20 %}<br><span class="muted">名望加成：殿选 +{{ [o.prestige // 20, 10] | min }}，起始银子 +{{ [o.prestige, 100] | min }}</span>{% endif %}
+      {% if guiren_chance(o.prestige) > 0 %}<br><span style="color:var(--good)">殿选只到常在时 {{ (guiren_chance(o.prestige) * 100)|round|int }}% 概率提到贵人</span>{% endif %}
+      {% if pin_chance(o.prestige) > 0 %}<br><span style="color:var(--good)">殿选到顶时 {{ (pin_chance(o.prestige) * 100)|round|int }}% 概率直接封嫔</span>{% endif %}</label>
+  {% endfor %}
+  </div>
+  <button>就这一户</button>
+</form>
+{% elif not fam %}
 <p class="muted">新帝由太子登基，后宫全由新人建立。每届首次创建有 {{ (EAST_PALACE_CHANCE * 100)|int }}% 概率成为东宫旧人，初始圣宠 +{{ EAST_PALACE_FAVOR }}、信任 +{{ EAST_PALACE_TRUST }}，不直接晋位；同届重建不重抽。</p>
 <h2>立家</h2>
 <p class="muted">一个账号就是一个家族。姓氏和门第在这里一次定下，以后不能改；往后每位入宫的女儿都姓这个姓、有这份出身。人没了，家里送下一位，名字、宿怨、宫人、孩子都能接上。</p>

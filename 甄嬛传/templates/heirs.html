@@ -3,7 +3,7 @@
 {% block body %}
 <h2>皇嗣</h2>
 <p class="muted">本届字辈：皇子「{{ cur_gen['皇子'] }}」、公主「{{ cur_gen['公主'] }}」。孩子出生时皇上随机点三个字，母亲三选一，名字就是字辈加这个字。</p>
-<p class="muted">侍寝后有机会怀上龙胎，诊出喜脉后满24小时自动临盆，孕中可查看进度、安胎和胎教。诞下皇子的母亲在有名额时晋一级位分。孕中要当心，宫里不是人人都盼着你平安生产。</p>
+<p class="muted">侍寝后有机会怀上龙胎，诊出喜脉后满{{ PREGNANCY_HOURS }}小时自动临盆，孕中可查看进度、安胎和胎教。诞下皇子的母亲在有名额时晋一级位分。孕中要当心，宫里不是人人都盼着你平安生产。</p>
 {% if rows %}
 <style>
 .heirs{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr))}
@@ -39,6 +39,12 @@
       {% if pe %}<dt>性格</dt><dd><span title="{{ pe.effect }}">{{ pe.name }}·{{ pe.tag }}</span><br><span class="muted" style="font-size:12px">{{ pe.text }}</span></dd>{% endif %}
       {% if h.premature %}<dt>体质</dt><dd>早产体弱：体质长得慢，也更容易生病</dd>{% endif %}
       <dt>情分</dt><dd>{{ h.caretaker_affinity }}{% if fo and fo.id != h.mother_id %}<span class="muted">（生母 {{ h.mother_affinity }}）</span>{% endif %}</dd>
+      {% set bonds = heir_bonds_of(h.id) %}{% if bonds %}<dt>交好</dt><dd>{% for o, b, tier in bonds[:6] %}{{ heir_label(o) }}<span class="muted">（{{ tier }} {{ b }}）</span>{{ '、' if not loop.last }}{% endfor %}</dd>{% endif %}
+      {% set lead = ally_leader_id(h.id) %}{% set alls = allies_of(h.id) %}
+      {% if lead %}<dt>阵营</dt><dd>助力于 {{ heir_label(get_heir(lead)) }}{% if get_heir(lead).caretaker_id == c.id or h.caretaker_id == c.id %}
+        <form method="post" action="{{ url_for('heir_ally_leave', hid=h.id) }}" style="display:inline"><button class="plain" title="{{ '退出后 3 天内不能再投靠别处' if h.caretaker_id == c.id else '把他请出阵营' }}">{{ '退出阵营' if h.caretaker_id == c.id else '请出阵营' }}</button></form>{% endif %}</dd>
+      {% elif alls %}<dt>阵营</dt><dd>{{ alls|length }}/{{ ALLY_MAX }} 位助力：{% for a in alls %}{{ heir_label(a) }}{{ '、' if not loop.last }}{% endfor %}
+        {% if h.caretaker_id == c.id %}{% for a in alls %}<form method="post" action="{{ url_for('heir_ally_leave', hid=a.id) }}" style="display:inline"><button class="plain" title="把{{ heir_label(a) }}请出阵营">请出{{ heir_label(a) }}</button></form>{% endfor %}{% endif %}</dd>{% endif %}
       {% if h.temperament %}<dt>气质</dt><dd><span title="{{ temper_desc(h.temperament) }}">{{ h.temperament }}</span></dd>{% endif %}
     </dl>
     {% if h.illness %}{% set ill = HEIR_ILLNESSES[h.illness] %}
@@ -70,6 +76,17 @@
       </details>
       {% else %}<p class="muted" style="font-size:13px">{{ CAREER_MIN_AGE }} 岁起可以替他选志向：夺嫡，或是做艺术家、科学家、皇商。</p>{% endif %}
     {% endif %}
+    {% if h.caretaker_id == c.id and h.gender == '皇子' and not ally_leader_id(h.id) and not allies_of(h.id) %}{% set cands = rows|selectattr('id', 'ne', h.id)|list %}
+      {% set opts = [] %}{% for o in cands if ally_block(h, o) is none %}{% set _ = opts.append(o) %}{% endfor %}
+      {% if opts %}<form method="post" action="{{ url_for('heir_ally_join', hid=h.id) }}" class="row" style="gap:6px;margin:4px 0">
+        <select name="leader_id" aria-label="助力谁">{% for o in opts %}<option value="{{ o.id }}">{{ heir_label(o) }}（现有 {{ allies_of(o.id)|length }}/{{ ALLY_MAX }} 位助力）</option>{% endfor %}</select>
+        <button class="plain" title="交情到「至交」的皇子，可以投靠对方的夺嫡阵营：对方圣眷和党羽上涨，你的孩子从此不再争储位；一个阵营最多 {{ ALLY_MAX }} 位助力者；退出后 3 天内不能再投靠别处">投靠阵营</button></form>{% endif %}
+    {% endif %}
+    {% if h.caretaker_id == c.id and not h.adult_day and heir_age_years(h) >= HEIR_PLAY_MIN_AGE %}
+      <form method="post" action="{{ url_for('heir_play', hid=h.id) }}" class="row" style="gap:6px;margin:4px 0">
+        <select name="target_id" aria-label="找谁玩">{% for o in rows if o.id != h.id and not o.adult_day and heir_age_years(o) >= HEIR_PLAY_MIN_AGE %}<option value="{{ o.id }}">{{ heir_label(o) }}</option>{% endfor %}</select>
+        <button class="plain" {{ 'disabled' if c.energy < HEIR_PLAY_ENERGY }} title="带他去找别的皇子公主玩，交情涨到「玩伴」（{{ HEIR_BOND_FRIEND }}）「至交」（{{ HEIR_BOND_CLOSE }}）；{{ HEIR_PLAY_ENERGY }} 精力，每天最多 {{ HEIR_PLAY_DAILY }} 回；{{ HEIR_BOND_DECAY_DAYS }} 天不玩交情会淡；玩伴会切磋长本事，至交还互相助考校">去找玩伴</button></form>
+    {% endif %}
     {% if h.caretaker_id == c.id %}<form method="post" action="{{ url_for('heir_nickname', hid=h.id) }}" class="row" style="gap:6px"><input name="nickname" value="{{ h.nickname }}" maxlength="{{ NICKNAME_MAX_LEN }}" placeholder="乳名（最多 {{ NICKNAME_MAX_LEN }} 字）" aria-label="乳名" style="width:9em"><button class="plain" title="养在自己宫里的孩子可以起乳名，会显示在名字后的括号里；留空清掉">{{ '改乳名' if h.nickname else '起乳名' }}</button></form>{% endif %}
     {% if h.mother_id == c.id and not h.name %}{% set gen = h.gen_word or cur_gen[h.gender] %}
       <div class="muted" style="font-size:13px;margin-bottom:4px">字辈「{{ gen }}」，皇上点了三个字，选一个：</div>
@@ -82,7 +99,7 @@
         {% if a.waiting_on %}<div class="muted">已托付给{{ dn(a.waiting_on) }}，等她点头。</div>
         {% elif targets_for.get(h.id) %}<form method="post" action="{{ url_for('heir_entrust', hid=h.id) }}" class="row">
           <select name="target_id" aria-label="托付给">{% for t in targets_for.get(h.id) %}<option value="{{ t.id }}">{{ dn(t) }}</option>{% endfor %}</select>
-          <button class="plain" title="周岁抓周前，生母位分不够的，孩子要抱给{{ raise_rank_name(h) }}以上抚养（皇子须妃位以上，公主须嫔位以上）。趁早托付给相熟的姐妹，否则进入皇嗣养育所。">托付</button></form>
+          <button class="plain" title="周岁抓周前，生母位分不够的，孩子要抱给{{ raise_rank_name(h) }}以上抚养（皇子须贵嫔位以上，公主须嫔位以上）。趁早托付给相熟的姐妹，否则进入皇嗣养育所。">托付</button></form>
         {% else %}<div class="muted">周岁前可托付给相熟的{{ raise_rank_name(h) }}位以上姐妹（好感 ≥ 40）。</div>{% endif %}
       {% endif %}
       {% if a.reply %}<form method="post" action="{{ url_for('heir_entrust_reply', hid=h.id) }}" class="row">
@@ -105,7 +122,7 @@
       </div>{% endif %}
       {% if a.raise %}<form method="post" action="{{ url_for('heir_raise', hid=h.id) }}" class="row" style="margin:4px 0"><input type="hidden" name="back" value="heirs">
         {% for k, r in HEIR_RAISE.items() if not (k == 'ride' and h.gender == '公主') and not (k == 'ride_girl' and h.gender == '皇子') and not (k == 'career' and not h.career) %}
-        <button name="opt" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'raise:' ~ h.id) or c.silver < r.get('silver', 0) or (r.get('looks') and h.appearance >= 100) or (r.get('career') and h.career_skill >= 100) }}{% if r.get('looks') %} title="容貌 +{{ r.looks }}，抚养人容貌 ≥{{ HEIR_GROOM_BEAUTY_LINE }} 时 +{{ r.looks_beauty }}"{% endif %}>{{ career_view(h).train if k == 'career' else r.name }}{% if r.get('silver') %}（{{ r.silver }} 两）{% endif %}</button>
+        <button name="opt" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'raise:' ~ h.id) >= HEIR_RAISE_DAILY or c.silver < r.get('silver', 0) or (r.get('looks') and h.appearance >= 100) or (r.get('career') and h.career_skill >= 100) }}{% if r.get('looks') %} title="容貌 +{{ r.looks }}，抚养人容貌 ≥{{ HEIR_GROOM_BEAUTY_LINE }} 时 +{{ r.looks_beauty }}"{% endif %}>{{ career_view(h).train if k == 'career' else r.name }}{% if r.get('silver') %}（{{ r.silver }} 两）{% endif %}</button>
         {% endfor %}</form>{% endif %}
       {% if a.can_ban %}<form method="post" action="{{ url_for('heir_ban', hid=h.id) }}" class="row" style="display:inline"><button class="plain">{{ '允许探视' if h.visit_banned else '不许探视' }}</button></form>{% endif %}
       {% if a.courtship %}{% set cs = a.courtship %}

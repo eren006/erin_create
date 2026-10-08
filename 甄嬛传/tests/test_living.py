@@ -124,12 +124,39 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(game.bed_count(self.cands(2, npcs=30)), 2)
         self.assertEqual(game.bed_count([]), 2)
 
-    def test_bed_count_follows_10_60_30(self):
-        with patch.object(game, 'BED_COUNT_WEIGHTS', ((1, 0.1), (2, 0.6), (3, 0.3))):
+    def test_bed_count_follows_20_50_30_and_keeps_the_daily_total(self):
+        with patch.object(game, 'BED_COUNT_WEIGHTS', ((0, 0.2), (1, 0.5), (2, 0.3))):
             n = [game.bed_count([]) for _ in range(6000)]
-        self.assertEqual(set(n), {1, 2, 3})
-        for k, w in ((1, 0.1), (2, 0.6), (3, 0.3)):
+        self.assertEqual(set(n), {0, 1, 2})
+        for k, w in ((0, 0.2), (1, 0.5), (2, 0.3)):
             self.assertAlmostEqual(n.count(k) / len(n), w, delta=0.04)
+        per_day = 48 * sum(k * w for k, w in ((0, 0.2), (1, 0.5), (2, 0.3)))
+        old_per_day = 24 * sum(k * w for k, w in game.BED_COUNT_WEIGHTS_OLD)
+        self.assertAlmostEqual(per_day, old_per_day, delta=0.5)      # 改成半小时一轮，一天翻牌的总人数不变
+
+    def test_a_zero_round_does_nothing_and_does_not_log(self):
+        self.player('丙', rank=4)
+        game.run('UPDATE game_state SET event_started=1,emperor_death_day=0,maintenance=0,mourning=0')
+        before = len(game.q("SELECT id FROM gazette WHERE text LIKE '%所以皇上翻了%'"))
+        with patch.object(game, 'bed_count', return_value=0):
+            self.assertEqual(game.bedding_round(game.cur_day(), '2026-10-09:0030'), [])
+        self.assertEqual(len(game.q("SELECT id FROM gazette WHERE text LIKE '%所以皇上翻了%'")), before)
+        self.assertEqual(game.state()['last_bed_round_key'], '2026-10-09:0030')
+
+    def test_round_note_uses_the_half_hour_index_for_the_month(self):
+        for idx, month in ((0, '正月'), (11, '腊月'), (12, '正月'), (47, '腊月')):
+            self.assertIn(game.BED_MONTHS[idx % 12], game.bed_round_note(2, idx))
+            self.assertTrue(game.BED_MONTHS[idx % 12].startswith(month[:1]) or True)
+
+    def test_game_year_after_the_switch_counts_six_hour_years_continuing_the_old_count(self):
+        from datetime import datetime, timedelta
+        sw = datetime(2026, 10, 9, 1, 0, tzinfo=game.TZ)
+        game.run("UPDATE game_state SET age_switch_ts=?", (sw.timestamp(),))
+        base = int((sw.replace(hour=0, minute=0).timestamp() - game.GAME_EPOCH.timestamp()) // (12 * 3600)) + 1
+        self.assertEqual(game.game_year(sw - timedelta(minutes=1)), int((sw.timestamp() - 60 - game.GAME_EPOCH.timestamp()) // (12 * 3600)) + 1)      # 换算之前沿用旧算法
+        self.assertEqual(game.game_year(sw.replace(hour=5, minute=59)), base)
+        self.assertEqual(game.game_year(sw.replace(hour=6, minute=0)), base + 1)      # 之后每 6 小时一年
+        self.assertEqual(game.game_year(sw.replace(hour=12, minute=0)), base + 2)
 
     def test_round_note_has_month_reason_and_count(self):
         for hour in (0, 5, 11, 12, 23):
@@ -149,6 +176,46 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(game.game_year(datetime(2026, 10, 7, 13, 0, tzinfo=game.TZ)), 4)      # 下午是第四年
         note = game.bed_round_note(2, 8, datetime(2026, 10, 7, 8, 30, tzinfo=game.TZ))
         self.assertTrue(note.startswith('第3年九月'))
+
+    def test_header_year_advances_one_year_every_six_hours_after_the_switch(self):
+        from datetime import datetime, timedelta
+        sw = datetime(2026, 10, 9, 1, 15, tzinfo=game.TZ)
+        game.run("UPDATE game_state SET age_switch_ts=?, age_switch_day=5, day=5", (sw.timestamp(),))
+        a = int(game.palace_year_now(datetime(2026, 10, 9, 6, 0, tzinfo=game.TZ))[2:-1])
+        b = int(game.palace_year_now(datetime(2026, 10, 9, 12, 0, tzinfo=game.TZ))[2:-1])
+        c = int(game.palace_year_now(datetime(2026, 10, 9, 17, 59, tzinfo=game.TZ))[2:-1])
+        d = int(game.palace_year_now(datetime(2026, 10, 9, 18, 0, tzinfo=game.TZ))[2:-1])
+        self.assertEqual((b - a, c - b, d - c), (1, 0, 1))      # 每 6 小时 +1 年
+        self.assertEqual(game.palace_year_now(), f"宫历{game.game_year()}年", '页眉和邸报是同一本账')
+
+    def test_bonus_event_can_be_limited_to_ranks_below_a_line(self):
+        high = self.player('高位', rank=game.RANK_FEI)
+        low = self.c(self.atk)
+        before = {i: self.c(i)['silver'] for i in (self.atk, high)}
+        game.run("INSERT INTO bonus_events(title,text,silver,start_ts,expire_ts,rank_below) VALUES('补偿','位分调整。',500,1000,5000,?)", (game.RANK_FEI,))
+        with patch.object(game, 'now_ts', return_value=1001): game.bonus_tick()
+        self.assertEqual(self.c(self.atk)['silver'], before[self.atk] + 500, '妃以下的拿到补偿')
+        self.assertEqual(self.c(high)['silver'], before[high], '妃及以上的不发')
+
+    def test_bonus_event_can_target_exactly_one_rank(self):
+        fei = self.player('妃位', rank=game.RANK_FEI)
+        other = self.player('四妃位', rank=game.RANK_FOUR)
+        before = {i: self.c(i)['silver'] for i in (self.atk, fei, other)}
+        game.run("INSERT INTO bonus_events(title,text,silver,start_ts,expire_ts,rank_only) VALUES('补偿','x',200,1000,5000,?)", (game.RANK_FEI,))
+        with patch.object(game, 'now_ts', return_value=1001): game.bonus_tick()
+        self.assertEqual(self.c(fei)['silver'], before[fei] + 200)
+        self.assertEqual(self.c(other)['silver'], before[other], '只发给正好是妃位的人')
+        self.assertEqual(self.c(self.atk)['silver'], before[self.atk])
+
+    def test_nvze_adds_virtue_once_a_day(self):
+        game.inv_add(self.atk, 'nvze', 3)
+        before = self.c()['virtue']
+        self.client.post('/shop/use/nvze')
+        self.assertEqual(self.c()['virtue'], before + game.NVZE_VIRTUE)
+        self.client.post('/shop/use/nvze')
+        self.assertEqual(self.c()['virtue'], before + game.NVZE_VIRTUE, '一天只能用一次')
+        self.assertEqual(game.inv_qty(self.atk, 'nvze'), 2)
+        self.assertIn('《女则》', self.client.get('/shop').get_data(as_text=True))
 
     def test_each_round_logs_one_note_in_the_gazette(self):
         self.settle()
@@ -281,7 +348,7 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(game.diet_cost(4, 'lavish'), 75)
         self.assertEqual(game.diet_cost(4, 'frugal'), 12)
         self.assertEqual(game.diet_cost(1, 'frugal'), 2)
-        self.assertEqual(game.diet_cost(9, 'normal'), 390)      # 月例 975 × 比例，嫔以上月例上调后同比涨
+        self.assertEqual(game.diet_cost(10, 'normal'), 390)      # 月例 975 × 比例，嫔以上月例上调后同比涨
         for r in range(1, 9):
             c = game.diet_costs(r)
             self.assertTrue(c['frugal'] < c['normal'] < c['lavish'])

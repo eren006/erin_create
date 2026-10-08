@@ -736,6 +736,48 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_tribute_display ON tribute_items(holder_id
 
 CREATE TABLE IF NOT EXISTS birth_losses (id INTEGER PRIMARY KEY AUTOINCREMENT,mother_id INTEGER NOT NULL,gender TEXT NOT NULL,day INTEGER NOT NULL,created_ts REAL NOT NULL,reason TEXT NOT NULL);
 
+-- 孩子之间的交情（皇子公主互相交好）：a_id < b_id；bond 0~100
+CREATE TABLE IF NOT EXISTS heir_bonds (
+ a_id INTEGER NOT NULL,
+ b_id INTEGER NOT NULL,
+ bond INTEGER NOT NULL DEFAULT 0,
+ last_play_day INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(a_id,b_id)
+);
+
+-- 夺嫡阵营里的助力者：至交的皇子投靠另一位皇子；一位助力者只投一处，一个阵营最多 3 个
+CREATE TABLE IF NOT EXISTS heir_allies (
+ ally_id INTEGER PRIMARY KEY,
+ leader_id INTEGER NOT NULL,
+ since_day INTEGER NOT NULL DEFAULT 0
+);
+
+-- 登基后重开选家族：往届留下来的家族（名望、家底都留给这个家族），以及每个玩家这一届摆出来的 3 个候选
+CREATE TABLE IF NOT EXISTS family_pool (
+ surname TEXT PRIMARY KEY,
+ tier TEXT NOT NULL,
+ background TEXT NOT NULL DEFAULT '',
+ prestige INTEGER NOT NULL DEFAULT 0,
+ estate INTEGER NOT NULL DEFAULT 0,
+ head_name TEXT NOT NULL DEFAULT '',
+ head_role TEXT NOT NULL DEFAULT '父亲',
+ head_gen INTEGER NOT NULL DEFAULT 0,
+ head_age_months INTEGER NOT NULL DEFAULT 0,
+ head_office INTEGER NOT NULL DEFAULT 0,
+ last_user_id INTEGER NOT NULL DEFAULT 0,
+ last_reign INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS family_offers (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ user_id INTEGER NOT NULL,
+ reign_no INTEGER NOT NULL,
+ surname TEXT NOT NULL,
+ tier TEXT NOT NULL,
+ background TEXT NOT NULL DEFAULT '',
+ prestige INTEGER NOT NULL DEFAULT 0,
+ from_pool INTEGER NOT NULL DEFAULT 0
+);
+
 -- 一次性赏赐活动（大捷之类）：到点给所有在世玩家发银子，只发一次；错过 expire_ts 就作废
 CREATE TABLE IF NOT EXISTS bonus_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -744,7 +786,9 @@ CREATE TABLE IF NOT EXISTS bonus_events (
  silver INTEGER NOT NULL DEFAULT 0,
  start_ts REAL NOT NULL,
  expire_ts REAL NOT NULL,
- status TEXT NOT NULL DEFAULT 'pending'   -- pending / done / expired
+ status TEXT NOT NULL DEFAULT 'pending',   -- pending / done / expired
+ rank_below INTEGER NOT NULL DEFAULT 0,    -- >0：只发给位分低于这个数的人（0 = 不限）
+ rank_only INTEGER NOT NULL DEFAULT 0      -- >0：只发给正好是这个位分的人（0 = 不限）
 );
 
 -- 临时活动「寿康宫添香」：每人每半个时辰添一炷香，进度满 100 领一次赏

@@ -13,7 +13,7 @@ class DrugTests(unittest.TestCase):
     login = fixtures.LifecycleTests.login
 
     def plan(self, drug, effect='', mid=0):
-        game.run('UPDATE consorts SET rank=6,energy=5 WHERE id=?', (self.atk,))
+        game.run('UPDATE consorts SET rank=7,energy=5 WHERE id=?', (self.atk,))
         game.run("DELETE FROM daily_counters WHERE key='intrigue'")
         game.inv_add(self.atk, drug)
         self.login(self.atk)
@@ -35,7 +35,7 @@ class DrugTests(unittest.TestCase):
         self.assertEqual(stock, game.cabinet_stock(self.atk,10))
         self.assertEqual(len(set(stock)),3+len(game.PREGNANCY_DRUGS))      # 3 种轮换 + 红花、麝香常备
         self.assertTrue(set(game.PREGNANCY_DRUGS) <= set(stock))
-        game.run('UPDATE consorts SET rank=6 WHERE id=?',(self.atk,))
+        game.run('UPDATE consorts SET rank=7 WHERE id=?',(self.atk,))
         key=stock[-1]      # 取轮换货，不取常备的红花、麝香
         with patch.object(game.random,'random',return_value=0):
             self.client.post('/shop/drug/'+key)
@@ -49,7 +49,7 @@ class DrugTests(unittest.TestCase):
 
     def test_invalid_drug_agent_and_nameless_lethal_do_not_charge(self):
         game.inv_add(self.atk,'wuming')
-        game.run('UPDATE consorts SET rank=6 WHERE id=?',(self.atk,))
+        game.run('UPDATE consorts SET rank=7 WHERE id=?',(self.atk,))
         for payload in (dict(drug='bogus'),dict(drug='wuming',effect='lihun'),dict(drug='wuming',effect='yanzhi',agent_maid_id='x')):
             self.client.post('/intrigue/submit',data=dict(method='drug',target_id=self.tgt,**payload))
         self.assertEqual(len(game.q('SELECT * FROM intrigues')),0)

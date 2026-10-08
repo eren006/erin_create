@@ -38,7 +38,7 @@ class HousingTests(unittest.TestCase):
         ids = []
         for name in game.PALACES:
             if not game.q("SELECT 1 FROM consorts WHERE palace=? AND hall='main' AND status IN ('normal','confined')", (name,), one=True):
-                ids.append(self.housed('主'+str(len(ids)), 5, name, 'main'))
+                ids.append(self.housed('主'+str(len(ids)), game.MAIN_HALL_MIN_RANK, name, 'main'))
         return ids
 
     def snapshot(self):
@@ -58,7 +58,7 @@ class HousingTests(unittest.TestCase):
 
     # ── 争正殿 ───────────────────────────────────────────────────────────────
 
-    def contenders(self, mine=300, theirs=100, my_rank=5, their_rank=5):
+    def contenders(self, mine=300, theirs=100, my_rank=game.MAIN_HALL_MIN_RANK, their_rank=game.MAIN_HALL_MIN_RANK):
         holder = self.housed('正殿', their_rank, '翊坤宫', 'main')
         rival = self.housed('后来', my_rank, '永寿宫', 'west')
         game.run('UPDATE consorts SET favor=?, energy=10, silver=500 WHERE id=?', (mine, rival))
@@ -101,9 +101,9 @@ class HousingTests(unittest.TestCase):
         self.assertEqual(self.where(rival), ('翊坤宫', 'main'))
 
     def test_cannot_contend_against_higher_rank_pregnant_or_when_already_main(self):
-        rival, holder = self.contenders(300, 100, my_rank=5, their_rank=6)
+        rival, holder = self.contenders(300, 100, my_rank=game.MAIN_HALL_MIN_RANK, their_rank=game.MAIN_HALL_MIN_RANK + 1)
         self.assertIn('位分', game.contend_error(game.get_consort(rival), game.get_consort(holder)))
-        game.run('UPDATE consorts SET rank=5 WHERE id=?', (holder,))
+        game.run('UPDATE consorts SET rank=? WHERE id=?', (game.MAIN_HALL_MIN_RANK, holder))
         game.run('UPDATE consorts SET pregnant_since=1 WHERE id=?', (holder,))
         self.assertIn('有孕', game.contend_error(game.get_consort(rival), game.get_consort(holder)))
         game.run('UPDATE consorts SET pregnant_since=0 WHERE id=?', (holder,))
@@ -161,7 +161,7 @@ class HousingTests(unittest.TestCase):
 
     def test_promote_to_main_and_idempotence(self):
         cid = self.housed('晋封')
-        game.set_rank(cid,5)
+        game.set_rank(cid,game.MAIN_HALL_MIN_RANK)
         self.assertEqual(game.get_consort(cid)['hall'],'main')
         self.assertIn('为一宫主位',game.q('SELECT text FROM messages WHERE consort_id=? ORDER BY id DESC',(cid,),one=True)[0])
         before=self.snapshot(); game.housing_sync(); game.housing_sync()
@@ -169,9 +169,9 @@ class HousingTests(unittest.TestCase):
 
     def test_wait_notice_once_then_rank_and_favor_priority(self):
         heads=self.fill_mains()
-        low=self.housed('低位',5,'碎玉轩','east')
-        higher=self.housed('高位',6,'碎玉轩','west')
-        favored=self.housed('同位高宠',6,'碎玉轩','back')
+        low=self.housed('低位',game.MAIN_HALL_MIN_RANK,'碎玉轩','east')
+        higher=self.housed('高位',game.MAIN_HALL_MIN_RANK+1,'碎玉轩','west')
+        favored=self.housed('同位高宠',game.MAIN_HALL_MIN_RANK+1,'碎玉轩','back')
         game.run('UPDATE consorts SET favor=900 WHERE id=?',(low,))
         game.run('UPDATE consorts SET favor=20 WHERE id=?',(favored,))
         game.housing_sync()
@@ -186,19 +186,19 @@ class HousingTests(unittest.TestCase):
         self.assertNotEqual(game.get_consort(low)['hall'],'main')
 
     def test_demote_prefers_same_palace_and_then_other_annex(self):
-        cid=self.housed('降位',5,'永寿宫','main')
+        cid=self.housed('降位',game.MAIN_HALL_MIN_RANK,'永寿宫','main')
         self.housed('东邻',2,'永寿宫','east')
         game.set_rank(cid,4)
         self.assertEqual((game.get_consort(cid)['palace'],game.get_consort(cid)['hall']),('永寿宫','west'))
         # A filled original palace forces a move elsewhere.
-        game.run("UPDATE consorts SET rank=5,hall='main' WHERE id=?",(cid,))
+        game.run("UPDATE consorts SET rank=?,hall='main' WHERE id=?",(game.MAIN_HALL_MIN_RANK,cid))
         self.housed('西邻',2,'永寿宫','west'); self.housed('后邻',2,'永寿宫','back')
         game.set_rank(cid,4)
         self.assertNotEqual(game.get_consort(cid)['palace'],'永寿宫')
         self.assertIn(game.get_consort(cid)['hall'],('east','west'))
 
     def test_cold_release_and_death_clear_hall(self):
-        cid=self.housed('冷宫',5,'永寿宫','main')
+        cid=self.housed('冷宫',game.MAIN_HALL_MIN_RANK,'永寿宫','main')
         game.send_to_cold(cid)
         self.assertEqual(game.get_consort(cid)['hall'],'')
         game.release_from_cold(cid,'')
@@ -211,7 +211,7 @@ class HousingTests(unittest.TestCase):
     def test_admin_rank_status_edits_rehouse(self):
         cid=self.housed('后改')
         with self.client.session_transaction() as session: session['admin']=True
-        for rank,status,halls in [(5,'normal',('main',)),(4,'normal',('east','west','back')),(4,'cold',('',)),(4,'normal',('east','west','back'))]:
+        for rank,status,halls in [(game.MAIN_HALL_MIN_RANK,'normal',('main',)),(4,'normal',('east','west','back')),(4,'cold',('',)),(4,'normal',('east','west','back'))]:
             response=self.client.post(f'/admin/edit/{cid}',data=dict(rank=rank,status=status,favor=0,silver=500))
             self.assertEqual(response.status_code,302)
             self.assertIn(game.get_consort(cid)['hall'],halls)
@@ -233,7 +233,7 @@ class HousingTests(unittest.TestCase):
 
     @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_visit_player_or_npc_main_and_exclusions(self):
-        head=self.housed('主位',5,'永寿宫','main')
+        head=self.housed('主位',game.MAIN_HALL_MIN_RANK,'永寿宫','main')
         side=self.housed('同宫',2,'永寿宫','east')
         other=self.housed('别宫',2,'碎玉轩','east')
         game.run("UPDATE consorts SET personality='gentle' WHERE id=?",(side,))
@@ -252,7 +252,7 @@ class HousingTests(unittest.TestCase):
         self.assertEqual(game.get_consort(side)['favor'],20)
 
     def test_reports_reuse_daily_counters_without_private_contents(self):
-        head=self.housed('主位',5,'永寿宫','main')
+        head=self.housed('主位',game.MAIN_HALL_MIN_RANK,'永寿宫','main')
         side=self.housed('写信',2,'永寿宫','east')
         quiet=self.housed('静居',2,'永寿宫','west')
         elsewhere=self.housed('别宫',2,'碎玉轩','east')
@@ -294,7 +294,7 @@ class HousingTests(unittest.TestCase):
 
     @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_discipline_shared_cooldown_pregnancy_and_authorization(self):
-        head=self.housed('主位',5,'永寿宫','main'); side=self.housed('配殿',2,'永寿宫','east')
+        head=self.housed('主位',game.MAIN_HALL_MIN_RANK,'永寿宫','main'); side=self.housed('配殿',2,'永寿宫','east')
         outsider=self.housed('别宫',2,'碎玉轩','east')
         self.login(head)
         post=lambda cid,action: self.client.post(f'/housing/discipline/{cid}',data={'action':action})
@@ -337,18 +337,18 @@ class HousingTests(unittest.TestCase):
         self.assertFalse(game.q('SELECT m.* FROM messages m JOIN consorts c ON c.id=m.consort_id WHERE c.user_id IS NULL'))
 
     def test_night_sync_and_atomic_rollback(self):
-        cid=self.housed('待晋',4,'永寿宫','east')
-        game.run('UPDATE consorts SET favor=320,virtue=50 WHERE id=?',(cid,))
+        cid=self.housed('待晋',game.MAIN_HALL_MIN_RANK-1,'永寿宫','east')
+        game.run('UPDATE consorts SET favor=320,virtue=60,influence=200 WHERE id=?',(cid,))
         before=self.snapshot()
         with patch.object(game,'issue_edicts',side_effect=RuntimeError('rollback')):
             with self.assertRaises(RuntimeError): game.settle_day()
         self.assertEqual(before,self.snapshot())
         with patch.object(game,'npc_schemes'),patch.object(game.random,'random',return_value=.99): game.settle_day()
-        self.assertEqual(game.get_consort(cid)['rank'],5)
+        self.assertEqual(game.get_consort(cid)['rank'],game.MAIN_HALL_MIN_RANK)
         self.assertEqual(game.get_consort(cid)['hall'],'main')
 
     def test_pages_map_and_cooldown_buttons(self):
-        head=self.housed('主位',5,'永寿宫','main'); side=self.housed('配殿',2,'永寿宫','east')
+        head=self.housed('主位',game.MAIN_HALL_MIN_RANK,'永寿宫','main'); side=self.housed('配殿',2,'永寿宫','east')
         self.login(head)
         game.run('UPDATE consorts SET discipline_ready_day=13 WHERE id=?',(head,))
         for path in ('/palaces','/place/home','/','/social'):

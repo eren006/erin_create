@@ -25,14 +25,14 @@ class ConfineHalfDayTests(unittest.TestCase):
             self.assertEqual(c['status'], 'confined')
             self.assertAlmostEqual(c['confine_until_ts'] - t0, game.CONFINE_HOURS * 3600, delta=5)
 
-    def test_not_released_early_and_released_after_twelve_hours(self):
+    def test_not_released_early_and_released_after_confine_hours(self):
         game.confine(self.atk)
         game.release_confinements()
         self.assertEqual(self.me()['status'], 'confined')
-        with patch.object(game, 'now_ts', return_value=time.time() + 11 * 3600):
+        with patch.object(game, 'now_ts', return_value=time.time() + (game.CONFINE_HOURS - 1) * 3600):
             game.release_confinements()
-        self.assertEqual(self.me()['status'], 'confined', '11 小时还不放')
-        with patch.object(game, 'now_ts', return_value=time.time() + 12 * 3600 + 5):
+        self.assertEqual(self.me()['status'], 'confined', '差一小时还不放')
+        with patch.object(game, 'now_ts', return_value=time.time() + game.CONFINE_HOURS * 3600 + 5):
             game.release_confinements()
         c = self.me()
         self.assertEqual((c['status'], c['confine_until_ts']), ('normal', 0))

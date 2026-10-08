@@ -50,7 +50,7 @@ class PromotionPaceTests(unittest.TestCase):
         self.assertEqual(game.daily_count(self.atk,'perform'),0)
 
     def test_front_rank_wait_and_thresholds(self):
-        self.assertEqual(game.PROMOTE_FAVOR,{2:30,3:65,4:110,5:180,6:280,7:350,8:420,9:600,10:850})
+        self.assertEqual(game.PROMOTE_FAVOR,{2:30,3:65,4:110,5:180,6:230,7:280,8:350,9:420,10:600,11:850})
         self.assertFalse(hasattr(game,'promotion_wait_days'),'不再要求在位分上待满几天')
 
     def test_new_actions_visible_in_places(self):

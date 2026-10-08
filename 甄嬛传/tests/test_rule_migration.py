@@ -26,7 +26,7 @@ class RuleMigrationTests(unittest.TestCase):
 
     def test_cancel_does_not_start_cooldown(self):
         game.inv_add(self.atk,'wuming')
-        game.run('UPDATE consorts SET rank=6 WHERE id=?',(self.atk,))
+        game.run('UPDATE consorts SET rank=7 WHERE id=?',(self.atk,))
         self.client.post('/intrigue/submit',data={'method':'drug','drug':'wuming','effect':'yanzhi','target_id':self.tgt})
         it=game.q('SELECT * FROM intrigues',one=True)
         self.client.post('/intrigue/cancel/'+str(it['id']))
@@ -45,7 +45,7 @@ class RuleMigrationTests(unittest.TestCase):
 
     def test_success_starts_account_and_target_cooldowns(self):
         for drug,cooldown in (('yanzhi',1),('lihun',2)):
-            game.run('UPDATE consorts SET rank=6 WHERE id=?',(self.atk,))
+            game.run('UPDATE consorts SET rank=7 WHERE id=?',(self.atk,))
             uid=game.get_consort(self.atk)['user_id']
             game.run('UPDATE users SET drug_ready_day=0,lethal_ready_day=0 WHERE id=?',(uid,))
             game.run('UPDATE consorts SET drugged_day=0,drugged_until_day=0 WHERE id=?',(self.tgt,))

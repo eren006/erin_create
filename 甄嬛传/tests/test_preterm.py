@@ -3,6 +3,8 @@ from unittest.mock import patch
 import test_lifecycle as fixtures
 
 game = fixtures.game
+PRETERM_T = 100000 + int(game.PRETERM_START_HOURS * 3600)      # 孕期走到可能早产的那一刻
+
 
 class PretermTests(unittest.TestCase):
     setUp = fixtures.LifecycleTests.setUp
@@ -15,7 +17,7 @@ class PretermTests(unittest.TestCase):
 
     def deliver(self, child_death=0, crisis=0, twins=0):
         self.pregnant()
-        with patch.object(game.time,'time',return_value=164800), patch.object(game,'preterm_chance',return_value=1), patch.object(game,'preterm_child_death_chance',return_value=child_death), patch.object(game,'preterm_crisis_chance',return_value=crisis), patch.object(game,'TWIN_CHANCE',twins), patch.object(game.random,'random',return_value=0):
+        with patch.object(game.time,'time',return_value=PRETERM_T), patch.object(game,'preterm_chance',return_value=1), patch.object(game,'preterm_child_death_chance',return_value=child_death), patch.object(game,'preterm_crisis_chance',return_value=crisis), patch.object(game,'TWIN_CHANCE',twins), patch.object(game.random,'random',return_value=0):
             game.resolve_births(10, False)
 
     def test_survivor_has_permanently_lower_health_cap(self):
@@ -52,7 +54,7 @@ class PretermTests(unittest.TestCase):
             self.login(self.atk)
             self.client.post('/birth/rescue')
         self.assertEqual(game.get_consort(self.atk)['birth_crisis'],1)
-        with patch.object(game.time,'time',return_value=164800+43200): game.dying_tick()
+        with patch.object(game.time,'time',return_value=PRETERM_T+43200): game.dying_tick()
         self.assertEqual(game.get_consort(self.atk)['status'],'dead')
 
     def test_child_death_record_without_live_heir_or_naming_reward(self):
@@ -62,17 +64,17 @@ class PretermTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['pregnant_since'],0)
         self.assertTrue(game.q('SELECT 1 FROM birth_losses WHERE mother_id=?',(self.atk,),one=True))
 
-    def test_no_early_check_before_eighteen_hours_and_only_once_per_hour(self):
+    def test_no_early_check_before_three_quarters_and_only_once_per_slot(self):
         self.pregnant()
-        with patch.object(game.time,'time',return_value=164799), patch.object(game,'preterm_chance') as probability:
+        with patch.object(game.time,'time',return_value=PRETERM_T - 1), patch.object(game,'preterm_chance') as probability:
             game.resolve_births(10,False); probability.assert_not_called()
-        with patch.object(game.time,'time',return_value=164800), patch.object(game,'preterm_chance',return_value=0) as probability:
+        with patch.object(game.time,'time',return_value=PRETERM_T), patch.object(game,'preterm_chance',return_value=0) as probability:
             game.resolve_births(10,False); game.resolve_births(10,False)
             self.assertEqual(probability.call_count,1)
 
     def test_twins_can_have_one_survivor(self):
         self.pregnant()
-        with patch.object(game.time,'time',return_value=164800), patch.object(game,'preterm_chance',return_value=1), patch.object(game,'preterm_crisis_chance',return_value=0), patch.object(game,'preterm_child_death_chance',side_effect=[1,0]), patch.object(game,'TWIN_CHANCE',1), patch.object(game.random,'random',return_value=0):
+        with patch.object(game.time,'time',return_value=PRETERM_T), patch.object(game,'preterm_chance',return_value=1), patch.object(game,'preterm_crisis_chance',return_value=0), patch.object(game,'preterm_child_death_chance',side_effect=[1,0]), patch.object(game,'TWIN_CHANCE',1), patch.object(game.random,'random',return_value=0):
             game.resolve_births(10,False)
         self.assertEqual(game.q('SELECT COUNT(*) n FROM heirs WHERE mother_id=?',(self.atk,),one=True)['n'],1)
         self.assertEqual(game.birth_count(self.atk),2)
