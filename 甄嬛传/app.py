@@ -1731,6 +1731,7 @@ def init_db():
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'life_loss_months': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
+        'birth_losses': {'ordinal': 'INTEGER NOT NULL DEFAULT 0', 'name': "TEXT NOT NULL DEFAULT ''", 'label': "TEXT NOT NULL DEFAULT ''", 'age_years': 'INTEGER NOT NULL DEFAULT 0', 'place': "TEXT NOT NULL DEFAULT ''", 'cause': "TEXT NOT NULL DEFAULT ''", 'epitaph': "TEXT NOT NULL DEFAULT ''", 'born_day': 'INTEGER NOT NULL DEFAULT 0', 'look_ref': "TEXT NOT NULL DEFAULT ''"},
         'bonus_events': {'rank_below': 'INTEGER NOT NULL DEFAULT 0', 'rank_only': 'INTEGER NOT NULL DEFAULT 0'},
         'heirs': {'ill_years': 'INTEGER NOT NULL DEFAULT -2', 'illness': "TEXT NOT NULL DEFAULT ''", 'ill_deadline_ts': 'REAL NOT NULL DEFAULT 0', 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'nickname': "TEXT NOT NULL DEFAULT ''", 'career': "TEXT NOT NULL DEFAULT ''", 'ally_ready_day': 'INTEGER NOT NULL DEFAULT 0', 'look_ref': "TEXT NOT NULL DEFAULT ''", 'career_skill': 'INTEGER NOT NULL DEFAULT 0', 'career_work_day': 'INTEGER NOT NULL DEFAULT 0', 'ill_rolls': 'INTEGER NOT NULL DEFAULT -2', 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
@@ -1742,6 +1743,9 @@ def init_db():
                   'virtue': 'INTEGER NOT NULL DEFAULT 20',
                   'health': 'INTEGER NOT NULL DEFAULT 60',
                   'favor': 'INTEGER NOT NULL DEFAULT 0',
+                  'emperor_affinity': 'INTEGER NOT NULL DEFAULT 0',
+                  'emperor_visit_day': 'INTEGER NOT NULL DEFAULT 0',
+                  'princess_epithet': "TEXT NOT NULL DEFAULT ''",
                   'mother_affinity': 'INTEGER NOT NULL DEFAULT 50',
                   'caretaker_affinity': 'INTEGER NOT NULL DEFAULT 50',
                   'zhuazhou': "TEXT NOT NULL DEFAULT ''",
@@ -6334,14 +6338,16 @@ def gen_word_for(reign_no, gender):
     return words[(max(1, reign_no) - 1) % len(words)]
 
 def used_name_chars(gender, gen):
-    return {r['name'][len(gen):] for r in q("SELECT name FROM heirs WHERE gender=? AND gen_word=? AND name!=''", (gender, gen))}
+    """heirs 只保存本届孩子；换届清空，上一届用字不占名额。"""
+    return {r['name'][-1:] for r in q("SELECT name FROM heirs WHERE name!=''")}
 
 def roll_name_choices(h):
-    """皇上随机点三个字，同届同性别已经用过的字不再点"""
+    """皇上随机点三个字：本届用字不重复，跨届可复用，避开历任皇帝名讳"""
     pool = list(NAME_CHARS[h['gender']])
     used = used_name_chars(h['gender'], h['gen_word'])
+    forbidden = {state()['emperor_name']} | {r['emperor_name'] for r in q('SELECT emperor_name FROM reigns')}
     gens = {w for ws in NAME_GENERATIONS.values() for w in ws}        # 任何一届、任何性别的字辈都不当名字点
-    avail = [ch for ch in pool if ch not in used and ch not in gens] or pool
+    avail = [ch for ch in pool if ch not in used and h['gen_word'] + ch not in forbidden and ch not in gens]
     return random.sample(avail, min(NAME_CHOICES_N, len(avail)))
 
 # ── 皇嗣的容貌与气质（2026-10-07）：容貌随母亲；气质按容貌分档，每 20 点一档，每档 10 种里随机给一种 ──────────
@@ -6507,6 +6513,16 @@ def heir_nickname(hid):
     return redirect(url_for('heirs'))
 
 
+@app.route('/graveyard')
+@login_required
+def graveyard():
+    """墓地：本届夭折的孩子，墓志里写着生卒、病因和地方；自己的孩子排在前面"""
+    me = g.me
+    rows = list(q("SELECT * FROM birth_losses ORDER BY id DESC"))
+    rows.sort(key=lambda r: 0 if me and r['mother_id'] == me['id'] else 1)
+    return render_template('graveyard.html', rows=rows, get_consort=get_consort, mine_id=me['id'] if me else 0)
+
+
 @app.route('/heirs', methods=['GET', 'POST'])
 @login_required
 def heirs():
@@ -6520,8 +6536,12 @@ def heirs():
             flash('名字已经定了，改不了。', 'bad')
         elif pick not in (h['name_choices'] or ''):
             flash('请从皇上点的三个字里选一个。', 'bad')
-        elif q("SELECT 1 FROM heirs WHERE gen_word=? AND name=?", (h['gen_word'], h['gen_word'] + pick), one=True):
-            flash('这个字刚被同辈的别人用了，重新点几个字吧。', 'bad')
+        elif h['gen_word'] + pick in ({state()['emperor_name']} | {r['emperor_name'] for r in q('SELECT emperor_name FROM reigns')}):
+            flash('须避皇帝名讳，请重新点字。', 'bad')
+            run("UPDATE heirs SET name_choices='' WHERE id=?", (hid,))
+            ensure_name_choices(hid)
+        elif pick in used_name_chars(h['gender'], h['gen_word']):
+            flash('这个字已被本届其他孩子用了，重新点字吧。', 'bad')
             run("UPDATE heirs SET name_choices='' WHERE id=?", (hid,))
             ensure_name_choices(hid)
         else:
@@ -6566,7 +6586,7 @@ def heirs():
             a['battle_participant'] = c['id'] in (battle['challenger_id'],battle['defender_id'])
         if a: acts[h['id']] = a
     targets_for = {h['id']: entrust_candidates(c, raise_min_rank(h)) for h in rows if acts.get(h['id'], {}).get('entrust')}
-    return render_template('heirs.html', losses=q('SELECT * FROM birth_losses WHERE mother_id=? ORDER BY id DESC', (c['id'],)), HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, c=c, rows=rows, get_consort=get_consort, acts=acts, targets_for=targets_for, raise_rank_name=raise_rank_name, name_choice_view=name_choice_view, cur_gen={g_: gen_word_for(state()['reign_no'], g_) for g_ in NAME_GENERATIONS},
+    return render_template('heirs.html', graves=q('SELECT COUNT(*) n FROM birth_losses', one=True)['n'], losses=q('SELECT * FROM birth_losses WHERE mother_id=? ORDER BY id DESC', (c['id'],)), HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, c=c, rows=rows, get_consort=get_consort, acts=acts, targets_for=targets_for, raise_rank_name=raise_rank_name, name_choice_view=name_choice_view, cur_gen={g_: gen_word_for(state()['reign_no'], g_) for g_ in NAME_GENERATIONS},
                            ERRAND_APPROACHES=ERRAND_APPROACHES, MONGOL_LETTER_INTERVAL=MONGOL_LETTER_INTERVAL, CUSTODY_ACTIONS=CUSTODY_ACTIONS)
 
 # ── 皇嗣成长（九点六节 A~D：还没做成年、抚养关系博弈、夺嫡） ─────────────────────
@@ -7207,15 +7227,69 @@ def weaken_heir(h, text):
     heir_notify_kin(h, f"{text}体质 -{HEIR_ILL_WEAK['health']}，体质上限 -{HEIR_ILL_WEAK['cap']}。", 'bad')
 
 
+def child_age_phrase(years):
+    return '未满周岁' if years < 1 else f'年仅{cn_ordinal(years)}岁' if years <= 10 else f'年方{cn_ordinal(years)}岁'
+
+
+DEATH_GAZETTE = [
+    "{where}传出噩耗：{label}染{cause}，药石罔效，夭折，{age}。{mother}悲恸欲绝，六宫闻之，无不叹息。",
+    "{where}一夜灯火不熄，{label}终究没有熬过这场{cause}，{age}。{mother}哭得几度昏厥，皇上闻讯，辍朝半日。",
+    "{label}染{cause}，延至今日不治，{age}，薨于{where}。宫里人说，小小的孩子，走得叫人心疼。{mother}已哀毁不能起。",
+]
+DEATH_GAZETTE_UNTREATED = [
+    "{where}传出噩耗：{label}染{cause}，病势沉重，没能及时延医，终究夭折，{age}。{mother}闻讯悲恸，六宫闻之，皆有戚容。",
+    "{label}染{cause}，拖得久了，到底没有救回来，{age}，薨于{where}。{mother}肝肠寸断，皇上闻之，亦为叹息。",
+]
+DEATH_LETTER_OPEN = ["小主节哀。", "小主，请您先坐稳，听奴婢慢慢说。", "小主，奴婢实在不知该怎么开口。"]
+DEATH_LETTER_BODY = [
+    "{label}自染上{cause}，奴婢日夜守在榻边，药熬了一碗又一碗，终究没能留住。孩子走的时候很安静，只是一直往门口望，奴婢想，他是在等您。",
+    "{label}的{cause}来得凶，{treat}。临去前孩子迷迷糊糊地喊了两声“额娘”，奴婢应着，说额娘就来了。小主，那一刻，奴婢恨不得替他受了。",
+    "{label}昨夜还攥着奴婢的袖子说想吃糖，夜里烧得更厉害了，{treat}。天亮的时候，孩子的手就凉了。奴婢没有照看好，万死难赎。",
+]
+DEATH_LETTER_CLOSE = [
+    "孩子的衣裳和小玩意儿，奴婢都收好了，等您回来亲手整理。求小主千万保重自己，孩子在天上，也盼着您好好的。",
+    "孩子生前最爱的东西，奴婢已替他放在身边。小主，哭一场吧，哭完了，还要为自己撑下去。",
+    "已替孩子净了身、换了新衣，择了吉日安葬。您若想去看看他，去「墓地」，那里有他的名字。",
+]
+
+
+def record_child_death(h, cause, where, treated=False, how='illness'):
+    """孩子夭折：记进墓地（含墓志）、发邸报、给母亲写一封信。调用方负责删除孩子本人。h 可以是 heirs 行或出生时夭折的描述 dict"""
+    day = cur_day()
+    mother = get_consort(h['mother_id']) if h['mother_id'] else None
+    mother_txt = f"{display_name(mother)}" if mother else '生母'
+    label = h['label'] if 'label' in h.keys() and h['label'] else heir_label(h)
+    age = h['age_years'] if 'age_years' in h.keys() and h['age_years'] is not None and 'name' not in h.keys() else heir_age_years(h)
+    born_day = h['born_day'] if 'born_day' in h.keys() else day
+    ordinal = h['ordinal'] if 'ordinal' in h.keys() else 0
+    name = h['name'] if 'name' in h.keys() else ''
+    look = (h['look_ref'] if 'look_ref' in h.keys() else '') or ''
+    age_txt = child_age_phrase(age)
+    cause_txt = cause
+    epitaph = f"{label}，生于第 {born_day} 天，殁于第 {day} 天，{age_txt}，因{cause_txt}夭折于{where}。母{mother_txt}。" + (f"眉眼像{look}。" if look else '')
+    run("""INSERT INTO birth_losses(mother_id,gender,day,created_ts,reason,label,age_years,place,cause,epitaph,born_day,look_ref,ordinal,name)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (h['mother_id'], h['gender'], day, now_ts(), f"{cause_txt}夭折（{where}）", label, age, where, cause_txt, epitaph, born_day, look, ordinal, name))
+    pool = DEATH_GAZETTE if treated or how != 'illness' else DEATH_GAZETTE_UNTREATED
+    gazette(random.choice(pool).format(where=where, label=label, cause=cause_txt, age=age_txt, mother=mother_txt), 'news')
+    if mother and mother['user_id']:
+        treat = '太医来了几回，方子换了又换' if treated else '想去请太医，却已来不及了'
+        sender = '皇嗣养育所的乳母' if where == '皇嗣养育所' else (f"{where}的乳母" if age < 6 else f"{where}的教养嬷嬷")
+        if how == 'birth': sender = '太医院的稳婆'
+        body = random.choice(DEATH_LETTER_OPEN) + '\n' + (
+            f"{label}早产落地，没有哭出一声。稳婆和太医拼尽了全力，孩子还是没能睁开眼。小主，是奴婢们没用。" if how == 'birth'
+            else random.choice(DEATH_LETTER_BODY).format(label=label, cause=cause_txt, treat=treat)) + '\n' + random.choice(DEATH_LETTER_CLOSE)
+        run("""INSERT INTO letters (from_id, to_id, day, body, sender_label, created_ts) VALUES (0,?,?,?,?,?)""", (mother['id'], day, body, sender, now_ts()))
+        notify(mother['id'], f"{label}夭折了。{sender}给你写了一封信，去「书信」看看。", 'bad')
+
+
 def heir_die_of_illness(h, ill, treated=False):
     label = heir_label(h)
     ct = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
     where = f"{display_name(ct)}宫中" if ct else '皇嗣养育所'
-    run('INSERT INTO birth_losses(mother_id,gender,day,created_ts,reason) VALUES(?,?,?,?,?)',
-        (h['mother_id'], h['gender'], cur_day(), now_ts(), f"{ill['name']}夭折（{where}）"))
     heir_notify_kin(h, (f"{label}在{where}染了{ill['name']}，请了太医也没能救回来。" if treated else f"{label}在{where}染了{ill['name']}，没请太医，没能救回来。") if ct else f"{label}在皇嗣养育所里染了{ill['name']}，没能救回来。", 'bad')
+    record_child_death(h, ill['name'], where, treated=treated)
     heir_delete(h['id'])
-    gazette(f"{where}传出消息：{label}染{ill['name']}夭折。", 'news')
 
 
 def heir_illness_tick(day):
@@ -7279,7 +7353,11 @@ def heir_age_events(day):
         ensure_name_choices(h['id'])
         hh = get_heir(h['id'])
         if not hh['name_choices']: continue
-        name = hh['gen_word'] + random.choice(hh['name_choices'])
+        forbidden = {state()['emperor_name']} | {r['emperor_name'] for r in q('SELECT emperor_name FROM reigns')}
+        choices = [ch for ch in hh['name_choices'] if ch not in used_name_chars(hh['gender'], hh['gen_word']) and hh['gen_word'] + ch not in forbidden]
+        if not choices: choices = roll_name_choices(hh)
+        if not choices: continue
+        name = hh['gen_word'] + random.choice(choices)
         run("UPDATE heirs SET name=?, name_choices='' WHERE id=?", (name, h['id']))
         for par in heir_parents(h): notify(par['id'], f"{heir_label(h)}已满 {HEIR_AUTO_NAME_AGE} 岁，一直没起名，宫里按祖制替孩子定了名字：{name}。", 'info')
     for h in [x for x in q("SELECT * FROM heirs WHERE zhuazhou=''") if zhuazhou_due(x, day)]:
@@ -7598,25 +7676,97 @@ def heir_parents(h):
 def heir_full_title(h):
     if h['gender'] == '皇子' and 'career' in h.keys() and h['career'] in CAREERS and h['adult_day']:
         return f"{CAREERS[h['career']]['noun']}{heir_label(h)}"
-    return f"{h['title']}{heir_label(h)}" if h['title'] and h['gender'] == '皇子' else heir_label(h)
+    return f"{h['title']}·{heir_label(h)}" if h['title'] else heir_label(h)
 
 
 def marry_off(h, kind, chosen):
     """指婚定下来。chosen=True 表示是母亲自己选的（抚蒙古才有信任加成）"""
-    title = '固伦公主' if kind == 'mongol' else '和硕公主'
-    run('UPDATE heirs SET marriage=?, title=?, marry_day=? WHERE id=?', (kind, title, cur_day(), h['id']))
+    title = h['title'] or '公主'
+    run('UPDATE heirs SET marriage=?, marry_day=? WHERE id=?', (kind, cur_day(), h['id']))
     label = heir_label(h)
     if kind == 'mongol':
-        gazette(f"{label}年满{heir_age_years(h)}岁，册封{title}，远嫁蒙古。", 'decree')
+        gazette(f"{label}年满{heir_age_years(h)}岁，以{title}身份远嫁蒙古。", 'decree')
         for p in heir_parents(h):
             extra = ''
             if chosen and p['id'] == h['caretaker_id']:
                 add_trust(p['id'], MONGOL_TRUST_GAIN); extra = f"皇上感念你深明大义，信任 +{MONGOL_TRUST_GAIN}。"
-            notify(p['id'], f"{label}册封{title}，远嫁蒙古，此后每 {MONGOL_LETTER_INTERVAL} 天会有家书寄来。{extra}", 'decree')
+            notify(p['id'], f"{label}以{title}身份远嫁蒙古，此后每 {MONGOL_LETTER_INTERVAL} 天会有家书寄来。{extra}", 'decree')
     else:
-        gazette(f"{label}年满{heir_age_years(h)}岁，册封{title}，留京下嫁。", 'decree')
+        gazette(f"{label}年满{heir_age_years(h)}岁，以{title}身份留京下嫁。", 'decree')
         for p in heir_parents(h):
-            notify(p['id'], f"{label}册封{title}，留京下嫁，天天能回宫请安。往后往来探望更方便。", 'decree')
+            notify(p['id'], f"{label}以{title}身份留京下嫁，天天能回宫请安。往后往来探望更方便。", 'decree')
+
+
+# 公主个人封号库：同届不重复，晋封沿用原封号。
+PRINCESS_EPITHETS = """
+淑慎 端静 柔嘉 温宪 恪靖 敦恪 纯禧 荣安 静宜 昭宁 安宁 昭华 怀瑾 永宁
+淑安 淑宁 淑和 淑仪 淑惠 淑嘉 淑贞 淑雅
+端宁 端宜 端惠 端仪 端和 端懿 端柔 端敏
+柔宁 柔安 柔惠 柔仪 柔静 柔懿 柔贞 柔婉
+温宁 温宜 温惠 温仪 温静 温懿 温恪 温贞
+恪宁 恪安 恪和 恪宜 恪慎 恪敏 敦宁 敦和
+纯宁 纯安 纯和 纯惠 纯懿 纯贞 纯雅 纯静
+荣宁 荣惠 荣靖 荣寿 荣懿 荣嘉 荣和 荣宜
+静宁 静安 静和 静惠 静嘉 静懿 静贞 静婉
+昭宜 昭惠 昭仪 昭懿 昭和 昭嘉 昭贞 昭敏
+嘉宁 嘉安 嘉宜 嘉惠 嘉和 嘉仪 嘉懿 嘉靖
+安宜 安和 安惠 安贞 安雅 安懿 永安 永和
+永惠 永宜 永嘉 永靖 永康 永福 长宁 长安
+长宜 长乐 长和 长禧 福宁 福安 福宜 福惠
+康宁 康安 康宜 康惠 庆宁 庆安 庆宜 庆和
+瑞宁 瑞安 瑞宜 瑞和 熙宁 熙安 熙宜 熙和
+承宁 承安 承恩 承禧 清宁 清和 清宜 清嘉
+徽宁 徽安 徽柔 徽懿 懿宁 懿安 懿和 懿嘉
+婉宁 婉安 婉宜 婉仪 贞宁 贞安 贞静 贞仪
+肃宁 肃安 肃静 肃仪 惠宁 惠安 惠和 惠嘉
+宁宜 宁和 宁靖 宁康 咸宁 咸安 咸宜 咸福
+""".split()
+
+
+def confer_princess(h):
+    tier = '固伦' if h['emperor_affinity'] >= 80 else '和硕' if h['emperor_affinity'] >= 40 else ''
+    if not tier or h['title'].startswith('固伦') or (tier == '和硕' and h['title'].startswith('和硕')):
+        return
+    epithet = h['princess_epithet']
+    if not epithet:
+        used = {r['princess_epithet'] for r in q("SELECT princess_epithet FROM heirs WHERE gender='公主'")}
+        pool = [n for n in PRINCESS_EPITHETS if n not in used]
+        if not pool:
+            pool = [a+b for a in '昭静柔淑端温安宁嘉荣' for b in '华宁宜仪慧雅贞和' if a+b not in used]
+        epithet = random.choice(pool)
+    title = tier + epithet + '公主'
+    run('UPDATE heirs SET title=?,princess_epithet=? WHERE id=?', (title, epithet, h['id']))
+    gazette(f"皇上喜爱{heir_label(h)}，赐封号「{epithet}」，册封{title}。", 'decree')
+    for par in heir_parents(h): notify(par['id'], f"{heir_label(h)}获封{title}。", 'good')
+
+
+@app.route('/heirs/<int:hid>/emperor-visit', methods=['POST'])
+@login_required
+@atomic
+def princess_emperor_visit(hid):
+    c = get_consort(g.me['id'])
+    h = get_heir(hid)
+    err = None
+    if not h or h['gender'] != '公主' or h['caretaker_id'] != c['id']:
+        err = '只能带自己抚养的公主请安。'
+    elif c['status'] != 'normal' or h['illness'] or h['health'] <= 0:
+        err = '眼下不便带公主请安。'
+    elif heir_age_years(h) < 2:
+        err = '公主满两岁才能向皇上请安。'
+    elif h['emperor_visit_day'] == cur_day():
+        err = '这位公主今天已向皇上请安。'
+    elif c['energy'] < 1:
+        err = '需要一点精力。'
+    if err:
+        flash(err, 'bad')
+        return redirect(url_for('heirs'))
+    gain = min(random.randint(3, 6), 100 - h['emperor_affinity'])
+    run('UPDATE consorts SET energy=energy-1 WHERE id=?', (c['id'],))
+    run('UPDATE heirs SET emperor_affinity=emperor_affinity+?,emperor_visit_day=? WHERE id=?', (gain, cur_day(), hid))
+    confer_princess(get_heir(hid))
+    feed(c['id'], f"带{heir_label(h)}向皇上请安，皇帝好感 +{gain}。")
+    flash(f'请安完毕，皇帝好感 +{gain}，精力 -1。', 'good')
+    return redirect(url_for('heirs'))
 
 
 # ── 皇子的志向（2026-10-08）：8 岁起抚养人可以替皇子选一条路——夺嫡（默认），或是做艺术家、科学家、皇商 ──
@@ -9348,9 +9498,9 @@ def princess_ending(h, winner, day):
     who = f"{suitor['family']}{suitor['name']}" if suitor else '夫家'
     harmony, fortune = (row['harmony'], row['family_fortune']) if row else (50, 50)
     if h['marriage'] == 'mongol':
-        head = f"册封{h['title']}，远嫁蒙古{who}，做了草原上的福晋"
+        head = f"以{h['title'] or '皇女'}身份远嫁蒙古{who}，做了草原上的福晋"
     else:
-        head = f"册封{h['title']}，留京下嫁{who}，常回宫请安"
+        head = f"以{h['title'] or '皇女'}身份留京下嫁{who}，常回宫请安"
     if harmony >= 70 and fortune >= 60: tail, tier = '夫妻和睦，夫家兴旺，儿女绕膝，一生顺遂', 'bliss'
     elif harmony < 35 and fortune < 40: tail, tier = '夫妻不睦，夫家又渐渐败落，日子过得清冷', 'sad'
     elif harmony < 35: tail, tier = '夫妻不睦，公主多半时候独居公主府', 'sad'
@@ -9387,6 +9537,12 @@ def heir_ending(h, winner, day, imprisoned_ids):
         return '助力的是落败的一方，新帝削了他的爵位，降为闲散宗人', 'commoner'
     if h['title']: return f"安分守己，仍以{h['title']}奉养", 'prince'
     return '做了个闲散宗人', 'commoner'
+
+
+def heir_history_eligible(h, winner=None):
+    if winner and h['id'] == winner['id']: return True
+    if h['gender'] == '公主': return bool(h['title'] and '公主' in h['title'])
+    return h['title'] in ('亲王', '郡王')
 
 
 @atomic
@@ -9431,6 +9587,8 @@ def end_reign(day):
     for h in q("SELECT * FROM heirs WHERE COALESCE(npc_key,'')='' ORDER BY id"):
         endings[h['id']] = heir_ending(h, winner, day, imprisoned_ids)
         if endings[h['id']][1] == 'rich':
+            run("UPDATE heirs SET title='亲王' WHERE id=?", (h['id'],))
+        if endings[h['id']][1] == 'rich':
             for uid_ in {consort_uid(p_) for p_ in heir_parents(h)}:
                 add_prestige_uid(uid_, PRESTIGE_RICH_PRINCE, f"{heir_full_title(h)}成了有钱有势的王爷")
     if dowager: titles[dowager['id']] = '圣母皇太后'
@@ -9456,16 +9614,20 @@ def end_reign(day):
         if winner and sn['heir_id'] == winner['id'] and sn['kind'] == 'open' and c and c['status'] != 'dead' and c['id'] not in (dowager and dowager['id'], concubine and concubine['id']):
             edict.append(f"{full_name(c)}早年示好新帝，封{titles[c['id']]}。")
     for h in rival_princes(day, exclude_id=winner['id'] if winner else 0):
-        if not h['adult_day']: continue
+        if not h['adult_day'] or not heir_history_eligible(h, winner): continue
         if h in imprisoned or h['id'] in {x['id'] for x in imprisoned}:
             edict.append(f"{heir_full_title(h)}野心勃勃、结党甚众，新帝不放心，圈禁。")
         elif h['title']:
             edict.append(f"{heir_full_title(h)}安分守己，仍以{h['title']}奉养。")
-    fate_lines = [f"{heir_full_title(h)}（{h['gender']}）：{endings[h['id']][0]}" for h in q("SELECT * FROM heirs WHERE COALESCE(npc_key,'')='' ORDER BY id") if h['id'] in endings]
+    fate_lines = [f"{heir_full_title(h)}（{h['gender']}）：{endings[h['id']][0]}" for h in q("SELECT * FROM heirs WHERE COALESCE(npc_key,'')='' ORDER BY id") if h['id'] in endings and heir_history_eligible(h, winner)]
     if fate_lines:
         edict.append('——诸皇嗣的归宿——')
         edict += fate_lines
     events = [r for r in q("SELECT day, text FROM gazette WHERE kind IN (?,?,?) ORDER BY id", REIGN_EVENT_KINDS)][-REIGN_EVENT_LIMIT:]
+    historical_heirs = q('SELECT * FROM heirs')
+    kept_labels = {heir_label(h) for h in historical_heirs if heir_history_eligible(h, winner)}
+    omitted_labels = {heir_label(h) for h in historical_heirs if not heir_history_eligible(h, winner)} - kept_labels
+    events = [e for e in events if not any(label in e['text'] for label in omitted_labels)]
     if events:
         edict.append('——这一届的大事——')
         edict += [f"第 {r['day']} 天　{r['text']}" for r in events]
@@ -9492,11 +9654,11 @@ def end_reign(day):
                 and c['id'] not in ((dowager and dowager['id']), (concubine and concubine['id'])):
             family_log_add(consort_uid(c), f"{full_name(c)}早年示好新帝，封{titles[c['id']]}", 1)
     for h in q("SELECT * FROM heirs"):
-        if h['title'] and (h['title'] == '亲王' or '公主' in h['title']):
+        if heir_history_eligible(h, winner):
             for uid_ in {consort_uid(p_) for p_ in heir_parents(h)}:
                 family_log_add(uid_, f"{heir_full_title(h)}（{h['gender']}）{'封' + h['title'] if h['gender'] == '皇子' else '册封' + h['title']}", 1)
     for c in players:
-        kids = [heir_full_title(h) + ('（' + h['gender'] + '）') + (f"：{endings[h['id']][0]}" if h['id'] in endings else '') for h in q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id", (c['id'],))]
+        kids = [heir_full_title(h) + ('（' + h['gender'] + '）') + (f"：{endings[h['id']][0]}" if h['id'] in endings else '') for h in q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id", (c['id'],)) if heir_history_eligible(h, winner)]
         run("UPDATE consorts SET kids=? WHERE id=?", (json.dumps(kids, ensure_ascii=False), c['id']))
 
     run("""INSERT INTO reigns (reign_no, era_name, emperor_name, start_age, end_age_text, start_day, end_day, successor, dowager,
@@ -9779,7 +9941,8 @@ def resolve_births(day, include_legacy=True):
         born_ids = []
         for gender in genders:
             if premature and random.random() < preterm_child_death_chance(c):
-                run('INSERT INTO birth_losses(mother_id,gender,day,created_ts,reason) VALUES(?,?,?,?,?)', (c['id'], gender, day, now_ts(), '早产出生时夭折'))
+                lost_label = '早产的小阿哥' if gender == '皇子' else '早产的小公主'
+                record_child_death(dict(mother_id=c['id'], gender=gender, label=lost_label, age_years=0, born_day=day, look_ref=''), '早产', f"{display_name(c)}宫中", how='birth')
                 lost.append('小阿哥' if gender == '皇子' else '小公主')
                 continue
             live_genders.append(gender)

@@ -14,7 +14,7 @@ class HeirLooksTests(unittest.TestCase):
 
     def deliver(self, cid):
         game.run("UPDATE consorts SET pregnant_since=?,pregnancy_started_ts=100000,prenatal='{}' WHERE id=?", (game.cur_day(), cid))
-        with patch.object(game.time, 'time', return_value=186400):
+        with patch.object(game.time, 'time', return_value=186400), patch.object(game, 'preterm_chance', return_value=0), patch.object(game, 'TWIN_CHANCE', 0):      # 避开随机早产夭折、双胞胎
             game.resolve_births(game.cur_day(), False)
         return game.q("SELECT * FROM heirs WHERE mother_id=? ORDER BY id DESC", (cid,), one=True)
 

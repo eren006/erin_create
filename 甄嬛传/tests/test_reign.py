@@ -311,7 +311,7 @@ class ReignTests(unittest.TestCase):
         self.assertEqual(by_cid[self.fan], '皇贵太妃', '明站 13 天')
         self.assertIn('押错', by_cid[self.foe])
         self.assertIn('暗中相助', by_cid[self.spy])
-        self.assertTrue(any('圈禁' in l for l in edict), '野心 90、党羽多的落选皇子被圈禁')
+        self.assertFalse(any('圈禁' in l for l in edict), '只有贝勒的皇子不进入史书皇嗣名录')
 
     def test_support_title_by_days(self):
         self.assertEqual([game.support_title(d) for d in (0, 5, 6, 11, 12, 30)], ['太妃', '太妃', '贵太妃', '贵太妃', '皇贵太妃', '皇贵太妃'])

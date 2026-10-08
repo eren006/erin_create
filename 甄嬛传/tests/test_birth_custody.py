@@ -95,6 +95,7 @@ class BirthCustodyTests(unittest.TestCase):
         self.assertEqual(game.get_heir(h['id'])['foster_request_to'], 0)
 
     def test_twins_of_a_low_rank_mother_both_go_to_the_nursery(self):
+        self.addCleanup(setattr, game, 'TWIN_CHANCE', game.TWIN_CHANCE)
         game.TWIN_CHANCE = 1
         self.keep_low(self.tgt)
         with patch.object(game.random, 'choice', side_effect=lambda seq: '公主' if seq == ['皇子', '公主'] else seq[0]):

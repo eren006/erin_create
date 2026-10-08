@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block title %}墓地{% endblock %}
+{% block body %}
+<p class="back"><a href="{{ url_for('heirs') }}">回子嗣</a></p>
+<h2>墓地</h2>
+<p class="muted">夭折的孩子都葬在这里，名字和生卒刻在碑上。自己的孩子排在最前面。</p>
+{% for r in rows %}
+<article class="sheet" style="margin:10px 0{{ ';border-left:4px solid var(--zhu)' if r.mother_id == mine_id }}">
+  <div style="font-family:var(--kai);font-size:20px">{% if r.ordinal %}{{ heir_rank_title(r) }} · {{ r.name or '未赐名' }}{% if r.label and r.label != r.name and r.name %}<small class="muted">（{{ r.label }}）</small>{% endif %}{% else %}{{ r.label or (r.gender ~ '（夭折）') }}<small class="muted" style="font-size:13px"> · 排行未记载</small>{% endif %}{% if r.mother_id == mine_id %}<small class="muted" style="font-family:var(--song);font-size:13px">　你的孩子</small>{% endif %}</div>
+  <p style="margin:6px 0">{% if r.epitaph %}{{ r.epitaph }}{% else %}第 {{ r.day }} 天 · {{ r.gender }} · {{ r.reason }}{% endif %}</p>
+  {% set m = get_consort(r.mother_id) %}
+  <p class="muted" style="margin:0;font-size:13px">{{ r.gender }} · 第 {{ r.day }} 天{% if r.age_years or r.epitaph %} · {{ r.age_years }} 岁{% endif %}{% if r.place %} · {{ r.place }}{% endif %}{% if m %} · 母：{{ dn(m) }}{% endif %}</p>
+</article>
+{% else %}<p class="muted">墓地里还空着，愿它一直空着。</p>{% endfor %}
+{% endblock %}

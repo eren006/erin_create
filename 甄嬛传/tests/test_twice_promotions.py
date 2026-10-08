@@ -16,7 +16,7 @@ class TwicePromotionTests(unittest.TestCase):
 
     def tick(self,hour,settled=True):
         if settled: game.run("UPDATE game_state SET last_settle_date='2026-10-07'")
-        with patch.object(game,'datetime') as clock, patch.object(game,'resolve_births'), patch.object(game,'bedding_round'), patch.object(game,'energy_tick'), patch.object(game,'maybe_banquet'):
+        with patch.object(game,'datetime') as clock, patch.object(game,'resolve_births'), patch.object(game,'bedding_round'), patch.object(game,'energy_tick'), patch.object(game,'maybe_banquet'), patch.object(game,'night_event_tick'), patch.object(game,'repair_roll'):      # 夜间突发事件、屋舍损坏是随机扣银子的，和晋封无关，摁住
             clock.now.return_value=datetime(2026,10,7,hour,0,tzinfo=game.TZ)
             game.maybe_settle()
 

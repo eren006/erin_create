@@ -48,6 +48,8 @@ class PregnancyClockTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.atk)['health'],game.BIRTH_HEALTH_FLOOR)
 
     def test_twins_two_heirs_adjacent_ordinals_and_extra_health_loss(self):
+        self.addCleanup(setattr, game, 'TWIN_CHANCE', game.TWIN_CHANCE)
+        self.addCleanup(setattr, game, 'TWIN_CHANCE', game.TWIN_CHANCE)
         game.TWIN_CHANCE = 1
         game.run("UPDATE consorts SET health=90 WHERE id=?",(self.atk,))
         self.conceive()
@@ -60,6 +62,8 @@ class PregnancyClockTests(unittest.TestCase):
         self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%双生阿哥%'",one=True))
 
     def test_mixed_twins_are_called_dragon_phoenix(self):
+        self.addCleanup(setattr, game, 'TWIN_CHANCE', game.TWIN_CHANCE)
+        self.addCleanup(setattr, game, 'TWIN_CHANCE', game.TWIN_CHANCE)
         game.TWIN_CHANCE = 1
         self.conceive()
         picks=iter(['皇子','公主'])
@@ -69,6 +73,8 @@ class PregnancyClockTests(unittest.TestCase):
         self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%龙凤胎%'",one=True))
 
     def test_single_birth_when_not_twins(self):
+        self.addCleanup(setattr, game, 'TWIN_CHANCE', game.TWIN_CHANCE)
+        self.addCleanup(setattr, game, 'TWIN_CHANCE', game.TWIN_CHANCE)
         game.TWIN_CHANCE = 0
         self.conceive()
         with patch.object(game.time,'time',return_value=186400):game.resolve_births(10,False)

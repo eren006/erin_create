@@ -114,9 +114,13 @@ class HeirNameTests(unittest.TestCase):
         h = self.birth()
         pick = h['name_choices'][0]
         self.client.post('/heirs', data={'heir_id': h['id'], 'pick': pick})
+        nxt = dict(gender='皇子', gen_word=h['gen_word'])
         for _ in range(30):
-            nxt = dict(gender='皇子', gen_word=h['gen_word'])
             self.assertNotIn(pick, game.roll_name_choices(nxt))
+        # 换届后 heirs 清空，旧届用字可以再次出现。
+        game.run('DELETE FROM heirs')
+        with patch.object(game.random, 'sample', side_effect=lambda pool, n: [pick] + [x for x in pool if x != pick][:n-1] if pick in pool else pool[:n]):
+            self.assertIn(pick, game.roll_name_choices(nxt))
 
     def test_old_unnamed_heirs_get_choices_when_mother_opens_page(self):
         h = self.birth()
@@ -134,6 +138,7 @@ class HeirNameTests(unittest.TestCase):
         self.assertIn(game.NAME_CHARS['皇子'][h['name_choices'][0]], html)
 
     def test_twins_each_get_their_own_choices(self):
+        self.addCleanup(setattr, game, 'TWIN_CHANCE', game.TWIN_CHANCE)
         game.TWIN_CHANCE = 1
         game.run("UPDATE consorts SET pregnant_since=10,pregnancy_started_ts=100000,prenatal='{}' WHERE id=?", (self.atk,))
         with patch.object(game.time, 'time', return_value=186400):

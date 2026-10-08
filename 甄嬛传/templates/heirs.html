@@ -2,7 +2,8 @@
 {% block title %}子嗣{% endblock %}
 {% block body %}
 <h2>皇嗣</h2>
-<p class="muted">本届字辈：皇子「{{ cur_gen['皇子'] }}」、公主「{{ cur_gen['公主'] }}」。孩子出生时皇上随机点三个字，母亲三选一，名字就是字辈加这个字。</p>
+<p class="muted" style="margin:-6px 0 12px"><a href="{{ url_for('graveyard') }}">墓地 · 夭折的孩子{% if graves %}（{{ graves }}）{% endif %}</a></p>
+<p class="muted">本届字辈：皇子「{{ cur_gen['皇子'] }}」、公主「{{ cur_gen['公主'] }}」。孩子出生时皇上随机点三个字，母亲三选一，名字就是字辈加这个字；同一届名字和用字不重复，上一届用过的可以复用，须避皇帝名讳。</p>
 <p class="muted">侍寝后有机会怀上龙胎，诊出喜脉后满{{ PREGNANCY_HOURS }}小时自动临盆，孕中可查看进度、安胎和胎教。诞下皇子的母亲在有名额时晋一级位分。孕中要当心，宫里不是人人都盼着你平安生产。</p>
 {% if rows %}
 <style>
@@ -38,6 +39,7 @@
       <dt>抚养</dt><dd>{{ (dn(fo) if fo.id != h.mother_id else '（自己养）') if fo else '皇嗣养育所（NPC）' }}</dd>
       {% if pe %}<dt>性格</dt><dd><span title="{{ pe.effect }}">{{ pe.name }}·{{ pe.tag }}</span><br><span class="muted" style="font-size:12px">{{ pe.text }}</span></dd>{% endif %}
       {% if h.premature %}<dt>体质</dt><dd>早产体弱：体质长得慢，也更容易生病</dd>{% endif %}
+      {% if h.gender == '公主' %}<dt>皇帝好感</dt><dd>{{ h.emperor_affinity }}/100 · 40 封和硕、80 晋固伦，各有赐封号。<br>{% if h.caretaker_id == c.id and c.status == 'normal' and heir_age_years(h) >= 2 %}<form method="post" action="{{ url_for('princess_emperor_visit', hid=h.id) }}"><button class="plain" {% if h.emperor_visit_day == day or c.energy < 1 or h.illness %}disabled{% endif %}>向皇上请安（1 精力，好感 +3～6，每天一次）</button></form>{% endif %}</dd>{% endif %}
       <dt>情分</dt><dd>{{ h.caretaker_affinity }}{% if fo and fo.id != h.mother_id %}<span class="muted">（生母 {{ h.mother_affinity }}）</span>{% endif %}</dd>
       {% set bonds = heir_bonds_of(h.id) %}{% if bonds %}<dt>交好</dt><dd>{% for o, b, tier in bonds[:6] %}{{ heir_label(o) }}<span class="muted">（{{ tier }} {{ b }}）</span>{{ '、' if not loop.last }}{% endfor %}</dd>{% endif %}
       {% if h.look_ref %}<dt>长相</dt><dd>像{{ h.look_ref }}</dd>{% endif %}
@@ -162,7 +164,7 @@
   {% endfor %}
 </div>
 {% else %}<p>宫里还没有新的皇嗣降生。</p>{% endif %}
-{% if losses %}<h3>夭折记录</h3>{% for loss in losses %}<p class="muted">第{{ loss.day }}天 · {{ loss.gender }} · {{ loss.reason }}</p>{% endfor %}{% endif %}
+{% if losses %}<h3>夭折记录</h3>{% for loss in losses %}<p class="muted">第{{ loss.day }}天 · {{ loss.label or loss.gender }} · {{ loss.reason }}</p>{% endfor %}<p class="muted"><a href="{{ url_for('graveyard') }}">去墓地看看他们</a></p>{% endif %}
 <script>
 (function(){var els=document.querySelectorAll('.cd[data-secs]');if(!els.length)return;var t0=Date.now();
 function tick(){var d=Math.floor((Date.now()-t0)/1000);els.forEach(function(e){var s=Math.max(0,(+e.dataset.secs)-d);e.textContent=Math.floor(s/3600)+' 小时 '+Math.floor(s%3600/60)+' 分'+(s<3600?' '+(s%60)+' 秒':'')});}

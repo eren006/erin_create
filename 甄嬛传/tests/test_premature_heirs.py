@@ -114,6 +114,41 @@ class PrematureHeirTests(fixtures.unittest.TestCase):
         self.assertEqual(game.get_heir(hid)['illness'], '')
         self.assertEqual(game.get_consort(mother)['silver'], before - game.HEIR_ILLNESSES['cold']['cost'])
 
+    def test_death_leaves_a_grave_a_sad_letter_and_a_gazette(self):
+        mother = self.player('母', 4)
+        hid = self.sick(mother, 'cold')
+        game.run("UPDATE heirs SET ordinal=2,name='弘晟' WHERE id=?", (hid,))
+        before_letters = game.q('SELECT COUNT(*) n FROM letters WHERE to_id=?', (mother,), one=True)['n']
+        with patch.object(game.random, 'random', lambda: 0.0):
+            game.heir_illness_tick(game.cur_day())
+        self.assertIsNone(game.get_heir(hid))
+        grave = game.q('SELECT * FROM birth_losses WHERE mother_id=?', (mother,), one=True)
+        self.assertTrue(grave['epitaph'] and grave['label'] and grave['place'])
+        self.assertIn('风寒', grave['epitaph'])
+        letter = game.q('SELECT * FROM letters WHERE to_id=? ORDER BY id DESC', (mother,), one=True)
+        self.assertEqual(game.q('SELECT COUNT(*) n FROM letters WHERE to_id=?', (mother,), one=True)['n'], before_letters + 1)
+        self.assertEqual(letter['from_id'], 0)
+        self.assertTrue(letter['sender_label'])
+        self.assertIn(grave['label'], letter['body'])
+        self.login(mother)
+        page = self.client.get('/graveyard').get_data(as_text=True)
+        self.assertEqual(grave['ordinal'], 2)
+        self.assertEqual(grave['name'], '弘晟')
+        self.assertIn('二皇子 · 弘晟', page)
+        self.assertIn(grave['epitaph'], page)
+        self.assertIn('你的孩子', page)
+        self.assertIn('墓地', self.client.get('/heirs').get_data(as_text=True))
+
+    def test_premature_birth_death_is_recorded_too(self):
+        mother = self.player('母', 4)
+        game.run("UPDATE consorts SET pregnant_since=10,pregnancy_started_ts=100000,prenatal='{}' WHERE id=?", (mother,))
+        with patch.object(game.time, 'time', return_value=100000 + int(game.PRETERM_START_HOURS * 3600) + 60), patch.object(game, 'preterm_chance', return_value=1), \
+             patch.object(game, 'preterm_child_death_chance', return_value=1), patch.object(game, 'preterm_crisis_chance', return_value=0), patch.object(game, 'TWIN_CHANCE', 0):
+            game.resolve_births(10, False)
+        grave = game.q('SELECT * FROM birth_losses WHERE mother_id=?', (mother,), one=True)
+        self.assertIn('早产', grave['label'])
+        self.assertTrue(game.q('SELECT 1 FROM letters WHERE to_id=?', (mother,), one=True))
+
     def test_treated_child_still_has_a_three_percent_death_chance(self):
         mother = self.player('母', 4)
         self.assertEqual(game.HEIR_ILL_TREATED_DEATH, 0.03)
@@ -188,7 +223,7 @@ class PrematureHeirTests(fixtures.unittest.TestCase):
             game.heir_illness_tick(game.cur_day())
         self.assertIsNone(game.get_heir(dead), '宫里养着的孩子，病了不请太医有 10% 夭折')
         self.assertTrue(game.q("SELECT 1 FROM birth_losses WHERE mother_id=? AND reason LIKE '%宫中%'", (mother,), one=True))
-        self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%夭折%'", one=True))
+        self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%风寒%' AND (text LIKE '%夭折%' OR text LIKE '%薨%' OR text LIKE '%没有熬过%')", one=True))
         alive = self.sick(mother, 'smallpox', health=100)
         with patch.object(game.random, 'random', lambda: 0.11):
             game.heir_illness_tick(game.cur_day())
