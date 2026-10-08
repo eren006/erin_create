@@ -3,6 +3,7 @@
 运行：python3 -m unittest discover -s tests -v
 """
 import importlib.util
+import shutil
 import sqlite3
 import tempfile
 import unittest
@@ -13,6 +14,34 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('game', ROOT / 'app.py')
 game = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(game)
+
+
+def _install_fast_init_db(mod):
+    """每个测试都建一遍库太慢（约 0.08s×上千次）：整个进程只真跑一次 init_db，之后复制这份模板库。"""
+    real_init_db = mod.init_db
+    state = {}
+
+    def fast_init_db():
+        path = Path(mod.DB_PATH)
+        if path.exists():                     # 已有数据的库（如测试里手动切回旧库）走原逻辑
+            return real_init_db()
+        if 'tpl' not in state:
+            tpl_dir = tempfile.mkdtemp(prefix='zhenhuan_tpl_')
+            tpl = str(Path(tpl_dir) / 'tpl.db')
+            mod.DB_PATH = str(path)
+            keep, mod.DB_PATH = mod.DB_PATH, tpl
+            real_init_db()
+            mod.DB_PATH = keep
+            src = sqlite3.connect(tpl)
+            src.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+            src.close()
+            state['tpl'] = tpl
+        shutil.copyfile(state['tpl'], mod.DB_PATH)
+
+    mod.init_db = fast_init_db
+
+
+_install_fast_init_db(game)
 
 
 class LifecycleTests(unittest.TestCase):
@@ -127,13 +156,13 @@ class LifecycleTests(unittest.TestCase):
         self.assertIsNone(game.lethal_block(game.get_consort(self.atk), c, 15))
 
     def test_death_frees_slot_and_sisters(self):
-        game.run('UPDATE consorts SET rank=9 WHERE id=?', (self.tgt,))
-        self.assertFalse(game.slot_free(9))
+        game.run('UPDATE consorts SET rank=11 WHERE id=?', (self.tgt,))
+        self.assertFalse(game.slot_free(11))
         game.run('INSERT INTO relations(a_id,b_id,sister) VALUES(?,?,1)', (self.atk, self.tgt))
         self.assertIn(self.tgt, game.sisters_of(self.atk))
         game.die(self.tgt, '测试')
         self.assertNotIn(self.tgt, game.sisters_of(self.atk))
-        self.assertTrue(game.slot_free(8))
+        self.assertTrue(game.slot_free(11))
         self.assertNotIn(self.tgt, [c['id'] for c in game.intrigue_targets(game.get_consort(self.atk))])
 
     def test_age_and_pregnancy_two_days(self):
@@ -146,7 +175,7 @@ class LifecycleTests(unittest.TestCase):
             game.settle_day()   # 第三晚临盆
         self.assertEqual(len(game.q('SELECT * FROM heirs')), 1)
         self.assertEqual(game.get_consort(self.tgt)['pregnant_since'], 0)
-        self.assertEqual(game.get_consort(self.tgt)['age_months'], 240 + 3 * (game.AGE_MONTHS_PER_DAY // 2))      # 零点结算涨一岁，另一岁在中午 12 点涨（age_noon_tick）
+        self.assertEqual(game.get_consort(self.tgt)['age_months'], 240)      # 年龄不在结算里涨，由 age_tick 每 6 小时涨一岁
         self.assertEqual(game.get_consort(self.tgt)['health'], 70 - game.BIRTH_HEALTH_LOSS)   # 年龄在 settle_day 里不扣体质，只扣生产的
         self.assertEqual(game.age_text(258), '21岁半')
 
@@ -313,7 +342,7 @@ class EmperorTests(unittest.TestCase):
         with patch.object(game.random, 'random', return_value=0.99):
             game.settle_day()   # 第 10 天夜里，入宫满十个半年 = 五年
         e = game.q("SELECT text FROM messages WHERE consort_id=? AND kind='edict'", (self.atk,), one=True)
-        self.assertIn('你入宫二十年了', e['text'])
+        self.assertIn(f"你入宫{game.cn_ordinal(10 * game.AGE_YEARS_PER_DAY)}年了", e['text'])
         self.assertIn('素净是女子本分', e['text'])
 
     def test_trust_halves_rumor_and_shapes_expose(self):
