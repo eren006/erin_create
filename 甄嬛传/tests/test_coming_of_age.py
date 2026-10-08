@@ -72,8 +72,49 @@ class ComingOfAgeTests(fixtures.unittest.TestCase):
         self.client.post('/skin', data={'skin': look})
         self.assertEqual(game.get_consort(self.atk)['skin'], '')
 
+    def test_gazette_announces_the_look_at_the_moment_of_coming_of_age(self):
+        hid = self.kid(self.atk)
+        game.heir_adult_tick(game.cur_day())
+        look = game.get_heir(hid)['look_ref']
+        self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE ?", ('%成年，眉眼长开了%' + look + '%',), one=True))
+
+    def test_gazette_announces_when_a_consort_sets_a_skin(self):
+        self.client.post('/skin', data={'skin': '某某某'})
+        self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%皮相定下了：像某某某%'", one=True))
+        before = game.q("SELECT COUNT(*) n FROM gazette", one=True)['n']
+        self.client.post('/skin', data={'skin': ''})
+        self.assertEqual(game.q("SELECT COUNT(*) n FROM gazette", one=True)['n'], before, '清空不发公告')
+
     def test_heirs_page_shows_the_look(self):
         hid = self.kid(self.atk)
         game.heir_adult_tick(game.cur_day())
         body = self.client.get('/heirs').get_data(as_text=True)
         self.assertIn('像' + game.get_heir(hid)['look_ref'], body)
+
+
+class EmperorLookTests(ComingOfAgeTests):
+    def test_new_emperor_keeps_his_look_and_losers_are_cleared(self):
+        boss = self.kid(self.tgt, age=16, adult_day=1, look_ref=game.HEIR_LOOKS['皇子'][0], name='承稷')
+        loser = self.kid(self.atk, age=16, adult_day=1, look_ref=game.HEIR_LOOKS['皇子'][1])
+        from unittest.mock import patch
+        with patch.object(game, 'choose_successor', return_value=game.get_heir(boss)):
+            game.end_reign(game.cur_day())
+        self.assertEqual(game.state()['emperor_look'], game.HEIR_LOOKS['皇子'][0])
+        self.assertEqual(game.q('SELECT COUNT(*) n FROM heirs', one=True)['n'], 0, '王爷公主的长相随孩子一起清空')
+        self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE ?", ('%新帝眉眼像' + game.HEIR_LOOKS['皇子'][0] + '%',), one=True))
+
+    def test_sons_cannot_repeat_the_emperors_look(self):
+        emperor_look = game.HEIR_LOOKS['皇子'][0]
+        game.run("UPDATE game_state SET emperor_look=?", (emperor_look,))
+        got = []
+        for _ in range(len(game.HEIR_LOOKS['皇子'])):
+            hid = self.kid(self.tgt)
+            game.heir_adult_tick(game.cur_day())
+        got = [r['look_ref'] for r in game.q("SELECT look_ref FROM heirs WHERE look_ref!=''")]
+        self.assertNotIn(emperor_look, got)
+        self.assertEqual(len(got), len(game.HEIR_LOOKS['皇子']) - 1, '其余的名字都分得出去，唯独皇帝那个留着')
+
+    def test_consort_cannot_take_the_emperors_look_as_skin(self):
+        game.run("UPDATE game_state SET emperor_look=?", (game.HEIR_LOOKS['公主'][0],))
+        self.client.post('/skin', data={'skin': game.HEIR_LOOKS['公主'][0]})
+        self.assertEqual(game.get_consort(self.atk)['skin'], '')

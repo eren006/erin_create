@@ -1780,7 +1780,7 @@ def init_db():
                     'sender_label': "TEXT NOT NULL DEFAULT ''"},
         'messages': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
         'gazette': {'is_night': 'INTEGER NOT NULL DEFAULT 0'},
-        'game_state': {'last_mood_key': "TEXT NOT NULL DEFAULT ''", 'last_night_event_key': "TEXT NOT NULL DEFAULT ''", 'last_audience_key': "TEXT NOT NULL DEFAULT ''", 'last_remit_key': "TEXT NOT NULL DEFAULT ''", 'last_epidemic_key': "TEXT NOT NULL DEFAULT ''", 'last_illness_key': "TEXT NOT NULL DEFAULT ''", 'last_repair_key': "TEXT NOT NULL DEFAULT ''", 'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_timing_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'age_switch_day': 'INTEGER NOT NULL DEFAULT 0', 'age_switch_ts': 'REAL NOT NULL DEFAULT 0', 'last_age_key': "TEXT NOT NULL DEFAULT ''", 'time_scale_version': 'INTEGER NOT NULL DEFAULT 0', 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
+        'game_state': {'last_mood_key': "TEXT NOT NULL DEFAULT ''", 'last_night_event_key': "TEXT NOT NULL DEFAULT ''", 'last_audience_key': "TEXT NOT NULL DEFAULT ''", 'last_remit_key': "TEXT NOT NULL DEFAULT ''", 'last_epidemic_key': "TEXT NOT NULL DEFAULT ''", 'last_illness_key': "TEXT NOT NULL DEFAULT ''", 'last_repair_key': "TEXT NOT NULL DEFAULT ''", 'last_noon_age_date': "TEXT NOT NULL DEFAULT ''", 'rank_scale': 'INTEGER NOT NULL DEFAULT 0', 'last_promo_key': "TEXT NOT NULL DEFAULT ''", 'last_decay_date': "TEXT NOT NULL DEFAULT ''", 'last_midday_promotion_date': "TEXT NOT NULL DEFAULT ''", 'drug_timing_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_balance_version': 'INTEGER NOT NULL DEFAULT 0', 'arts_notice_version': 'INTEGER NOT NULL DEFAULT 0', 'yinzhen_price_version': 'INTEGER NOT NULL DEFAULT 0', 'drug_rules_version': 'INTEGER NOT NULL DEFAULT 0','last_banquet_date': "TEXT NOT NULL DEFAULT ''", 'last_energy_key': "TEXT NOT NULL DEFAULT ''", 'emperor_look': "TEXT NOT NULL DEFAULT ''", 'age_switch_day': 'INTEGER NOT NULL DEFAULT 0', 'age_switch_ts': 'REAL NOT NULL DEFAULT 0', 'last_age_key': "TEXT NOT NULL DEFAULT ''", 'time_scale_version': 'INTEGER NOT NULL DEFAULT 0', 'last_bed_ids': "TEXT NOT NULL DEFAULT '[]'", 'last_bed_round_key': "TEXT NOT NULL DEFAULT ''", 'last_bed_pool': "TEXT NOT NULL DEFAULT '[]'",
                        'reign_no': 'INTEGER NOT NULL DEFAULT 1',
                        'reign_start_day': 'INTEGER NOT NULL DEFAULT 1',
                        'emperor_start_age': 'INTEGER NOT NULL DEFAULT 20',
@@ -6475,10 +6475,11 @@ def set_skin():
         flash(BLOCKED_MSG, 'bad')
     elif any(skin_key(r['skin']) == skin_key(name) for r in q("SELECT skin FROM consorts WHERE skin!='' AND id!=? AND status!='dead'", (c['id'],))):
         flash('这个皮相已经有人用了，换一个吧。', 'bad')
-    elif skin_key(name) in {skin_key(r['look_ref']) for r in q("SELECT look_ref FROM heirs WHERE look_ref!=''")}:
+    elif skin_key(name) in {skin_key(r['look_ref']) for r in q("SELECT look_ref FROM heirs WHERE look_ref!=''")} | {skin_key(state()['emperor_look'])}:
         flash('这个皮相已经有人用了，换一个吧。', 'bad')
     else:
         run("UPDATE consorts SET skin=? WHERE id=?", (name, c['id']))
+        gazette(f"{display_name(get_consort(c['id']))}的皮相定下了：像{name}。", 'news')
         flash(f'皮相定为「{name}」。', 'good')
     return redirect(url_for('index'))
 
@@ -7985,6 +7986,8 @@ def heir_look_taken():
     """已经被占用的长相（妃嫔的皮相 + 孩子的长相），按 skin_key 比较"""
     used = {skin_key(r['skin']) for r in q("SELECT skin FROM consorts WHERE skin!=''")}
     used |= {skin_key(r['look_ref']) for r in q("SELECT look_ref FROM heirs WHERE look_ref!=''")}
+    el = state()['emperor_look']
+    if el: used.add(skin_key(el))      # 当朝皇帝的长相：儿子们不能撞
     return used
 
 
@@ -7998,6 +8001,7 @@ def assign_heir_look(h):
     run("UPDATE heirs SET look_ref=? WHERE id=?", (pick, h['id']))
     for par in heir_parents(h):
         notify(par['id'], f"{heir_label(h)}长开了，眉眼越看越像{pick}。", 'info')
+    gazette(f"{heir_label(h)}成年，眉眼长开了，宫里人都说像极了{pick}。", 'news')      # 成年那一刻一定会发一条
     return pick
 
 
@@ -9532,13 +9536,14 @@ def end_reign(day):
     dowager_text = f"圣母皇太后{full_name(dowager)}" if dowager else ''
     run("""UPDATE game_state SET day=?, last_settle_date=?, reign_no=?, reign_start_day=?, emperor_start_age=?, emperor_death_day=0,
            mourning=1, era_name=?, emperor_name=?, emperor_traits=?, dowager=?, dowager_uid=?, emperor_mood='平和', last_bed_id=0, last_bed_day=0,
-           last_bed_pool='[]', last_bed_ids='[]' WHERE id=1""",
+           last_bed_pool='[]', last_bed_ids='[]', emperor_look=? WHERE id=1""",
         (day + 1, datetime.now(TZ).date().isoformat(), st['reign_no'] + 1, day + 2, successor_age, era, name,
-         json.dumps(traits, ensure_ascii=False), dowager_text, consort_uid(dowager) if dowager and not dowager['npc_key'] else 0))
+         json.dumps(traits, ensure_ascii=False), dowager_text, consort_uid(dowager) if dowager and not dowager['npc_key'] else 0,
+         (winner['look_ref'] if winner and winner['look_ref'] else '')))      # 新帝保留他的长相；落选的王爷公主清空，不用管
     seed_npcs(_RunDB); seed_npc_heirs(_RunDB)
     housing_sync(fill_main=False)
     archive_families()      # 新帝登基，家族退回家族池，新一届重新挑
-    gazette(f"先帝驾崩。{edict[0]}国丧一日，新帝改元{era}。", 'decree')
+    gazette(f"先帝驾崩。{edict[0]}国丧一日，新帝改元{era}。" + (f"新帝眉眼像{winner['look_ref']}。" if winner and winner['look_ref'] else ''), 'decree')
     return reign_id
 
 
