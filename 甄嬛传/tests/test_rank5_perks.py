@@ -16,8 +16,8 @@ class Rank5PerkTests(unittest.TestCase):
 
     def test_stipend_raised(self):
         self.assertEqual(game.STIPEND[4], 75)
-        self.assertEqual(game.STIPEND[5], 200)
-        self.assertEqual(game.STIPEND[10], 1000)
+        self.assertEqual(game.STIPEND[5], 300)      # 嫔以上又上调 50%（2026-10-08）
+        self.assertEqual(game.STIPEND[10], 1500)
 
     def test_promotion_to_pin_offers_three_titles_and_pick_changes_title(self):
         game.run("UPDATE consorts SET rank=4, title='怡', title_choices='' WHERE id=?", (self.tgt,))

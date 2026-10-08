@@ -246,7 +246,7 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(game.diet_cost(4, 'lavish'), 75)
         self.assertEqual(game.diet_cost(4, 'frugal'), 12)
         self.assertEqual(game.diet_cost(1, 'frugal'), 2)
-        self.assertEqual(game.diet_cost(9, 'normal'), 260)
+        self.assertEqual(game.diet_cost(9, 'normal'), 390)      # 月例 975 × 比例，嫔以上月例上调后同比涨
         for r in range(1, 9):
             c = game.diet_costs(r)
             self.assertTrue(c['frugal'] < c['normal'] < c['lavish'])

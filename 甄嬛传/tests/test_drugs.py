@@ -233,6 +233,15 @@ class DrugTests(unittest.TestCase):
         self.assertEqual(c['pregnant_since'],9)                      # 90% 小产没掷中，胎儿保住
         self.assertAlmostEqual(game.preterm_chance(c)-base,game.PREGNANCY_DRUGS['musk']['preterm'],places=3)
 
+    def test_failed_pregnancy_drug_opens_no_case(self):
+        game.run('UPDATE consorts SET pregnant_since=9,pregnancy_started_ts=1 WHERE id=?',(self.tgt,))
+        it=self.plan('honghua')
+        with patch.object(game.random,'random',return_value=0.99):      # 没得手；自己动手必被察觉
+            result=game.resolve_intrigue(it)[0]
+        self.assertEqual(result,'caught')
+        self.assertEqual(len(game.q('SELECT * FROM cases')),0)
+        self.assertEqual(game.get_consort(self.tgt)['pregnant_since'],9)
+
     def test_honghua_blocked_by_antai(self):
         game.run('UPDATE consorts SET pregnant_since=9 WHERE id=?',(self.tgt,))
         game.inv_add(self.tgt,'antai')

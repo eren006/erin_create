@@ -85,7 +85,8 @@ class HeirLooksTests(unittest.TestCase):
         game.run("UPDATE consorts SET recap_seen_day=99 WHERE id=?", (self.atk,))
         html = self.client.get('/heirs').get_data(as_text=True)
         self.assertIn('容貌', html)
-        self.assertIn('气质：' + h['temperament'], html)
+        self.assertIn('气质', html)
+        self.assertIn(h['temperament'], html)
 
     # ── 加容貌的办法：教养「梳洗仪容」、自己长开 ───────────────────────────────
 

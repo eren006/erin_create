@@ -108,7 +108,7 @@ FOUR_CONSORT_TITLES = ['淑', '德', '贤', '惠']      # 四妃的名号：叫�
 PROMOTE_FAVOR  = {2: 30, 3: 65, 4: 110, 5: 180, 6: 280, 7: 350, 8: 420, 9: 600, 10: 850}   # 晋到该位分所需圣宠
 PROMOTE_VIRTUE = {2: 0, 3: 10, 4: 20, 5: 35, 6: 50, 7: 55, 8: 60, 9: 70, 10: 75}          # 晋到该位分所需德行（品行高的皇上再打九折，见 promote_virtue_need）
 RANK_SLOTS     = {4: 8, 5: 4, 6: 4, 7: 4, 8: 2, 9: 1, 10: 1}                     # 贵人以上有名额，含 NPC
-STIPEND = {1: 15, 2: 30, 3: 45, 4: 75, 5: 200, 6: 300, 7: 375, 8: 450, 9: 650, 10: 1000}  # 每日月例银（2026-10-07 起：嫔以下 ×3，嫔以上 ×5；原来 5/10/15/25/40/60/90/130/200）
+STIPEND = {1: 15, 2: 30, 3: 45, 4: 75, 5: 300, 6: 450, 7: 560, 8: 675, 9: 975, 10: 1500}  # 每日月例银（2026-10-07 起：嫔以下 ×3，嫔以上 ×5；之后嫔以上再 ×1.5；原来 5/10/15/25/40/60/90/130/200）
 MOTHER_BY_SON_INFLUENCE = 6     # 母凭子贵已封顶（嫔以上）时，改为奖励的势力
 MOTHER_BY_SON_MAX_RANK = 5   # 母凭子贵最多晋到嫔位（rank 5），再往上要靠自己的圣宠、德行和名额
 PLAYER_MAX_RANK = 10   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[10]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
@@ -1607,6 +1607,7 @@ def init_db():
     # 幂等迁移：旧角色从更新时开始计龄，不按旧存档天数追溯增长。
     migrations = {
         'tribute_turns': {'rank': 'INTEGER NOT NULL DEFAULT 0'},
+        'incense_events': {'ends_ts': 'REAL NOT NULL DEFAULT 0'},
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
         'banquet_entries': {'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'tier': 'INTEGER NOT NULL DEFAULT 1', 'buff': 'INTEGER NOT NULL DEFAULT 0', 'note': "TEXT NOT NULL DEFAULT ''"},
         'consorts': {'health_max': 'INTEGER NOT NULL DEFAULT 100', 'birth_crisis': 'INTEGER NOT NULL DEFAULT 0', 'mood': 'INTEGER NOT NULL DEFAULT 50', 'pregnancy_secret': 'INTEGER NOT NULL DEFAULT 0', 'tryst_count': 'INTEGER NOT NULL DEFAULT 0', 'favor_mark': 'INTEGER NOT NULL DEFAULT -1', 'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
@@ -1676,7 +1677,7 @@ def init_db():
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'life_loss_months': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'ill_years': 'INTEGER NOT NULL DEFAULT -2', 'illness': "TEXT NOT NULL DEFAULT ''", 'ill_deadline_ts': 'REAL NOT NULL DEFAULT 0', 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'attr_years': 'INTEGER NOT NULL DEFAULT 0',
@@ -2320,6 +2321,7 @@ def inject_globals():
                poison_deadline=lambda ts: datetime.fromtimestamp(ts, TZ).strftime('%m月%d日 %H:%M'))
     try:
         ctx['gs'] = state()
+        ctx['incense_on'] = bool(active_incense())
         ctx['next_settle'] = next_settle_text()
         me = getattr(g, 'me', None)
         ctx['open_cases_count'] = q("SELECT COUNT(DISTINCT c.id) FROM cases c LEFT JOIN case_suspects s ON s.case_id=c.id WHERE c.status='open' AND (c.victim_id=? OR s.consort_id=?)", (me['id'], me['id']), one=True)[0] if me else 0
@@ -6396,6 +6398,7 @@ HEIR_GROOM_BEAUTY_LINE = 70       # 抚养人容貌到这条线，教出来的�
 HEIR_LOOKS_GROW_CHANCE = 0.5      # 孩子每过一天（宫中长两岁）有这么大概率自己长开一点，容貌 +1，最高 100
 
 HEIR_EVENT_CHANCE = 0.25
+HEIR_PREMATURE_GROW_WEIGHT = 0.5   # 早产儿体质长得慢：每长一岁分到的 4 点属性里，体质被抽中的权重只有别的属性的一半
 HEIR_FOSTER_TALK_AGE_DAYS = 8 * HEIR_DAYS_PER_YEAR   # 抱养的孩子 8 岁起才会问「我的亲额娘是谁」
 
 HEIR_EVENTS = {
@@ -6723,7 +6726,8 @@ def heir_grow_stats(day):
         for _ in range((years - done) * HEIR_GROW_POINTS):
             open_ = [k for k in HEIR_STATS if h[k] + gain[k] < (h['health_max'] if k == 'health' else 100)]
             if not open_: break
-            gain[random.choice(open_)] += 1
+            weights = [HEIR_PREMATURE_GROW_WEIGHT if (h['premature'] and k == 'health') else 1 for k in open_]
+            gain[random.choices(open_, weights=weights)[0]] += 1
         run("UPDATE heirs SET attr_years=?, study=study+?, riding=riding+?, virtue=virtue+?, health=health+? WHERE id=?",
             (years, gain['study'], gain['riding'], gain['virtue'], gain['health'], h['id']))
         parts = '、'.join(f"{HEIR_STATS[k]} +{v}" for k, v in gain.items() if v)
@@ -6731,11 +6735,167 @@ def heir_grow_stats(day):
             for par in heir_parents(h):
                 if par['user_id']: notify(par['id'], f"{heir_label(h)}长到 {years} 岁了，身量和心性都长了些：{parts}。", 'good')
 
+# ── 孩子生病：0 岁起每长一岁掷一次，到 14 岁成年为止 ──
+# 轻症都不致命；重症只有「没人抚养」（养育所）时才可能夭折。有人养的，请太医治，不治就拖成病弱。
+HEIR_ILLNESSES = {
+    'cold':    dict(name='风寒',     severe=False, cost=30,  text='受了凉，咳嗽流涕，小脸烧得发红。'),
+    'stomach': dict(name='积食',     severe=False, cost=30,  text='吃撑了肚子，胀得直哭，什么也不肯再吃。'),
+    'teeth':   dict(name='长牙发热', severe=False, cost=25,  text='牙床肿着，低低地烧，成日烦躁爱哭。'),
+    'night':   dict(name='夜啼',     severe=False, cost=25,  text='夜里总惊醒，一哭就是半宿，白日里没精神。'),
+    'eczema':  dict(name='湿疹',     severe=False, cost=35,  text='脖颈和肘弯起了一片红疹，痒得直抓。'),
+    'cough':   dict(name='咳疾',     severe=False, cost=40,  text='咳个不停，一口气上不来似的，嗓子都哑了。'),
+    'pox':     dict(name='水痘',     severe=False, cost=50,  text='身上起了一粒粒水疱，发着热，得隔开养着。'),
+    'diarrhea':dict(name='水土不服', severe=False, cost=30,  text='上吐下泻，人瘦了一圈。'),
+    'fright':  dict(name='急惊风',   severe=True,  cost=150, text='忽然抽搐起来，牙关紧闭，眼睛上翻，吓坏了满屋的人。'),
+    'smallpox':dict(name='痘疹',     severe=True,  cost=200, text='高烧不退，满身起了红痘，太医看了直摇头。'),
+    'lung':    dict(name='肺热喘急', severe=True,  cost=150, text='喘得厉害，胸口一起一伏，嘴唇都有些发紫。'),
+}
+HEIR_ILL_ADULT_YEARS = 14           # 到 14 岁成年为止，每一岁都可能病
+HEIR_ILL_BASE = 0.5                 # 每岁患病率最低 50%
+HEIR_ILL_PER_LOW_HEALTH = 0.004     # 体质每比 100 低 1 点，患病率 +0.4%
+HEIR_ILL_PREMATURE_MULT = 1.5       # 早产儿更容易生病
+HEIR_ILL_CAP = 0.95
+HEIR_ILL_SEVERE_SHARE = 0.15        # 生了病里，重症占的比例
+HEIR_ILL_HOURS = 24                 # 病了这么久还没人治，就按「没治」结算
+HEIR_ILL_TREAT_SUCCESS = {False: 1.0, True: 0.9}     # 太医医治成功率：轻症一定好，重症九成
+# 没治的后果。有人抚养：轻症自己好，只落一点体质；重症拖成病弱，不会死。没人抚养（养育所）：重症可能夭折。
+HEIR_ILL_WEAK = dict(health=8, cap=5)               # 病弱：体质 -8、体质上限 -5
+HEIR_ILL_LIGHT_HEALTH = 3
+HEIR_ILL_RAISED_LIGHT_WEAK = 0.50                    # 有人养但没请太医的轻症，也有五成拖成病弱
+HEIR_ILL_ORPHAN_LIGHT_WEAK = 0.50                    # 养育所里的轻症有五成拖成病弱
+HEIR_ILL_ORPHAN_SEVERE_DEATH = 0.35
+HEIR_ILL_ORPHAN_SEVERE_WEAK = 0.40
+HEIR_ILL_LOW_HEALTH_BONUS = 0.002                   # 体质越低，重症没治时越危险（每低 1 点 +0.2%，死亡/病弱都加）
+
+
+def heir_ill_chance(h):
+    p = HEIR_ILL_BASE + max(0, 100 - h['health']) * HEIR_ILL_PER_LOW_HEALTH
+    if h['premature']: p *= HEIR_ILL_PREMATURE_MULT
+    return min(HEIR_ILL_CAP, p)
+
+
+def heir_delete(hid):
+    """孩子夭折：删掉本人和挂在他名下的争夺、定亲等记录（出生时夭折走 birth_losses，这里同样补一条）"""
+    for t in ('stances', 'heir_claims', 'custody_battles', 'princess_courtships', 'princess_suitors'):
+        run(f"DELETE FROM {t} WHERE heir_id=?", (hid,))
+    run('DELETE FROM heirs WHERE id=?', (hid,))
+
+
+def heir_notify_kin(h, text, kind='info'):
+    for cid in {h['mother_id'], h['caretaker_id']} - {0}:
+        cc = get_consort(cid)
+        if cc and cc['user_id']: notify(cid, text, kind)
+
+
+def heir_fall_ill(h, day):
+    severe = random.random() < HEIR_ILL_SEVERE_SHARE
+    key = random.choice([k for k, v in HEIR_ILLNESSES.items() if v['severe'] == severe])
+    ill = HEIR_ILLNESSES[key]
+    run('UPDATE heirs SET illness=?, ill_deadline_ts=? WHERE id=?', (key, now_ts() + HEIR_ILL_HOURS * 3600, h['id']))
+    label = heir_label(h)
+    ct = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
+    if ct and ct['user_id']:
+        heir_notify_kin(h, f"{label}病了：{ill['name']}。{ill['text']}去子嗣页请太医医治（{ill['cost']} 两），{HEIR_ILL_HOURS} 小时内不治，{'一定拖成病弱' if ill['severe'] else '有五成要落下病弱'}。", 'bad')
+    elif not ct:
+        heir_notify_kin(h, f"{label}在皇嗣养育所里病了：{ill['name']}。{'没人守着，恐怕凶多吉少。' if ill['severe'] else '乳母看顾着。'}", 'bad')
+
+
+def heir_ill_resolve(h, cured_by_doctor=False):
+    """病到期，或被医治：落结果。返回给页面/通知的一句话"""
+    ill = HEIR_ILLNESSES[h['illness']]
+    label = heir_label(h)
+    run("UPDATE heirs SET illness='', ill_deadline_ts=0 WHERE id=?", (h['id'],))
+    ct = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
+    raised = bool(ct)
+    low = max(0, 100 - h['health']) * HEIR_ILL_LOW_HEALTH_BONUS
+    if raised:
+        if ill['severe']:
+            weaken_heir(h, f"{label}的{ill['name']}拖着没治，病好了，人却落下了病根。")
+            return
+        if random.random() < HEIR_ILL_RAISED_LIGHT_WEAK + low:
+            weaken_heir(h, f"{label}的{ill['name']}没请太医，拖得久了，落下了病根。")
+            return
+        run('UPDATE heirs SET health=MAX(1,health-?) WHERE id=?', (HEIR_ILL_LIGHT_HEALTH, h['id']))
+        heir_notify_kin(h, f"{label}的{ill['name']}自己熬过去了，只是人瘦了些，体质 -{HEIR_ILL_LIGHT_HEALTH}。", 'info')
+        return
+    r = random.random()
+    if ill['severe']:
+        if r < HEIR_ILL_ORPHAN_SEVERE_DEATH + low:
+            heir_die_of_illness(h, ill)
+        elif r < HEIR_ILL_ORPHAN_SEVERE_DEATH + HEIR_ILL_ORPHAN_SEVERE_WEAK + 2 * low:
+            weaken_heir(h, f"{label}在养育所里挨过了{ill['name']}，保住了命，却落下了病根。")
+        else:
+            heir_notify_kin(h, f"{label}在养育所里熬过了{ill['name']}，总算缓了过来。", 'info')
+    elif r < HEIR_ILL_ORPHAN_LIGHT_WEAK + low:
+        weaken_heir(h, f"{label}在养育所里的{ill['name']}拖得久了，落下了病根。")
+    else:
+        heir_notify_kin(h, f"{label}在养育所里的{ill['name']}好了。", 'info')
+
+
+def weaken_heir(h, text):
+    """病弱：体质和体质上限都扣"""
+    run("UPDATE heirs SET health_max=MAX(1,health_max-?), health=MAX(1,MIN(health-?,MAX(1,health_max-?))) WHERE id=?",
+        (HEIR_ILL_WEAK['cap'], HEIR_ILL_WEAK['health'], HEIR_ILL_WEAK['cap'], h['id']))
+    heir_notify_kin(h, f"{text}体质 -{HEIR_ILL_WEAK['health']}，体质上限 -{HEIR_ILL_WEAK['cap']}。", 'bad')
+
+
+def heir_die_of_illness(h, ill):
+    label = heir_label(h)
+    run('INSERT INTO birth_losses(mother_id,gender,day,created_ts,reason) VALUES(?,?,?,?,?)',
+        (h['mother_id'], h['gender'], cur_day(), now_ts(), f"{ill['name']}夭折（皇嗣养育所）"))
+    heir_notify_kin(h, f"{label}在皇嗣养育所里染了{ill['name']}，没能救回来。", 'bad')
+    heir_delete(h['id'])
+    gazette(f"皇嗣养育所传出消息：{label}染{ill['name']}夭折。", 'news')
+
+
+def heir_illness_tick(day):
+    """每小时跑：新长大一岁的孩子掷患病；到期没人治的病落结果。ill_years：-2 老档（只记岁数不补掷），-1 新生儿，其余 = 已掷到几岁"""
+    for h in list(q("SELECT * FROM heirs WHERE adult_day=0 AND COALESCE(npc_key,'')=''")):
+        years = min(heir_age_years(h, day), HEIR_ILL_ADULT_YEARS)
+        done = h['ill_years']
+        if done == -2:
+            run('UPDATE heirs SET ill_years=? WHERE id=?', (years, h['id'])); continue
+        if years > done:
+            run('UPDATE heirs SET ill_years=? WHERE id=?', (years, h['id']))
+            if not h['illness'] and years <= HEIR_ILL_ADULT_YEARS and random.random() < heir_ill_chance(h):
+                heir_fall_ill(get_heir(h['id']), day)
+                continue
+        if h['illness'] and h['ill_deadline_ts'] and now_ts() >= h['ill_deadline_ts']:
+            heir_ill_resolve(h)
+
+
+@app.route('/heirs/treat/<int:hid>', methods=['POST'])
+@login_required
+@atomic
+def heir_treat(hid):
+    c = get_consort(g.me['id'])
+    h = get_heir(hid)
+    try:
+        if not h or h['caretaker_id'] != c['id']: raise Reject('这不是你抚养的孩子。')
+        if not h['illness']: raise Reject('孩子眼下没病。')
+        ill = HEIR_ILLNESSES[h['illness']]
+        if c['silver'] < ill['cost']: raise Reject(f"请太医要 {ill['cost']} 两，银子不够。")
+        add_silver(c['id'], -ill['cost'])
+        label = heir_label(h)
+        if random.random() < HEIR_ILL_TREAT_SUCCESS[ill['severe']]:
+            run("UPDATE heirs SET illness='', ill_deadline_ts=0 WHERE id=?", (hid,))
+            feed(c['id'], f"请太医治好了{label}的{ill['name']}，花了 {ill['cost']} 两。")
+            flash(f"太医开了方子，{label}的{ill['name']}好了。花了 {ill['cost']} 两。", 'good')
+        else:
+            run("UPDATE heirs SET ill_deadline_ts=? WHERE id=?", (now_ts() + HEIR_ILL_HOURS * 3600 // 2, hid))
+            flash(f"太医用了药，{label}的{ill['name']}不见起色，只能再熬熬看（银子已花）。", 'bad')
+    except Reject as exc: flash(str(exc), 'bad')
+    return redirect(url_for('heirs'))
+
+app.jinja_env.globals.update(HEIR_ILLNESSES=HEIR_ILLNESSES, HEIR_ILL_HOURS=HEIR_ILL_HOURS)
+
+
 def heir_growth_tick(day):
     """抓周时低位生母的孩子进入养育所；已经主动托付的维持现有抚养。"""
     heir_looks_grow(day)
     heir_age_events(day)
     heir_grow_stats(day)
+    heir_illness_tick(day)
 
 def heir_age_events(day):
     """到岁数的事：2 岁没起名自动起名、周岁抓周。孩子按出生时刻每 12 小时一岁，所以这个每小时也会跑（见 maybe_settle），夜里结算再补一次"""
@@ -7822,8 +7982,8 @@ def roll_heir_event(c):
     """每天第一次进本宫时掷一次。同一件事同一个孩子不会遇到两次"""
     if c['status'] == 'cold' or c['heir_event'] or daily_count(c['id'], 'heir_event_roll'): return
     daily_inc(c['id'], 'heir_event_roll')
-    if random.random() >= HEIR_EVENT_CHANCE: return
     mine = list(q("SELECT * FROM heirs WHERE caretaker_id=? AND adult_day=0", (c['id'],)))
+    if random.random() >= HEIR_EVENT_CHANCE: return
     if not mine: return
     random.shuffle(mine)
     day = cur_day()
@@ -8700,6 +8860,7 @@ def resolve_births(day, include_legacy=True):
                  clamp(60 + c['health'] * 0.1, 0, 100),
                  gifts['study'], gifts['riding'], gifts['virtue']))
             hid = q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id']
+            run('UPDATE heirs SET ill_years=-1 WHERE id=?', (hid,))        # 新生儿：0 岁那一掷也要算
             if premature:
                 loss = random.randint(5, 10)
                 run('UPDATE heirs SET premature=1,preterm_health_loss=?,health_max=MAX(1,health_max-?),health=MAX(1,health-?) WHERE id=?', (loss, loss, loss, hid))
@@ -8721,8 +8882,8 @@ def resolve_births(day, include_legacy=True):
         if birth_loss > 0: add_stat(c['id'], 'health', -birth_loss)
         run('UPDATE consorts SET postpartum_until=? WHERE id=?', (day + POSTPARTUM_SICK_DAYS, c['id']))
         extra = f'生产耗去元气，体质 -{birth_loss}。' if birth_loss > 0 else ''
-        if premature:
-            extra += '孕期未满便临盆，孩子基础体质较弱，体质上限永久降低5～10点。'
+        if premature:      # 早产说明放句首，公告一眼能看出来
+            extra = '孕期未满便临盆，孩子基础体质较弱，体质上限永久降低5～10点。' + extra
         if lost:
             extra += f"早产的{'、'.join(lost)}出生时夭折。"
             feed(c['id'], f"早产临盆，{'、'.join(lost)}不幸夭折。")
@@ -8756,8 +8917,9 @@ def resolve_births(day, include_legacy=True):
                 housing_sync()
         gift_line = '；'.join((f"{b[0]}：{b[1]}" if twins else b[1]) for b in born)
         if premature: feed(c['id'], f'提前临盆，诞下{label}。{extra}')
-        gazette(f"{display_name(c)}诞下{label}。{extra}资质：{gift_line}。", 'birth')
-        notify(c['id'], f"你诞下了{label}。{extra}", 'good')
+        verb = '早产诞下' if premature and born else '诞下'
+        gazette(f"{display_name(c)}{verb}{label}。{extra}资质：{gift_line}。", 'birth')
+        notify(c['id'], f"你{verb}了{label}。{extra}", 'good')
         if born:
             notify(c['id'], f"请嬷嬷看了孩子的根骨：{gift_line}。", 'info')
             notify(c['id'], "皇上为孩子点了几个字，去「子嗣」页挑一个定名，名字是本届字辈加你选的字。", 'info')
@@ -9500,6 +9662,7 @@ def maybe_settle():
     repair_roll(now)
     heir_age_events(st['day'])
     heir_grow_stats(st['day'])
+    heir_illness_tick(st['day'])
     bedding_round(st['day'],key)
     maybe_banquet(now)
     today = now.date().isoformat()
@@ -10762,7 +10925,7 @@ def resolve_drug(it):
             inv_add(t['id'],'yinzhen',-1)
             notify(t['id'],'银针挡下了异样，折了一根。')
         caught = not m or bool(m['counter']) or random.random()<0.5
-        if caught: open_drug_case(it)
+        if caught and it['drug'] not in PREGNANCY_DRUGS: open_drug_case(it)      # 红花、麝香没得手不开案子，只有得手才开
         return done('caught' if caught else 'fizzle')
     if DRUGS[it['drug']]['eat']:
         tasters = [m for m in active_maids(t['id']) if m['loyalty']>=TASTER_LOYALTY and m['sick_until_day']<day]
@@ -10773,7 +10936,7 @@ def resolve_drug(it):
                 gazette(f"{display_name(t)}的宫人{m['name']}试毒身亡，忠心可鉴。")
             else: run('UPDATE maids SET sick_until_day=? WHERE id=?', (day+3,m['id']))
             notify(t['id'],f"{m['name']}尝出了异样，替你挡下一劫。",'bad')
-            open_drug_case(it)
+            if it['drug'] not in PREGNANCY_DRUGS: open_drug_case(it)
             return done('fizzle')
     drug = it['drug']
     run('UPDATE consorts SET drugged_day=?,drugged_until_day=? WHERE id=?', (day,day+(2 if drug=='lihun' else 1),t['id']))
@@ -10874,7 +11037,7 @@ def drug_gifts(day):
 def drug_cases():
     cases = []
     for case in q('SELECT * FROM cases ORDER BY id DESC LIMIT 30'):
-        suspects = q('SELECT s.*, c.surname, c.given, c.title, c.rank, c.status FROM case_suspects s JOIN consorts c ON c.id=s.consort_id WHERE s.case_id=?', (case['id'],))
+        suspects = q('SELECT s.*, c.surname, c.given, c.title, c.rank, c.four_word, c.status FROM case_suspects s JOIN consorts c ON c.id=s.consort_id WHERE s.case_id=?', (case['id'],))
         involved = g.me['id'] == case['victim_id'] or any(s['consort_id']==g.me['id'] for s in suspects)
         public = {k:case[k] for k in ('id','day','victim_id','status','closed_day')}
         public['suspects'] = [dict(id=s['consort_id'], name=display_name(s), suspicion=s['suspicion'] if involved else None) for s in suspects]
@@ -11031,7 +11194,7 @@ def case_appeal(case_id):
 @login_required
 def agents_page():
     c=g.me
-    targets=q("SELECT m.*, c.surname,c.given,c.title,c.rank, c.status AS owner_status FROM maids m JOIN consorts c ON c.id=m.owner_id WHERE m.status='active' AND c.user_id IS NOT NULL AND c.id!=? AND c.status NOT IN ('dead','cold','xiunv') AND ?-c.entered_day>=?",(c['id'],cur_day(),BRIBE_NEWCOMER_SHIELD))
+    targets=q("SELECT m.*, c.surname,c.given,c.title,c.rank,c.four_word, c.status AS owner_status FROM maids m JOIN consorts c ON c.id=m.owner_id WHERE m.status='active' AND c.user_id IS NOT NULL AND c.id!=? AND c.status NOT IN ('dead','cold','xiunv') AND ?-c.entered_day>=?",(c['id'],cur_day(),BRIBE_NEWCOMER_SHIELD))
     bribes={b['maid_id']:b for b in q('SELECT * FROM bribes WHERE briber_id=?',(c['id'],))}
     found=q('SELECT m.name,b.maid_id,b.briber_id FROM bribes b JOIN maids m ON m.id=b.maid_id WHERE m.owner_id=? AND m.status=\'active\' AND b.exposed=1 AND b.counter=0',(c['id'],))
     return render_template('agents.html',targets=[dict(m, status=m['owner_status']) for m in targets],bribes=bribes,found=found,c=c)
@@ -12995,6 +13158,102 @@ def admin_tribute():
         else: raise Reject('请选择活动操作。')
     except (Reject, ValueError) as exc: flash(str(exc), 'bad')
     return redirect(url_for('admin'))
+
+
+# ── 临时活动 · 寿康宫添香 ──
+INCENSE_COOLDOWN = 1800                       # 每半个时辰可添一炷香
+INCENSE_STEP = (5, 10)                        # 每炷香涨的进度
+INCENSE_GOAL = 100
+INCENSE_HOURS = 48                            # 开启后多久到期
+INCENSE_SILVER = 100
+INCENSE_DRUGS = ('honghua', 'musk', 'yachan', 'yanzhi')   # 红花、麝香、哑蝉汤、胭脂霰
+INCENSE_LINES = (
+    '你换了身素净衣裳，在佛前添了一炷香。', '你跪在蒲团上默诵了一卷《心经》，香灰落了一寸。',
+    '你替太后点亮一盏长明灯，灯芯爆了个小小的灯花。', '掌事嬷嬷引你进了佛堂，檀香烟气绕着梁上垂下的经幡。',
+    '你捧着手抄的经卷在佛前焚了，青烟笔直地升了上去。', '你在佛前拜了三拜，起身时廊下正好敲过一声磬。',
+)
+
+
+def active_incense():
+    """进行中的一轮；过了截止时间的不算（落库关闭放在 start_incense 里，读路径不写库）"""
+    return q("SELECT * FROM incense_events WHERE status='active' AND (ends_ts=0 OR ends_ts>?)", (now_ts(),), one=True)
+
+
+def incense_row(event, cid):
+    return q('SELECT * FROM incense_progress WHERE event_id=? AND consort_id=?', (event['id'], cid), one=True)
+
+
+def start_incense():
+    if active_incense(): raise Reject('已有一轮添香祈福正在进行。')
+    run("UPDATE incense_events SET status='closed' WHERE status='active'")       # 到期没关的旧轮
+    eid = run('INSERT INTO incense_events(started_ts,ends_ts) VALUES(?,?)', (now_ts(), now_ts() + INCENSE_HOURS * 3600)).lastrowid
+    gazette(f'太后寿辰将近，寿康宫佛堂请六宫姐妹轮流去添香祈福；每半个时辰可添一炷香，香火满百，太后重重有赏；{INCENSE_HOURS} 小时后香火收起。', 'news')
+    for c in q("SELECT id FROM consorts WHERE user_id IS NOT NULL AND npc_key IS NULL AND status NOT IN ('xiunv','dead','cold')"):
+        notify(c['id'], f'临时活动「寿康宫添香」已开启：每半个时辰去佛堂添一炷香，香火满百有赏，{INCENSE_HOURS} 小时内有效。', 'info')
+    return eid
+
+
+@app.route('/admin/incense', methods=['POST'])
+@admin_required
+@atomic
+def admin_incense():
+    action = request.form.get('action')
+    try:
+        if action == 'start':
+            start_incense(); flash('添香祈福已开启。', 'good')
+        elif action == 'close':
+            event = active_incense()
+            if not event: raise Reject('目前没有进行中的添香祈福。')
+            run("UPDATE incense_events SET status='closed' WHERE id=?", (event['id'],))
+            gazette('寿康宫佛堂的香火收了，太后说这几日辛苦各位。', 'news')
+            flash('添香祈福已关闭。', 'good')
+        else: raise Reject('请选择活动操作。')
+    except (Reject, ValueError) as exc: flash(str(exc), 'bad')
+    return redirect(url_for('admin'))
+
+
+@app.route('/incense')
+@login_required
+def incense():
+    event = active_incense()
+    row = incense_row(event, g.me['id']) if event else None
+    wait = max(0, int(row['last_ts'] + INCENSE_COOLDOWN - now_ts())) if row else 0
+    ends = datetime.fromtimestamp(event['ends_ts'], TZ).strftime('%m-%d %H:%M') if event and event['ends_ts'] else ''
+    return render_template('incense.html', event=event, row=row, ends=ends, hours=INCENSE_HOURS, wait_min=(wait + 59) // 60, goal=INCENSE_GOAL,
+                           silver=INCENSE_SILVER, drugs=[DRUGS[k]['name'] for k in INCENSE_DRUGS],
+                           ready=bool(event) and wait == 0 and not (row and row['progress'] >= INCENSE_GOAL))
+
+
+@app.route('/incense/burn', methods=['POST'])
+@login_required
+@atomic
+def incense_burn():
+    try:
+        event = active_incense()
+        if not event: raise Reject('添香祈福没有在进行。')
+        c = get_consort(g.me['id'])
+        if c['status'] != 'normal': raise Reject('眼下出不了宫门，去不了佛堂。')
+        row = incense_row(event, c['id'])
+        if row and row['progress'] >= INCENSE_GOAL: raise Reject('你的香火已经满了，赏也领过了。')
+        if row and now_ts() - row['last_ts'] < INCENSE_COOLDOWN:
+            left = math.ceil((row['last_ts'] + INCENSE_COOLDOWN - now_ts()) / 60)
+            raise Reject(f'佛前的香还没燃尽，{left} 分钟后再来。')
+        gain = random.randint(*INCENSE_STEP)
+        prog = min(INCENSE_GOAL, (row['progress'] if row else 0) + gain)
+        run("INSERT INTO incense_progress(event_id,consort_id,progress,last_ts,times) VALUES(?,?,?,?,1) "
+            "ON CONFLICT(event_id,consort_id) DO UPDATE SET progress=?,last_ts=?,times=times+1",
+            (event['id'], c['id'], prog, now_ts(), prog, now_ts()))
+        msg = f"{random.choice(INCENSE_LINES)}香火 +{gain}（{prog}/{INCENSE_GOAL}）。"
+        if prog >= INCENSE_GOAL:
+            drug = random.choice(INCENSE_DRUGS)
+            add_silver(c['id'], INCENSE_SILVER); inv_add(c['id'], drug)
+            run('UPDATE incense_progress SET reward=? WHERE event_id=? AND consort_id=?', (drug, event['id'], c['id']))
+            msg += f"香火圆满，太后赏银 {INCENSE_SILVER} 两，另从库里赐下一份「{DRUGS[drug]['name']}」。"
+            feed(c['id'], f"寿康宫添香圆满：得赏银 {INCENSE_SILVER} 两、{DRUGS[drug]['name']}一份。")
+            gazette(f"{display_name(c)}在寿康宫佛堂香火圆满，太后欢喜，重重赏了。", 'news')
+        flash(msg, 'good')
+    except (Reject, ValueError) as exc: flash(str(exc), 'bad')
+    return redirect(url_for('incense'))
 
 
 @app.route('/tribute')
