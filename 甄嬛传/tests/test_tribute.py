@@ -170,7 +170,7 @@ class TributeTests(unittest.TestCase):
         with patch.object(game, 'now_ts', return_value=100000 + 8*3600):
             self.assertIsNone(game.tribute_home_reminder(game.get_consort(self.atk)))
             reminder = game.tribute_home_reminder(game.get_consort(self.tgt))
-            self.assertEqual((reminder['hours'], reminder['minutes']), (8, 0))
+            self.assertEqual((reminder['hours'], reminder['minutes']), (4, 0))      # 贵人这批只有 4 小时
 
     def test_same_rank_choose_together_first_confirm_wins_and_conflict_asks_to_reselect(self):
         third = self.player('第三位', rank=5)
@@ -222,5 +222,39 @@ class TributeTests(unittest.TestCase):
         game.backfill_tribute_ranks(db); db.commit()
         group = {t['consort_id'] for t in game.tribute_group(game.active_tribute())}
         self.assertEqual(group, {self.atk, third})
+
+    def test_guiren_batch_merges_into_next_batch_after_four_hours(self):
+        a = self.player('贵人甲', rank=4)
+        low = self.player('常在乙', rank=3)
+        with patch.object(game, 'now_ts', return_value=100000):
+            eid = self.start(low_rank=4)
+            game.run('UPDATE tribute_turns SET status="done" WHERE event_id=? AND consort_id=?', (eid, self.atk))
+            game.tribute_advance(game.active_tribute())
+        group = {t['consort_id'] for t in game.tribute_group(game.active_tribute())}
+        self.assertEqual(group, {self.tgt, a})
+        with patch.object(game, 'now_ts', return_value=100000 + 4*3600 - 1): game.tribute_tick()
+        self.assertEqual({t['consort_id'] for t in game.tribute_group(game.active_tribute())}, {self.tgt, a})
+        with patch.object(game, 'now_ts', return_value=100000 + 4*3600): game.tribute_tick()
+        event = game.active_tribute()
+        merged = {t['consort_id'] for t in game.tribute_group(event)}
+        self.assertEqual(merged, {self.tgt, a, low})                          # 没选的贵人并入常在这一批
+        statuses = {r['consort_id']: r['status'] for r in game.q('SELECT * FROM tribute_turns WHERE event_id=?', (eid,))}
+        self.assertEqual((statuses[self.tgt], statuses[a], statuses[low]), ('waiting', 'waiting', 'waiting'))
+        self.assertEqual(event['turn_started_ts'], 100000 + 4*3600)           # 整批重新计时
+        self.assertEqual(game.q('SELECT quota FROM tribute_turns WHERE event_id=? AND consort_id=?', (eid, a), one=True)['quota'], 2)      # 配额不变
+        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%并入下一批%'", (a,), one=True))
+        self.login(self.tgt)
+        ids = [i['id'] for i in self.available(eid)[:2]]
+        with patch.object(game, 'now_ts', return_value=100000 + 4*3600 + 60):
+            self.choose(eid, ids)
+        self.assertEqual(len(self.available(eid)), 74)
+
+    def test_guiren_batch_with_no_next_batch_is_skipped_after_four_hours(self):
+        with patch.object(game, 'now_ts', return_value=100000):
+            eid = self.start(low_rank=4)
+            game.run('UPDATE tribute_turns SET status="done" WHERE event_id=? AND consort_id=?', (eid, self.atk))
+            game.tribute_advance(game.active_tribute())
+        with patch.object(game, 'now_ts', return_value=100000 + 4*3600): game.tribute_tick()
+        self.assertIsNone(game.active_tribute())
 
 if __name__ == '__main__': unittest.main()

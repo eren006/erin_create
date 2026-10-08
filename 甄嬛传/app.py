@@ -12858,6 +12858,26 @@ def tribute_group(event):
     return list(q("SELECT * FROM tribute_turns WHERE event_id=? AND status='waiting' AND rank=? ORDER BY position", (event['id'], first['rank'])))
 
 
+TRIBUTE_MERGE_RANK, TRIBUTE_MERGE_HOURS = 4, 4      # 贵人这一批只等 4 小时，没选的人自动并入下一批，不算跳过
+
+
+def tribute_group_hours(event, group):
+    if not event['timeout_hours']: return 0
+    return TRIBUTE_MERGE_HOURS if group and group[0]['rank'] == TRIBUTE_MERGE_RANK else event['timeout_hours']
+
+
+def tribute_merge_next(event, group):
+    """贵人这批超时：没选的人并入紧随其后的那一批（位分记成下一批的位分，配额不变），整批重新计时。没有下一批就返回 False"""
+    nxt = q("SELECT rank FROM tribute_turns WHERE event_id=? AND status='waiting' AND rank!=? AND rank>0 ORDER BY position LIMIT 1", (event['id'], group[0]['rank']), one=True)
+    if not nxt: return False
+    for turn in group:
+        run("UPDATE tribute_turns SET rank=? WHERE event_id=? AND consort_id=?", (nxt['rank'], event['id'], turn['consort_id']))
+        if get_consort(turn['consort_id']):
+            notify(turn['consort_id'], f"贵人这一批等了{TRIBUTE_MERGE_HOURS}小时还没选，已自动并入下一批，和他们一起挑。", 'info')
+    tribute_advance(event)
+    return True
+
+
 def tribute_skip(event, turn, reason):
     run("UPDATE tribute_turns SET status='skipped' WHERE event_id=? AND consort_id=?", (event['id'], turn['consort_id']))
     if get_consort(turn['consort_id']): feed(turn['consort_id'], reason)
@@ -12891,8 +12911,16 @@ def tribute_tick():
     if not event or state()['maintenance']: return
     group = tribute_group(event)
     if not group: tribute_advance(event); return
-    expired = event['timeout_hours'] > 0 and now_ts() >= event['turn_started_ts'] + event['timeout_hours'] * 3600
+    hours = tribute_group_hours(event, group)
+    expired = hours > 0 and now_ts() >= event['turn_started_ts'] + hours * 3600
     changed = False
+    if expired and group[0]['rank'] == TRIBUTE_MERGE_RANK:
+        alive = [t for t in group if (lambda p: p and p['status'] not in ('dead', 'cold', 'xiunv'))(get_consort(t['consort_id']))]
+        for turn in group:
+            if turn not in alive: tribute_skip(event, turn, '已无法参与，本次选贡品顺位交给下一位。')
+        if alive and tribute_merge_next(event, alive): return
+        for turn in alive: tribute_skip(event, turn, '本轮选贡品已超时未选，顺位交给下一位。')
+        tribute_advance(event); return
     for turn in group:
         person = get_consort(turn['consort_id'])
         invalid = not person or person['status'] in ('dead', 'cold', 'xiunv')
@@ -12918,9 +12946,10 @@ def tribute_home_reminder(c):
     if not turn: return None
     remaining = q('SELECT COUNT(*) n FROM tribute_items WHERE event_id=? AND holder_id=0', (event['id'],), one=True)['n']
     if not remaining: return None
-    minutes = max(1, math.ceil((event['turn_started_ts'] + event['timeout_hours'] * 3600 - now_ts()) / 60)) if event['timeout_hours'] else None
+    hours = tribute_group_hours(event, group)
+    minutes = max(1, math.ceil((event['turn_started_ts'] + hours * 3600 - now_ts()) / 60)) if hours else None
     return dict(quota=min(turn['quota'], remaining), hours=minutes // 60 if minutes else None,
-                minutes=minutes % 60 if minutes else None, deadline=datetime.fromtimestamp(event['turn_started_ts'] + event['timeout_hours'] * 3600, TZ).strftime('%m-%d %H:%M') if minutes else '')
+                minutes=minutes % 60 if minutes else None, deadline=datetime.fromtimestamp(event['turn_started_ts'] + hours * 3600, TZ).strftime('%m-%d %H:%M') if minutes else '')
 
 
 def start_tribute(low_quota=1, timeout_hours=8):
@@ -12979,7 +13008,7 @@ def tribute():
     items = q('SELECT * FROM tribute_items WHERE event_id=? ORDER BY id', (event['id'],)) if event else []
     mine = q('SELECT * FROM tribute_items WHERE holder_id=? ORDER BY grade DESC,id', (g.me['id'],))
     return render_template('tribute.html', event=event, turn=turn, queue=queue, items=items, mine=mine, grades=TRIBUTE_GRADES,
-        get_consort=get_consort, DISPLAY_SLOTS=DISPLAY_SLOTS, group=group, my_turn=next((t for t in group if t['consort_id'] == g.me['id']), None),
+        get_consort=get_consort, DISPLAY_SLOTS=DISPLAY_SLOTS, group_hours=tribute_group_hours(event, group) if event else 0, merge_rank=TRIBUTE_MERGE_RANK, group=group, my_turn=next((t for t in group if t['consort_id'] == g.me['id']), None),
         is_turn=any(t['consort_id'] == g.me['id'] for t in group))
 
 
