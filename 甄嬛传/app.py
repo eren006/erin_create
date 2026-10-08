@@ -1682,7 +1682,7 @@ def init_db():
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'life_loss_months': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'ill_years': 'INTEGER NOT NULL DEFAULT -2', 'illness': "TEXT NOT NULL DEFAULT ''", 'ill_deadline_ts': 'REAL NOT NULL DEFAULT 0', 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'nickname': "TEXT NOT NULL DEFAULT ''", 'ill_rolls': 'INTEGER NOT NULL DEFAULT -2', 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'ill_years': 'INTEGER NOT NULL DEFAULT -2', 'illness': "TEXT NOT NULL DEFAULT ''", 'ill_deadline_ts': 'REAL NOT NULL DEFAULT 0', 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'nickname': "TEXT NOT NULL DEFAULT ''", 'career': "TEXT NOT NULL DEFAULT ''", 'career_skill': 'INTEGER NOT NULL DEFAULT 0', 'career_work_day': 'INTEGER NOT NULL DEFAULT 0', 'ill_rolls': 'INTEGER NOT NULL DEFAULT -2', 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'attr_years': 'INTEGER NOT NULL DEFAULT 0',
@@ -2942,7 +2942,7 @@ def family_backing_id(fam):
     """家里这一届支持哪位阿哥：明说了的；没说就跟着自家的孩子走"""
     if fam['backing_heir_id'] and _rival(fam['backing_heir_id']): return fam['backing_heir_id']
     ids = [m['id'] for m in family_members(fam['user_id'], state()['reign_no'])]
-    for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed' ORDER BY id"):
+    for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed' AND career='' ORDER BY id"):
         if (h['mother_id'] in ids or h['caretaker_id'] in ids) and heir_age_years(h) >= RIVAL_MIN_AGE:
             return h['id']
     return 0
@@ -6468,6 +6468,7 @@ HEIR_RAISE = {
     'ride_girl':  dict(name='琴棋', gain=dict(study=2, virtue=1)),   # 公主版的「骑射」
     'discipline': dict(name='立规矩', gain=dict(virtue=3), affinity=-1),
     'play':       dict(name='陪他玩', affinity=5),
+    'career':     dict(name='钻研', silver=20, career=True),   # 选了志向的皇子：手艺 +CAREER_TRAIN_GAIN（名字按志向换成「习画抚琴」之类）
     'grooming':   dict(name='梳洗仪容', silver=20, looks=2, looks_beauty=3),   # 2026-10-07：给孩子梳洗打扮、教仪容，容貌 +2；抚养人容貌 ≥70 时 +3
 }
 HEIR_GROOM_BEAUTY_LINE = 70       # 抚养人容貌到这条线，教出来的仪容更好
@@ -6705,7 +6706,7 @@ def heir_exam_tick(day):
 
 def heir_hunt_tick(day):
     if day % HEIR_HUNT_INTERVAL: return
-    eligible = [h for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed'") if heir_age_years(h, day) >= HEIR_HUNT_MIN_AGE]
+    eligible = [h for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed' AND career=''") if heir_age_years(h, day) >= HEIR_HUNT_MIN_AGE]
     if not eligible: return
     winner = max(eligible, key=lambda h: h['riding'] + random.randint(0, HEIR_HUNT_ROLL))
     run('UPDATE heirs SET favor=favor+? WHERE id=?', (HEIR_HUNT_REWARD, winner['id']))
@@ -7352,6 +7353,8 @@ def heir_parents(h):
 
 
 def heir_full_title(h):
+    if h['gender'] == '皇子' and 'career' in h.keys() and h['career'] in CAREERS and h['adult_day']:
+        return f"{CAREERS[h['career']]['noun']}{heir_label(h)}"
     return f"{h['title']}{heir_label(h)}" if h['title'] and h['gender'] == '皇子' else heir_label(h)
 
 
@@ -7373,10 +7376,130 @@ def marry_off(h, kind, chosen):
             notify(p['id'], f"{label}册封{title}，留京下嫁，天天能回宫请安。往后往来探望更方便。", 'decree')
 
 
+# ── 皇子的志向（2026-10-08）：8 岁起抚养人可以替皇子选一条路——夺嫡（默认），或是做艺术家、科学家、皇商 ──
+# 选了别的路的皇子不进储位人选、不站队、不结党、没有爵位和差事，也就没有夺嫡的风险和红利；
+# 成年后凭手艺每晚孝敬银子，每 CAREER_WORK_INTERVAL 天有机会出一件成果，抚养人得赏。
+CAREER_MIN_AGE = 8
+CAREER_TRAIN_SILVER = 20
+CAREER_TRAIN_GAIN = 4          # 每次「钻研」手艺 +4（每个孩子每天一次教养的名额，和读书骑射共用）
+CAREER_SKILL_MAX = 100
+CAREER_WORK_INTERVAL = 3
+CAREER_TIERS = [(70, '宗师'), (40, '名家'), (0, '学徒')]
+CAREERS = {
+    'artist':    dict(name='艺术家', noun='画师', train='习画抚琴', stat=dict(study=1),
+                      desc='丹青、琴棋、诗词。成年后不封爵、不争储，凭作品名动京城；作品得皇上赏识，抚养人圣宠上涨。',
+                      works=['画了一幅《{t}》，裱了送进宫来', '谱了一支新曲，宫里的乐师都在传唱', '题了一首诗，被翰林们传抄', '写了一卷字帖，皇上看了点头']),
+    'scientist': dict(name='科学家', noun='格致家', train='格物算学', stat=dict(study=2),
+                      desc='历算、农桑、医药、营造。成年后不封爵、不争储，潜心格物；成果能为家里挣名望。',
+                      works=['改良了一架水车，庄子上的收成好了许多', '推算出一份新历，钦天监也服了', '配出一个方子，太医院抄了去', '画了一张河工图，工部拿去照着修']),
+    'merchant':  dict(name='皇商', noun='皇商', train='学理财经商', stat={},
+                      desc='经营买卖、通商贸易。成年后不封爵、不争储，生意做起来，孝敬银子最多。',
+                      works=['接下了一单内务府的采办，赚了一笔', '跟南边的商号做成了一桩买卖', '开了一间新铺子，开张就客似云来', '盘下了一个货栈，生意红火']),
+}
+
+
+def career_tier(skill):
+    return next(t for lo, t in CAREER_TIERS if skill >= lo)
+
+
+def career_view(h):
+    """子嗣页用：这孩子选了哪条路、手艺到什么档；没选返回 None"""
+    key = h['career'] if 'career' in h.keys() else ''
+    if not key or key not in CAREERS: return None
+    cfg = CAREERS[key]
+    return dict(key=key, name=cfg['name'], noun=cfg['noun'], train=cfg['train'], skill=h['career_skill'], tier=career_tier(h['career_skill']),
+                max=CAREER_SKILL_MAX)
+
+
+def split_to_parents(h, total):
+    """按跟生母、养母的情分分账（只有一位玩家时全归她）"""
+    ps = heir_parents(h)
+    if not total or not ps: return {}
+    if len(ps) == 1: return {ps[0]['id']: total}
+    aff = {h['mother_id']: max(h['mother_affinity'], 1), h['caretaker_id']: max(h['caretaker_affinity'], 1)}
+    mine = round(total * aff[h['mother_id']] / (aff[h['mother_id']] + aff[h['caretaker_id']]))
+    return {h['mother_id']: mine, h['caretaker_id']: total - mine}
+
+
+def career_income(h):
+    s = h['career_skill']
+    return 5 + s // 3 if h['career'] == 'merchant' else 3 + s // 5
+
+
+def heir_career_tick(day):
+    """选了志向的成年皇子：每晚孝敬；每 CAREER_WORK_INTERVAL 天有机会出一件成果"""
+    totals, works = {}, {}
+    for h in q("SELECT * FROM heirs WHERE adult_day>0 AND gender='皇子' AND career!='' AND status!='deposed'"):
+        if h['career'] not in CAREERS: continue
+        who = heir_full_title(h)
+        for cid, amt in split_to_parents(h, career_income(h)).items():
+            if amt <= 0: continue
+            add_silver(cid, amt)
+            t = totals.setdefault(cid, [0, []]); t[0] += amt; t[1].append(who)
+        if (day - h['adult_day']) % CAREER_WORK_INTERVAL or h['career_work_day'] == day: continue
+        run('UPDATE heirs SET career_work_day=? WHERE id=?', (day, h['id']))
+        if random.random() >= 0.35 + h['career_skill'] * 0.005: continue
+        cfg = CAREERS[h['career']]
+        text = random.choice(cfg['works']).format(t=random.choice(['春山', '秋江', '寒梅', '夜雨', '归雁']))
+        tier = career_tier(h['career_skill'])
+        for cid in {p['id'] for p in heir_parents(h)}:
+            if h['career'] == 'artist':
+                gain = {'学徒': 3, '名家': 5, '宗师': 8}[tier]
+                add_favor(cid, gain); reward = f"圣宠 +{gain}"
+            elif h['career'] == 'scientist':
+                add_prestige_uid(consort_uid(get_consort(cid)), 1, f"{who}格物有成"); add_silver(cid, 30); reward = '家族名望 +1，赏银 30 两'
+            else:
+                amt = random.randint(20, 40 + h['career_skill'] * 2); add_silver(cid, amt); reward = f"分红 {amt} 两"
+            works.setdefault(cid, []).append(f"{who}{text}。{reward}")
+    for cid, (amt, names) in totals.items():
+        notify(cid, f"{'、'.join(names)}孝敬了 {amt} 两。", 'good')
+    for cid, lines in works.items():
+        notify(cid, '；'.join(lines), 'good')
+
+
+@app.route('/heirs/<int:hid>/career', methods=['POST'])
+@login_required
+def heir_career(hid):
+    """8 岁起，抚养人替皇子选志向：throne 夺嫡（默认）、或 CAREERS 里的一条。换路手艺清零"""
+    c = g.me
+    h = get_heir(hid)
+    pick = request.form.get('career', '')
+    err = None
+    if not h or h['caretaker_id'] != c['id']: err = '这不是你在抚养的孩子。'
+    elif h['gender'] != '皇子': err = '这条路只给皇子选。'
+    elif h['adult_day'] or h['status']: err = '他已经定了下来，不能再换路了。'
+    elif heir_age_years(h) < CAREER_MIN_AGE: err = f'孩子还小，{CAREER_MIN_AGE} 岁起才能替他选路。'
+    elif pick != 'throne' and pick not in CAREERS: err = '选一条路。'
+    if err:
+        flash(err, 'bad')
+        return redirect(url_for('heirs'))
+    new = '' if pick == 'throne' else pick
+    if new == h['career']:
+        return redirect(url_for('heirs'))
+    run("UPDATE heirs SET career=?, career_skill=0 WHERE id=?", (new, hid))
+    label = heir_label(h)
+    if new:
+        flash(f"{label}往后走{CAREERS[new]['name']}这条路：不争储位，凭手艺立身。日常教养里多了「钻研」（{CAREER_TRAIN_SILVER} 两）。", 'good')
+    else:
+        flash(f"{label}还是走夺嫡这条路。", 'info')
+    return redirect(url_for('heirs'))
+
+
+app.jinja_env.globals.update(CAREERS=CAREERS, CAREER_MIN_AGE=CAREER_MIN_AGE, CAREER_TRAIN_SILVER=CAREER_TRAIN_SILVER, CAREER_TRAIN_GAIN=CAREER_TRAIN_GAIN,
+                             CAREER_WORK_INTERVAL=CAREER_WORK_INTERVAL, career_view=career_view, career_income=career_income)
+
+
 def heir_come_of_age(h, day):
     label = heir_label(h)
     run('UPDATE heirs SET adult_day=?, foster_request_to=0 WHERE id=?', (day, h['id']))
     h = q('SELECT * FROM heirs WHERE id=?', (h['id'],), one=True)
+    if h['gender'] == '皇子' and h['career'] in CAREERS:      # 选了志向：不封爵、不争储，出宫自立门户
+        cv = career_view(h)
+        run("UPDATE heirs SET ambition=0 WHERE id=?", (h['id'],))
+        gazette(f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，不入朝堂，以{cv['name']}（{cv['tier']}）自立，出宫另居。", 'decree')
+        for p in heir_parents(h):
+            notify(p['id'], f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，以{cv['name']}（{cv['tier']}）自立门户。往后每晚孝敬约 {career_income(h)} 两，每 {CAREER_WORK_INTERVAL} 天有机会出一件成果。", 'decree')
+        return
     if h['gender'] == '皇子':
         title = prince_title_for(heir_standing(h))
         run('UPDATE heirs SET title=? WHERE id=?', (title, h['id']))
@@ -7526,6 +7649,7 @@ def heir_adult_tick(day):
         heir_come_of_age(h, day)
     heir_marriage_deadline_tick(day)
     heir_filial_tick(day)
+    heir_career_tick(day)
     heir_plead_tick(day)
     heir_errand_tick(day)
     heir_family_letter_tick(day)
@@ -7630,7 +7754,7 @@ def heir_faction_count(h):
 
 def rival_princes(day=None, exclude_id=0):
     """夺嫡人选：12 岁以上、没被废的皇子"""
-    return [h for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed' AND id!=?", (exclude_id,))
+    return [h for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed' AND career='' AND id!=?", (exclude_id,))
             if heir_age_years(h, day) >= RIVAL_MIN_AGE]
 
 
@@ -7712,7 +7836,7 @@ def heir_feud_tick(day):
 
 def heir_faction_tick(day):
     """结党过多：超过 5 个每晚圣眷 -2，超过 8 个皇上当众训斥（5 天一次）"""
-    for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed'"):
+    for h in q("SELECT * FROM heirs WHERE gender='皇子' AND status!='deposed' AND career=''"):
         n = heir_faction_count(h)
         if n <= FACTION_WARN: continue
         add_merit(h['id'], -FACTION_WARN_LOSS)
@@ -7824,7 +7948,7 @@ def succession():
         row['mine'] = h['caretaker_id'] == c['id']
         row['cared_by'] = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
     stances = {r['kind']: r for r in q("SELECT * FROM stances WHERE consort_id=?", (c['id'],))}
-    mine_adult_princes = [h for h in q("SELECT * FROM heirs WHERE caretaker_id=? AND gender='皇子' AND adult_day>0 AND status!='deposed'", (c['id'],))]
+    mine_adult_princes = [h for h in q("SELECT * FROM heirs WHERE caretaker_id=? AND gender='皇子' AND adult_day>0 AND status!='deposed' AND career=''", (c['id'],))]
     my_kids_exam = [h for h in q("SELECT * FROM heirs WHERE caretaker_id=? AND adult_day=0", (c['id'],)) if 6 <= heir_age_years(h, day) <= 15]
     princesses = [h for h in q("SELECT * FROM heirs WHERE caretaker_id=? AND gender='公主'", (c['id'],)) if heir_age_years(h, day) >= RIVAL_MIN_AGE]
     orphans = q("SELECT * FROM heirs WHERE caretaker_id=0 AND adult_day=0")
@@ -8098,6 +8222,8 @@ def heir_raise(hid):
     elif c['energy'] < HEIR_RAISE_ENERGY: err = '精力不够了。'
     elif c['silver'] < cfg.get('silver', 0): err = f"银子不够，需要 {cfg['silver']} 两。"
     elif cfg.get('looks') and h['appearance'] >= 100: err = '孩子的容貌已经到头了，再梳洗也没有更多好处。'
+    elif cfg.get('career') and h['career'] not in CAREERS: err = '他还没选走哪条路。'
+    elif cfg.get('career') and h['career_skill'] >= CAREER_SKILL_MAX: err = '他在这一行的手艺已经登峰造极了。'
     elif daily_count(c['id'], f'raise:{hid}'): err = '今天已经教养过他了。'
     back = url_for('heirs') if request.form.get('back') == 'heirs' else url_for('place', key='home')
     if err:
@@ -8117,6 +8243,14 @@ def heir_raise(hid):
         if stat in GIFT_STATS and amt > 0: amt = max(1, round(amt * h['gift_' + stat] / 100))   # 资质
         run(f'UPDATE heirs SET {stat}=? WHERE id=?', (clamp(h[stat] + amt), hid))
         parts.append(f"{HEIR_STATS[stat]} +{amt}")
+    if cfg.get('career'):
+        cc = CAREERS[h['career']]
+        gain = CAREER_TRAIN_GAIN + (1 if h['personality'] == 'clever' else 0)
+        new_skill = min(CAREER_SKILL_MAX, h['career_skill'] + gain)
+        run('UPDATE heirs SET career_skill=? WHERE id=?', (new_skill, hid))
+        parts.append(f"手艺 +{new_skill - h['career_skill']}（{career_tier(new_skill)}）")
+        for stat, amt in cc['stat'].items():
+            run(f'UPDATE heirs SET {stat}=? WHERE id=?', (clamp(h[stat] + amt), hid)); parts.append(f"{HEIR_STATS[stat]} +{amt}")
     aff = cfg.get('affinity', 0)
     if h['personality'] == 'honest' and key == 'discipline': aff = round(aff * 1.5)
     if h['personality'] == 'naughty' and key == 'play': aff = round(aff * 2)

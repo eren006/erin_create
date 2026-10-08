@@ -106,8 +106,8 @@
   <div style="margin:10px 0;padding-bottom:10px;border-bottom:1px solid var(--line)">
     <p><b style="font-family:var(--kai)">{{ heir_label(h) }}</b>{% if h.name %}<span class="muted">（{{ heir_rank_title(h) }}）</span>{% endif %}　<span class="muted">{% set pe = heir_persona(h) %}{{ (pe.name ~ '·' ~ pe.tag) if pe else '' }}　{{ heir_age_years(h) }} 岁　学问 {{ h.study }}　骑射 {{ h.riding }}　品行 {{ h.virtue }}　体质 {{ h.health }}　容貌 {{ h.appearance }}{% if h.temperament %}　气质 {{ h.temperament }}{% endif %}　情分 {{ h.caretaker_affinity }}</span></p>
     <form method="post" action="{{ url_for('heir_raise', hid=h.id) }}" class="row">
-      {% for k, r in HEIR_RAISE.items() if not (k == 'ride' and h.gender == '公主') and not (k == 'ride_girl' and h.gender == '皇子') %}
-      <button name="opt" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'raise:' ~ h.id) or c.silver < r.get('silver', 0) or (r.get('looks') and h.appearance >= 100) }}{% if r.get('looks') %} title="容貌 +{{ r.looks }}，抚养人容貌 ≥{{ HEIR_GROOM_BEAUTY_LINE }} 时 +{{ r.looks_beauty }}"{% endif %}>{{ r.name }}{% if r.get('silver') %}（{{ r.silver }} 两）{% endif %}</button>
+      {% for k, r in HEIR_RAISE.items() if not (k == 'ride' and h.gender == '公主') and not (k == 'ride_girl' and h.gender == '皇子') and not (k == 'career' and not h.career) %}
+      <button name="opt" value="{{ k }}" class="plain" {{ 'disabled' if c.energy < 1 or daily_count(c.id, 'raise:' ~ h.id) or c.silver < r.get('silver', 0) or (r.get('looks') and h.appearance >= 100) or (r.get('career') and h.career_skill >= 100) }}{% if r.get('looks') %} title="容貌 +{{ r.looks }}，抚养人容貌 ≥{{ HEIR_GROOM_BEAUTY_LINE }} 时 +{{ r.looks_beauty }}"{% endif %}>{{ career_view(h).train if k == 'career' else r.name }}{% if r.get('silver') %}（{{ r.silver }} 两）{% endif %}</button>
       {% endfor %}
     </form>
   </div>
