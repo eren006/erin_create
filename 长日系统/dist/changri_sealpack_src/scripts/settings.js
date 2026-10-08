@@ -335,6 +335,8 @@ settingsConfig['功能开关'] = {
           getter: () => getPlaceSystemConfig().enabled ? '开启' : '关闭',
           setter: (v) => { let c = getPlaceSystemConfig(); c.enabled = (v === '开启'); setPlaceSystemConfig(c); } },
         { label: '结戏抽取', key: 'end_game_draw_config', nested: 'enabled', type: 'bool', default: false },
+        { label: '收集允许图片', key: 'collect_allow_image', type: 'bool_string', default: false,
+          hint: '关闭时「我提交」内容里带图片会被拒收；开启后才允许带图' },
     ]
 };
 
@@ -651,6 +653,7 @@ function ensureDefaults(main) {
         "lovemail_day_limits": "{}",
         // 心愿
         "wish_bounty_enabled": "true",
+        "collect_allow_image": "false",
         "wish_max_concurrent": "3",
         "wish_daily_post_limit": "0",
         "wish_daily_pick_limit": "0",
@@ -1791,7 +1794,7 @@ const SYNC_DIRECT_KEYS = [
     "shop_refresh_hours", "allow_private_rooms", "announceFrequency",
     "lovemail_default_limit", "lovemail_day_limits", "lovemail_delivery_time", "lovemail_expose", "lovemail_expose_chance",
     "direct_letter_daily_limit", "direct_letter_min_chars", "direct_letter_reward", "direct_letter_cooldown",
-    "wish_public_send", "wish_bounty_enabled", "wish_max_concurrent",
+    "wish_public_send", "wish_bounty_enabled", "collect_allow_image", "wish_max_concurrent",
     "wish_daily_post_limit", "wish_daily_pick_limit", "wish_coin_cost",
     "relationship_system_enabled", "max_relationships_per_user", "max_detail_chars", "max_detail_count", "max_rel_total_chars",
     "item_tracker_success_rate", "item_tracker_show_partner", "item_tracker_time_restrict",

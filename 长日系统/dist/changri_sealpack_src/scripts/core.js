@@ -5756,6 +5756,7 @@ const CLEAR_KEYS = [
     "giftPublicChance",
     // ── 心愿 ──
     "wish_bounty_enabled",   "wish_coin_cost",        "wish_public_send",
+    "collect_allow_image",
     "wish_max_concurrent",   "wish_daily_post_limit", "wish_daily_pick_limit",
     // ── 关系线 ──
     "relationship_lines",    "relationship_system_enabled",
@@ -10853,6 +10854,10 @@ async function handleInfoSubmit(ctx, msg, subM) {
     // 检查项目是否存在于 projects 列表中
     if (kvGet("sys_info_projects", []).includes(t)) {
         // 逻辑 A: 项目存在，正常记录数据
+        // 默认不收图片：「。设置 功能开关」里打开「收集允许图片」才放行
+        if (cachedGet("collect_allow_image") !== "true" && /\[CQ:image[^\]]*\]/.test(content)) {
+            return seal.replyToSender(ctx, msg, `⚠️ 收集暂不支持图片，请去掉图片后重新提交文字内容。`);
+        }
         // 不再经 rp_archive 下载落地图片，直接存原文（含 QQ 原始 CQ:image 链接），减轻 rp_archive 负担；
         // 记 ts 时间戳供 degradeStaleImages 在展示时按有效期自动降级为纯文字
         const senderName = getRoleName(ctx, msg);
