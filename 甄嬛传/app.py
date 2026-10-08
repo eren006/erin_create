@@ -1682,7 +1682,7 @@ def init_db():
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'life_loss_months': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'ill_years': 'INTEGER NOT NULL DEFAULT -2', 'illness': "TEXT NOT NULL DEFAULT ''", 'ill_deadline_ts': 'REAL NOT NULL DEFAULT 0', 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'ill_years': 'INTEGER NOT NULL DEFAULT -2', 'illness': "TEXT NOT NULL DEFAULT ''", 'ill_deadline_ts': 'REAL NOT NULL DEFAULT 0', 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'nickname': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'attr_years': 'INTEGER NOT NULL DEFAULT 0',
@@ -6187,9 +6187,13 @@ def name_choice_view(h):
     """页面用：[(字, 寓意)]；没有待选的返回 []"""
     return [(ch, NAME_CHARS[h['gender']].get(ch, '')) for ch in (h['name_choices'] or '')]
 
+NICKNAME_MAX_LEN = 4
+
 def heir_label(h):
-    if h['name']: return h['name']
-    return f"{heir_rank_word(h['ordinal'])}阿哥" if h['gender'] == '皇子' else f"{heir_rank_word(h['ordinal'])}公主"
+    if h['name']: base = h['name']
+    else: base = f"{heir_rank_word(h['ordinal'])}阿哥" if h['gender'] == '皇子' else f"{heir_rank_word(h['ordinal'])}公主"
+    nick = h['nickname'] if 'nickname' in h.keys() else ''
+    return f"{base}（{nick}）" if nick else base
 
 def heir_rank_title(h):
     """排行加性别：大皇子、二皇子、大公主……（有名字的孩子在页面上用它标出排行）"""
@@ -6197,6 +6201,7 @@ def heir_rank_title(h):
 
 app.jinja_env.globals['heir_rank_title'] = heir_rank_title
 app.jinja_env.globals['heir_label'] = heir_label
+app.jinja_env.globals['NICKNAME_MAX_LEN'] = NICKNAME_MAX_LEN
 app.jinja_env.globals['treat_cost'] = treat_cost
 app.jinja_env.globals['temper_desc'] = temper_desc
 app.jinja_env.globals['shop_price'] = shop_price
@@ -6256,6 +6261,29 @@ def set_skin():
         run("UPDATE consorts SET skin=? WHERE id=?", (name, c['id']))
         flash(f'皮相定为「{name}」。', 'good')
     return redirect(url_for('index'))
+
+
+@app.route('/heirs/<int:hid>/nickname', methods=['POST'])
+@login_required
+def heir_nickname(hid):
+    """乳名：养在自己宫里（现任抚养人）的孩子可以起一个，之后显示在名字后面的括号里；留空表示清掉"""
+    c = g.me
+    h = get_heir(hid)
+    if not h or h['caretaker_id'] != c['id']:
+        flash('孩子不在你宫里养着，起不了乳名。', 'bad')
+        return redirect(url_for('heirs'))
+    nick = re.sub(r'[\s（）()]+', '', request.form.get('nickname', ''))
+    if not nick:
+        run("UPDATE heirs SET nickname='' WHERE id=?", (hid,))
+        flash('已去掉乳名。', 'info')
+    elif len(nick) > NICKNAME_MAX_LEN:
+        flash(f'乳名最多 {NICKNAME_MAX_LEN} 个字。', 'bad')
+    elif blocked_hit('乳名', nick):
+        flash(BLOCKED_MSG, 'bad')
+    else:
+        run("UPDATE heirs SET nickname=? WHERE id=?", (nick, hid))
+        flash(f'乳名定为「{nick}」，往后叫{heir_label(get_heir(hid))}。', 'good')
+    return redirect(url_for('heirs'))
 
 
 @app.route('/heirs', methods=['GET', 'POST'])

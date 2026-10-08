@@ -89,6 +89,27 @@ class HeirNameTests(unittest.TestCase):
         self.client.post('/heirs', data={'heir_id': h['id'], 'pick': h['name_choices'][0]})
         self.assertEqual(game.get_heir(h['id'])['name'], '')
 
+    def test_caretaker_sets_nickname_shown_in_brackets(self):
+        h = self.birth()
+        self.client.post(f"/heirs/{h['id']}/nickname", data={'nickname': ' 团团 '})
+        self.assertEqual(game.get_heir(h['id'])['nickname'], '团团')
+        self.assertEqual(game.heir_label(game.get_heir(h['id'])), '大阿哥（团团）')
+        self.assertIn('（团团）', self.client.get('/heirs').get_data(as_text=True))
+        self.client.post(f"/heirs/{h['id']}/nickname", data={'nickname': ''})
+        self.assertEqual(game.get_heir(h['id'])['nickname'], '')
+
+    def test_nickname_too_long_or_not_caretaker_rejected(self):
+        h = self.birth()
+        self.client.post(f"/heirs/{h['id']}/nickname", data={'nickname': '一二三四五'})
+        self.assertEqual(game.get_heir(h['id'])['nickname'], '')
+        game.run("UPDATE heirs SET caretaker_id=0 WHERE id=?", (h['id'],))
+        self.client.post(f"/heirs/{h['id']}/nickname", data={'nickname': '团团'})
+        self.assertEqual(game.get_heir(h['id'])['nickname'], '')
+        game.run("UPDATE heirs SET caretaker_id=? WHERE id=?", (self.atk, h['id']))
+        other = self.player('丙'); self.login(other)
+        self.client.post(f"/heirs/{h['id']}/nickname", data={'nickname': '团团'})
+        self.assertEqual(game.get_heir(h['id'])['nickname'], '')
+
     def test_used_chars_are_not_offered_again_within_a_generation(self):
         h = self.birth()
         pick = h['name_choices'][0]

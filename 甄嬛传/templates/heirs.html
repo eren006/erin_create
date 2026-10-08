@@ -50,6 +50,7 @@
     </div>
     <p class="muted gifts">资质：学 {{ gift_word(h.gift_study) }} · 射 {{ gift_word(h.gift_riding) }} · 品 {{ gift_word(h.gift_virtue) }}</p>
     <div class="acts">
+    {% if h.caretaker_id == c.id %}<form method="post" action="{{ url_for('heir_nickname', hid=h.id) }}" class="row" style="gap:6px"><input name="nickname" value="{{ h.nickname }}" maxlength="{{ NICKNAME_MAX_LEN }}" placeholder="乳名（最多 {{ NICKNAME_MAX_LEN }} 字）" aria-label="乳名" style="width:9em"><button class="plain" title="养在自己宫里的孩子可以起乳名，会显示在名字后的括号里；留空清掉">{{ '改乳名' if h.nickname else '起乳名' }}</button></form>{% endif %}
     {% if h.mother_id == c.id and not h.name %}{% set gen = h.gen_word or cur_gen[h.gender] %}
       <div class="muted" style="font-size:13px;margin-bottom:4px">字辈「{{ gen }}」，皇上点了三个字，选一个：</div>
       <form method="post" class="row" style="gap:6px;flex-wrap:wrap"><input type="hidden" name="heir_id" value="{{ h.id }}">
