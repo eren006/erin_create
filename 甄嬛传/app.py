@@ -7277,7 +7277,7 @@ def record_child_death(h, cause, where, treated=False, how='illness'):
         sender = '皇嗣养育所的乳母' if where == '皇嗣养育所' else (f"{where}的乳母" if age < 6 else f"{where}的教养嬷嬷")
         if how == 'birth': sender = '太医院的稳婆'
         body = random.choice(DEATH_LETTER_OPEN) + '\n' + (
-            f"{label}早产落地，没有哭出一声。稳婆和太医拼尽了全力，孩子还是没能睁开眼。小主，是奴婢们没用。" if how == 'birth'
+            f"{label}落地时没有哭出一声。稳婆和太医拼尽了全力，孩子还是没能睁开眼。小主，是奴婢们没用。" if how == 'birth'
             else random.choice(DEATH_LETTER_BODY).format(label=label, cause=cause_txt, treat=treat)) + '\n' + random.choice(DEATH_LETTER_CLOSE)
         run("""INSERT INTO letters (from_id, to_id, day, body, sender_label, created_ts) VALUES (0,?,?,?,?,?)""", (mother['id'], day, body, sender, now_ts()))
         notify(mother['id'], f"{label}夭折了。{sender}给你写了一封信，去「书信」看看。", 'bad')
