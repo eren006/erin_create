@@ -52,10 +52,10 @@ class BeddingRoundsTests(unittest.TestCase):
         game.run('UPDATE game_state SET event_started=0')
         self.assertEqual(game.bedding_round(1,'test'),[])
 
-    def test_schedule_every_hour_while_energy_and_promotion_stay_four(self):
+    def test_schedule_every_hour_for_bedding_and_promotion(self):
         self.assertEqual(game.BED_ROUND_HOURS,tuple(range(24)))
-        self.assertEqual(game.PACE_ROUND_HOURS,(0,4,8,12,16,20))
-        self.assertEqual(game.latest_pace_slot(datetime(2026,10,5,7,30,tzinfo=game.TZ)),'2026-10-05:04')
+        self.assertEqual(game.PACE_ROUND_HOURS,tuple(range(24)))
+        self.assertEqual(game.latest_pace_slot(datetime(2026,10,5,7,30,tzinfo=game.TZ)),'2026-10-05:07')
         self.assertEqual(game.latest_bedding_slot(datetime(2026,10,5,7,30,tzinfo=game.TZ)),'2026-10-05:07')
         for hour in game.BED_ROUND_HOURS:
             now=datetime(2026,10,5,hour,0,tzinfo=game.TZ)

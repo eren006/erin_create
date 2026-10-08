@@ -98,7 +98,7 @@
 {% if promo and promo.met and not promo.slot %}
 <section class="sheet" style="margin-top:18px;border-left:4px solid var(--jin)">
   <b>够得上{{ promo.rank }}了，只差名额</b>
-  <p class="muted" style="margin:6px 0">圣宠、德行、势力都已达标，可{{ promo.rank }}位的 {{ promo.cap }} 个名额都满了：{{ promo.holders|join('、') or '（占着名额的人暂时看不到）' }}。有人腾出位子，会按圣宠高低排队晋你，每 4 小时检查一次。</p>
+  <p class="muted" style="margin:6px 0">圣宠、德行、势力都已达标，可{{ promo.rank }}位的 {{ promo.cap }} 个名额都满了：{{ promo.holders|join('、') or '（占着名额的人暂时看不到）' }}。有人腾出位子，会按圣宠高低排队晋你，每小时检查一次。</p>
 </section>
 {% endif %}
 {% if c.birth_crisis %}<section class="sheet" role="alert" style="border:3px solid var(--bad)"><b>早产后濒死，急需抢救！</b><p>12小时内花500两请太医抢救；救回后体质上限永久−15，可叠加。普通补养不能解除这次危机。</p><form method="post" action="{{ url_for('birth_rescue') }}"><button>请太医抢救（500两）</button></form></section>{% endif %}
@@ -130,7 +130,7 @@
       <dt>圣宠</dt><dd>{{ c.favor }}　<span class="muted">{{ favor_word(c.favor) }}</span>
         {% if promo %}<div class="bar"><i style="width:{{ [100, (c.favor * 100 / promo.favor)|int]|min }}%"></i></div>
         <div class="muted">晋{{ promo.rank }}：圣宠 {{ promo.favor }}，德行 {{ promo.virtue }}，势力 {{ c.influence }}/{{ promo.influence }}
-          {%- if not promo.slot %}，但{{ promo.rank }}名额已满{% endif %} · 每 4 小时检查一次晋升（北京时间）</div>{% endif %}</dd>
+          {%- if not promo.slot %}，但{{ promo.rank }}名额已满{% endif %} · 每小时检查一次晋升（北京时间）</div>{% endif %}</dd>
       <dt>信任</dt><dd>{{ c.trust }}　<span class="muted">皇上对你{{ trust_word(c.trust) }}。求情、告发成不成，被人陷害时皇上信不信，都看这个</span></dd>
       <dt>翻牌</dt><dd>{{ bed_chance_text(c) }}</dd>
       <dt>精力</dt><dd><span class="pips" aria-label="精力 {{ c.energy }}">{{ '●' * c.energy }}{{ '○' * (ENERGY_MAX - c.energy if c.energy < ENERGY_MAX else 0) }}</span></dd>

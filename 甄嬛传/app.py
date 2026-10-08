@@ -9164,7 +9164,7 @@ def bed_weight(c, day):
     return max(1, w)
 
 BED_ROUND_HOURS = tuple(range(24))    # 翻牌（侍寝）每 1 小时一轮：0/1/2/…/23 点（2026-10-07 起；先前每 2 小时、最早每 4 小时）
-PACE_ROUND_HOURS = (0,4,8,12,16,20)         # 晋封检查仍是每 4 小时一次，和翻牌轮分开
+PACE_ROUND_HOURS = tuple(range(24))         # 晋封检查每小时一次（2026-10-08 起；原每 4 小时），和翻牌轮分开；精力另有 ENERGY_ROUND_HOURS
 ENERGY_ROUND_HOURS = tuple(range(0,24,2))   # 精力回复每 2 小时一次（2026-10-08 起，原每 4 小时）
 
 
@@ -9789,7 +9789,7 @@ def dying_tick():
 
 @atomic
 def promotion_tick(key, settle_due=False):
-    """晋封每 4 小时检查一次（PACE_ROUND_HOURS 的时点）；这一分钟日结算要跑的话由结算自己查，免得同一分钟晋两级"""
+    """晋封每小时检查一次（PACE_ROUND_HOURS 的时点）；这一分钟日结算要跑的话由结算自己查，免得同一分钟晋两级"""
     st = state()
     if st['last_promo_key'] == key or settle_due: return
     run("UPDATE game_state SET last_promo_key=? WHERE id=1", (key,))
