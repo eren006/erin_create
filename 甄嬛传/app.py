@@ -663,14 +663,14 @@ INTRIGUES = {
     'impeach': dict(name='参奏降位', silver=250, energy=1, min_rank=1, base=0.45, npc_ok=False,
                     desc='不限位分，每 3 天一次，同一个人 3 天内只能被参一回。成：对方降一级，圣宠 -12，势力回到降级后位分的最低线。败露：自己德行 -8，圣宠 -18，信任 -8'),
     'divide': dict(name='离间党羽', silver=120, energy=0, min_rank=1, base=0.50, npc_ok=False,
-                   desc='专削势力：不限位分。成：对方势力 -15（可以被削到晋位要求线以下，连着 2 晚低于要求就会降一级），自己势力 +3。败露：自己德行 -5，圣宠 -12'),
+                   desc='专削势力：不限位分。成：对方势力 -10（可以被削到晋位要求线以下，连着 2 晚低于要求就会降一级），自己势力 +3。败露：自己德行 -5，圣宠 -12'),
     'witch':  dict(name='构陷巫蛊', silver=300, energy=1, min_rank=4, base=0.40, npc_ok=True,
                    desc='成：对方打入冷宫。败露：打入冷宫的是你'),
     'punish': dict(name='发落宫人', silver=50, energy=1, min_rank=5, base=0.55, npc_ok=False,
                    desc='找个由头，把对方宫里一个宫人拖去慎刑司。要比对方高两级以上，每 3 天一次；'
                         '对方会知道是你。成：那个宫人没了，对方全宫宫人忠心 -5。败露：德行 -8，信任 -5'),
 }
-DIVIDE_INFLUENCE_LOSS = 15      # 离间党羽得手，对方损失的势力
+DIVIDE_INFLUENCE_LOSS = 10      # 离间党羽得手，对方损失的势力
 INTRIGUE_TARGET_DAILY_MAX = 5
 INTRIGUE_DAILY_MAX = None      # 每人每天最多谋划几件事；None = 不限（2026-10-07 起，原来 1）。同一目标每天最多被 5 件事盯上仍算
 
@@ -5431,6 +5431,7 @@ def bot_do(c, key):
             return False
         daily_inc(c['id'], key)
         feed_for_action(c, key)
+        if MOOD_GAIN.get(key): add_mood(c['id'], MOOD_GAIN[key])      # 和玩家走路由一样：逛御花园涨心情
     run("UPDATE consorts SET pending_scene='' WHERE id=? AND pending_scene!=''", (c['id'],))   # 没人替她拿主意的场景直接作废
     return True
 
