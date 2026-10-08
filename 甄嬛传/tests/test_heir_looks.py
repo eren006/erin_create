@@ -40,7 +40,7 @@ class HeirLooksTests(unittest.TestCase):
 
     def test_newborn_looks_follow_the_mother(self):
         for mother_app in (20, 60, 100):
-            game.run("UPDATE consorts SET appearance=? WHERE id=?", (mother_app, self.atk))
+            game.run("UPDATE consorts SET appearance=?, health=100, status='normal', birth_crisis=0, postpartum_until=0 WHERE id=?", (mother_app, self.atk))      # 每轮把母亲养好，免得连生几胎体质见底、偶发难产去世
             game.run("DELETE FROM heirs")
             h = self.deliver(self.atk)
             self.assertLessEqual(abs(h['appearance'] - mother_app * 0.7), 8.5)

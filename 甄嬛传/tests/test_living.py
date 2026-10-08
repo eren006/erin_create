@@ -134,14 +134,14 @@ class LivingTests(unittest.TestCase):
         old_per_day = 24 * sum(k * w for k, w in game.BED_COUNT_WEIGHTS_OLD)
         self.assertAlmostEqual(per_day, old_per_day, delta=0.5)      # 改成半小时一轮，一天翻牌的总人数不变
 
-    def test_a_zero_round_does_nothing_and_does_not_log(self):
+    def test_a_zero_round_announces_that_nobody_was_called(self):
         self.player('丙', rank=4)
         game.run('UPDATE game_state SET event_started=1,emperor_death_day=0,maintenance=0,mourning=0')
-        before = len(game.q("SELECT id FROM gazette WHERE text LIKE '%所以皇上翻了%'"))
         with patch.object(game, 'bed_count', return_value=0):
             self.assertEqual(game.bedding_round(game.cur_day(), '2026-10-09:0030'), [])
-        self.assertEqual(len(game.q("SELECT id FROM gazette WHERE text LIKE '%所以皇上翻了%'")), before)
+        self.assertTrue(game.q("SELECT 1 FROM gazette WHERE text LIKE '%没有等到翻牌的旨意%'", one=True))
         self.assertEqual(game.state()['last_bed_round_key'], '2026-10-09:0030')
+        self.assertEqual(game.q("SELECT COUNT(*) n FROM gazette WHERE text LIKE '%所以皇上翻了%'", one=True)['n'], 0)
 
     def test_round_note_uses_the_half_hour_index_for_the_month(self):
         for idx, month in ((0, '正月'), (11, '腊月'), (12, '正月'), (47, '腊月')):

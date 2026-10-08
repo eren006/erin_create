@@ -9933,6 +9933,7 @@ BED_REASONS = {
     3: ['皇上今日兴致极高', '宫里添了喜事，皇上龙心大悦', '太后说后宫该热闹些', '前朝刚传来捷报，皇上满心欢喜', '皇上多饮了几杯，正在兴头上', '各宫姐妹都盼着，皇上索性都见了'],
 }
 BED_COUNT_WORDS = {1: '一', 2: '两', 3: '三'}
+BED_NO_DRAW_REASONS = ['皇上批折子批得出了神，把绿头牌搁在一旁', '太后留皇上说话，一时走不开身', '皇上独坐养心殿，对着窗外发了半晌呆', '前朝有事议到这个时辰，皇上无心他顾', '皇上说今日乏了，想清静一会儿']
 
 GAME_EPOCH = datetime(2026, 10, 6, 0, 0, tzinfo=TZ)      # 宫里的「第 1 年」从这一刻算起（开服那天零点）；天数计数器中间跳过天也不影响
 
@@ -9951,6 +9952,8 @@ def game_year(now=None):
 def bed_round_note(n, idx, now=None):
     """一轮翻牌的邸报：第几年 + 几月时令 + 为什么 + 翻了几人。idx 是当天第几轮（0~47），一轮一个月，12 轮一年"""
     month = BED_MONTHS[idx % 12]
+    if n == 0:
+        return f"第{game_year(now)}年{month}，{_BED_RNG.choice(BED_NO_DRAW_REASONS)}，这一轮敬事房没有等到翻牌的旨意。"
     reason = _BED_RNG.choice(BED_REASONS.get(n, BED_REASONS[2]))
     return f"第{game_year(now)}年{month}，{reason}，所以皇上翻了{BED_COUNT_WORDS.get(n, n)}人。"
 
@@ -10210,6 +10213,8 @@ def bedding_round(day,key):
     count=XINGGONG_COUNT if trip else bed_count(cands); beds=[];used=set()
     if not trip and count: count=max(1,min(BED_MAX_PER_ROUND,count+MOOD_BED_DELTA.get(st['emperor_mood'],0)))      # 这轮不翻（0）就不翻，心情只调整翻牌的轮
     n_shown=min(count,len(cands))
+    if not n_shown and not trip and cands:      # 这一轮抽到不翻牌：也发一条邸报，免得看起来像没跑
+        gazette(bed_round_note(0,bed_slot_index(key)),'news')
     if n_shown and not trip:
         gazette(bed_round_note(n_shown,bed_slot_index(key)),'news')      # 半小时当一个月：邸报按几月配时令和理由
     for _ in range(count):
