@@ -34,6 +34,22 @@ class LivingTests(unittest.TestCase):
 
     # ── 怀孕率 ───────────────────────────────────────────────────────────────
 
+    def test_no_pregnancy_after_four_children(self):
+        game.run("UPDATE consorts SET pregnancy_misses=0 WHERE id=?", (self.atk,))
+        for n in range(game.MAX_CHILDREN):
+            self.assertGreater(game.pregnancy_chance(game.get_consort(self.atk)), 0, f'已有 {n} 个孩子还能怀')
+            game.run("INSERT INTO birth_losses(mother_id,gender,day,created_ts,reason) VALUES(?,'皇子',1,0,'测试')", (self.atk,))
+        self.assertEqual(game.birth_count(self.atk), game.MAX_CHILDREN)
+        game.run("UPDATE consorts SET pregnancy_misses=?, health=100 WHERE id=?", (game.PREGNANCY_PITY_ATTEMPTS + 5, self.atk))
+        self.assertEqual(game.pregnancy_chance(game.get_consort(self.atk)), 0, '满 4 个后连保底也不生效')
+
+    def test_each_birth_lowers_pregnancy_chance(self):
+        game.run("UPDATE consorts SET health=60, blessing=0, age_months=240, pregnancy_misses=0 WHERE id=?", (self.atk,))
+        base = game.pregnancy_chance(game.get_consort(self.atk))
+        for n in range(1, game.MAX_CHILDREN):
+            game.run("INSERT INTO birth_losses(mother_id,gender,day,created_ts,reason) VALUES(?,'皇子',1,0,'测试')", (self.atk,))
+            self.assertAlmostEqual(game.pregnancy_chance(game.get_consort(self.atk)), base * game.PREGNANCY_PER_BIRTH_FACTOR ** n)
+
     def test_pregnancy_chance_by_health_and_age(self):
         base = dict(age_months=240, health=60)
         self.assertAlmostEqual(game.pregnancy_chance(base), game.PREGNANCY_BASE + 60 * 0.0008)
@@ -42,6 +58,7 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(game.pregnancy_chance(dict(age_months=45 * 12, health=100)), 0)
         self.assertLessEqual(game.pregnancy_chance(dict(age_months=240, health=9999)), game.PREGNANCY_MAX)
 
+    @patch.object(game, 'PREGNANCY_MAX', 1.0)      # 只比福报的差，别让上限盖住
     def test_blessing_makes_conceiving_easier(self):
         plain = dict(age_months=240, health=60, blessing=0)
         blessed = dict(age_months=240, health=60, blessing=50)
@@ -54,7 +71,7 @@ class LivingTests(unittest.TestCase):
         self.assertAlmostEqual(game.pregnancy_chance(old_mother), (game.PREGNANCY_BASE + 0.048 + 0.05) * 0.6)
 
     def test_blessed_player_conceives_where_a_plain_one_would_not(self):
-        with patch.object(game.random, 'random', return_value=0.14):   # 无福报时（12.8%）未孕，福报 50（15.3%）时有孕
+        with patch.object(game.random, 'random', return_value=0.11):   # 无福报时（9.8%）未孕，福报 50（12.3%）时有孕
             game.do_bedding(self.c(), game.cur_day(), True, [])
             self.assertEqual(self.c()['pregnant_since'], 0)
             game.run('UPDATE consorts SET blessing=50 WHERE id=?', (self.atk,))
@@ -62,7 +79,7 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(self.c()['pregnant_since'], game.cur_day())
 
     def test_a_bedding_can_start_a_pregnancy(self):
-        with patch.object(game.random, 'random', return_value=0.08):   # 体质 60 时怀孕率约 12.8%
+        with patch.object(game.random, 'random', return_value=0.08):   # 体质 60 时怀孕率约 9.8%
             game.do_bedding(self.c(), game.cur_day(), True, [])
         self.assertEqual(self.c()['pregnant_since'], game.cur_day())
         self.assertTrue(any('喜脉' in m for m in self.msgs()))

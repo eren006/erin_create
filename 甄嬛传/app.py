@@ -8763,8 +8763,8 @@ BED_DAILY_MAX = 4      # 每人每游戏日最多被翻几次（原来 2，2026-
 BED_COUNT_WEIGHTS = ((1, 0.1), (2, 0.6), (3, 0.3))      # 2026-10-07 起（后调为 10/60/30）：每轮 10% 翻 1 位、60% 翻 2 位、30% 翻 3 位（早先试过固定 2 位、3 位；最早按玩家数 1~6 位）
 BED_MAX_PER_ROUND = max(n for n, _ in BED_COUNT_WEIGHTS)
 _BED_RNG = random.SystemRandom()      # 翻几位、选哪句话单独掷骰，不占用全局随机序列
-PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.08, 0.0008, 0.0005   # 2026-10-07：底数 6% 升到 12% 后怀孕的人太多，当晚又降到 8%；体质每点 +0.08%（原 0.05%）；福报每 1 点 +0.05%
-OLD_MOTHER_AGE, OLD_MOTHER_FACTOR, PREGNANCY_MAX = 35, 0.6, 0.18      # 上限 15% 提到 20%，不然体质高的人都顶在上限上，体质就没差别了
+PREGNANCY_BASE, PREGNANCY_PER_HEALTH, PREGNANCY_PER_BLESSING = 0.05, 0.0008, 0.0005   # 2026-10-07：底数 6% 升到 12% 后怀孕的人太多，当晚又降到 8%；体质每点 +0.08%（原 0.05%）；福报每 1 点 +0.05%
+OLD_MOTHER_AGE, OLD_MOTHER_FACTOR, PREGNANCY_MAX = 35, 0.6, 0.14      # 上限 15% 提到 20%，不然体质高的人都顶在上限上，体质就没差别了
 PRENATAL_ENERGY, PRENATAL_STAT_CAP = 1, 6
 PRENATAL = {
     'rest':   dict(name='安胎静养', silver=100, line='你卧床静养，一步不出，体质 +5，难产的风险小了些。'),
@@ -8851,17 +8851,24 @@ CONTRACEPTION_MIN_BIRTHS = 2    # 生过两次孩子之后，才能选择避孕
 def birth_count(cid):
     return q('SELECT (SELECT COUNT(*) FROM heirs WHERE mother_id=?) + (SELECT COUNT(*) FROM birth_losses WHERE mother_id=?) n', (cid, cid), one=True)['n']
 
+PREGNANCY_PER_BIRTH_FACTOR = 0.7   # 2026-10-08 起：每生过一个孩子，怀孕概率再乘 0.7（生 1 个 ×0.7，2 个 ×0.49，3 个 ×0.34）；同日底数 8%→5%、上限 18%→14%
+MAX_CHILDREN = 4   # 2026-10-08 起每位妃嫔最多生 4 个孩子（含出生时夭折的，和 birth_count 同口径；之后夭折的孩子不再占名额的话以 birth_count 为准）
+
+def children_cap_reached(c):
+    return 'id' in c.keys() and birth_count(c['id']) >= MAX_CHILDREN
+
 def contraception_on(c):
     return bool(c['contraception'] if 'contraception' in c.keys() else 0) and birth_count(c['id']) >= CONTRACEPTION_MIN_BIRTHS
 
 
 def pregnancy_chance(c):
-    """一次侍寝怀上的概率：12% + 体质×0.08% + 福报×0.05%（体质 60 约 17%，体质 100 约 20%，上限 22%）；35 岁起打六折；45 岁起不再有孕"""
+    """一次侍寝怀上的概率：底数 + 体质×0.08% + 福报×0.05%（上限 PREGNANCY_MAX）；35 岁起打六折；生过的孩子每个再乘 PREGNANCY_PER_BIRTH_FACTOR；满 MAX_CHILDREN 个、45 岁起不再有孕"""
     if c['age_months'] >= FERTILE_BEFORE_AGE * 12: return 0.0
-    if contraception_on(c): return 0.0
+    if contraception_on(c) or children_cap_reached(c): return 0.0
     if (c['pregnancy_misses'] if 'pregnancy_misses' in c.keys() else 0) >= PREGNANCY_PITY_ATTEMPTS: return 1.0
     p = PREGNANCY_BASE + c['health'] * PREGNANCY_PER_HEALTH + (c['blessing'] if 'blessing' in c.keys() else 0) * PREGNANCY_PER_BLESSING
     if c['age_months'] >= OLD_MOTHER_AGE * 12: p *= OLD_MOTHER_FACTOR
+    if 'id' in c.keys(): p *= PREGNANCY_PER_BIRTH_FACTOR ** birth_count(c['id'])
     return min(PREGNANCY_MAX, p)
 
 
@@ -8934,7 +8941,7 @@ def resolve_births(day, include_legacy=True):
         elif not include_legacy or day - c['pregnant_since'] < PREGNANCY_DAYS:
             continue
         crisis = premature and random.random() < preterm_crisis_chance(c)
-        twins = random.random() < TWIN_CHANCE
+        twins = random.random() < TWIN_CHANCE and birth_count(c['id']) + 2 <= MAX_CHILDREN      # 双胞胎也不能超过孩子上限
         pref = c['birth_gender_pref'] if 'birth_gender_pref' in c.keys() else ''      # 管理员在库里给某人设的出生性别（界面和帮助页都不提）
         genders = [pref if pref in ('皇子', '公主') else random.choice(['皇子', '公主']) for _ in range(2 if twins else 1)]
         pre = prenatal_state(c)
@@ -9087,7 +9094,7 @@ def do_bedding(bed, day, primary, tray, quiet=False):
             msg += "……太医诊出了喜脉，怀孕满24小时自动临盆。孕中可以在本宫安胎、胎教。"
             gazette(f"{display_name(bed)}有喜了。", 'birth')
             newly_pregnant = True
-        if not newly_pregnant and bed['age_months'] < FERTILE_BEFORE_AGE * 12 and not affliction(bed['id'], 'hanshui', day) and not dream and not contraception_on(bed):
+        if not newly_pregnant and bed['age_months'] < FERTILE_BEFORE_AGE * 12 and not affliction(bed['id'], 'hanshui', day) and not dream and not contraception_on(bed) and not children_cap_reached(bed):
             run('UPDATE consorts SET pregnancy_misses=pregnancy_misses+1 WHERE id=?', (bed['id'],))
         notify(bed['id'], msg, 'good')
         guide_tip(bed['id'], 'bed', '「头一回侍寝，忐忑也是常事。往后皇上想起你，全看这几日的功夫。」')
@@ -9651,7 +9658,7 @@ def help_page():
                            INTRIGUES=INTRIGUES, VENTURES=VENTURES, VENTURE_MAX=VENTURE_MAX, PRAY_TIERS=PRAY_TIERS, QUIET_DAYS=QUIET_DAYS,
                            FAMILY_MAX=FAMILY_MAX_MEMBERS, ENERGY_MAX=ENERGY_MAX, FAVOR_DECAY=FAVOR_DECAY, CONSPIRE_AFFINITY_MIN=CONSPIRE_AFFINITY_MIN, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, HEALTH_DECAY_HOUR=HEALTH_DECAY_HOUR, TWIN_CHANCE=TWIN_CHANCE, TWIN_EXTRA_HEALTH_LOSS=TWIN_EXTRA_HEALTH_LOSS, BIRTH_HEALTH_LOSS=BIRTH_HEALTH_LOSS, BIRTH_HEALTH_PER_PRIOR=BIRTH_HEALTH_PER_PRIOR, BIRTH_HEALTH_FLOOR=BIRTH_HEALTH_FLOOR, CONTRACEPTION_MIN_BIRTHS=CONTRACEPTION_MIN_BIRTHS, CUISHENG_HOURS=CUISHENG_HOURS, INFLUENCE_DECAY=INFLUENCE_DECAY, HEALTH_DECAY_BASE=HEALTH_DECAY_BASE,
                            HEALTH_DECAY_PER_YEAR=HEALTH_DECAY_PER_YEAR, HEALTH_DECAY_FLOOR=HEALTH_DECAY_FLOOR, HEALTH_DYING_AT=HEALTH_DYING_AT, DYING_HOURS=DYING_HOURS, CONFINE_DAYS=CONFINE_DAYS, CONFINE_HOURS=CONFINE_HOURS,
-                           COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, ADOPT_INFLUENCE=ADOPT_INFLUENCE, EAT_DAILY_MAX=EAT_DAILY_MAX, COOK_DAILY_MAX=COOK_DAILY_MAX, GARDEN_SELL_DAILY_CAP=GARDEN_SELL_DAILY_CAP, GARDEN_TAN_CHANCE=GARDEN_TAN_CHANCE, GARDEN_TAN_LOSS=GARDEN_TAN_LOSS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_MAX=PREGNANCY_MAX, PREGNANCY_PITY_ATTEMPTS=PREGNANCY_PITY_ATTEMPTS, PREGNANCY_DAYS=PREGNANCY_DAYS,
+                           COLD_DAYS=COLD_DAYS, BANQUET_JOIN_SILVER=BANQUET_JOIN_SILVER, ADOPT_INFLUENCE=ADOPT_INFLUENCE, EAT_DAILY_MAX=EAT_DAILY_MAX, COOK_DAILY_MAX=COOK_DAILY_MAX, GARDEN_SELL_DAILY_CAP=GARDEN_SELL_DAILY_CAP, GARDEN_TAN_CHANCE=GARDEN_TAN_CHANCE, GARDEN_TAN_LOSS=GARDEN_TAN_LOSS, PREGNANCY_BASE=PREGNANCY_BASE, PREGNANCY_MAX=PREGNANCY_MAX, PREGNANCY_PER_BIRTH_FACTOR=PREGNANCY_PER_BIRTH_FACTOR, MAX_CHILDREN=MAX_CHILDREN, PREGNANCY_PITY_ATTEMPTS=PREGNANCY_PITY_ATTEMPTS, PREGNANCY_DAYS=PREGNANCY_DAYS,
                            settle_h=SETTLE_HOUR, settle_m=SETTLE_MINUTE, REMIT_HOURS=REMIT_HOURS, REMIT_MAX=REMIT_MAX,
                            HEIR_EXAM_INTERVAL=HEIR_EXAM_INTERVAL, HEIR_EXAM_MIN_AGE=HEIR_EXAM_MIN_AGE, HEIR_EXAM_MAX_AGE=HEIR_EXAM_MAX_AGE,
                            ERRAND_INTERVAL=ERRAND_INTERVAL, CROWN_INTERVAL=CROWN_INTERVAL, BIRTHDAY_INTERVAL=BIRTHDAY_INTERVAL,
