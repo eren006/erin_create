@@ -94,7 +94,7 @@ class PlayabilityTests(unittest.TestCase):
         R = game.AGE_YEARS_PER_DAY
         self.assertEqual(game.heir_age_years(h,9),6*R)
         self.assertEqual(game.heir_age_years(h,10),7*R)
-        day = 3 + math.ceil(14 / R)      # 出生后第 ceil(14/R) 天满十四岁
+        day = 3 + math.ceil(game.HEIR_ADULT_AGE_YEARS / R)      # 出生后第 ceil(14/R) 天满十四岁
         game.run('UPDATE game_state SET day=?', (day-1,))
         game.heir_adult_tick(day-1)
         self.assertEqual(game.q('SELECT adult_day FROM heirs WHERE id=?',(hid,),one=True)['adult_day'],0)
@@ -116,11 +116,11 @@ class PlayabilityTests(unittest.TestCase):
 
     def test_fourteen_year_adulthood_boundary_and_last_day_window(self):
         hid = game.run("INSERT INTO heirs(mother_id,caretaker_id,gender,ordinal,born_day,zhuazhou) VALUES(?,?,'皇子',7,8,'book')", (self.atk,self.atk)).lastrowid
-        day = 8 + math.ceil(14 / game.AGE_YEARS_PER_DAY)
+        day = 8 + math.ceil(game.HEIR_ADULT_AGE_YEARS / game.AGE_YEARS_PER_DAY)
         game.run('UPDATE game_state SET day=?', (day-1,))
         game.heir_adult_tick(day-1)
         self.assertEqual(game.q('SELECT adult_day FROM heirs WHERE id=?',(hid,),one=True)['adult_day'],0)
         game.run('UPDATE game_state SET day=?', (day,))
         game.heir_adult_tick(day)
         self.assertEqual(game.q('SELECT adult_day FROM heirs WHERE id=?',(hid,),one=True)['adult_day'],day)
-        self.assertEqual(game.HEIR_ADULT_AGE_YEARS,14)
+        self.assertEqual(game.HEIR_ADULT_AGE_YEARS,12)

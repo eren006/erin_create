@@ -49,7 +49,8 @@ class PrincessCourtshipTests(unittest.TestCase):
         self.assertEqual(self.candidates(hid)[0]['met'], 0)
 
     def test_no_petition_before_sixteen_and_no_direct_marriage_bypass(self):
-        hid = self.princess()
+        hid = self.princess(age=game.HEIR_ADULT_AGE_YEARS)
+        game.run('UPDATE heirs SET born_day=? WHERE id=?', (game.cur_day() - 14 / game.AGE_YEARS_PER_DAY, hid))      # 旧档案里还没到 16 岁的公主：不能请旨
         sid = self.candidates(hid)[0]['id']
         game.run('UPDATE princess_suitors SET met=1 WHERE id=?', (sid,))
         self.act(hid, 'petition', sid)

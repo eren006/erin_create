@@ -40,6 +40,7 @@
       {% if h.premature %}<dt>体质</dt><dd>早产体弱：体质长得慢，也更容易生病</dd>{% endif %}
       <dt>情分</dt><dd>{{ h.caretaker_affinity }}{% if fo and fo.id != h.mother_id %}<span class="muted">（生母 {{ h.mother_affinity }}）</span>{% endif %}</dd>
       {% set bonds = heir_bonds_of(h.id) %}{% if bonds %}<dt>交好</dt><dd>{% for o, b, tier in bonds[:6] %}{{ heir_label(o) }}<span class="muted">（{{ tier }} {{ b }}）</span>{{ '、' if not loop.last }}{% endfor %}</dd>{% endif %}
+      {% if h.look_ref %}<dt>长相</dt><dd>像{{ h.look_ref }}</dd>{% endif %}
       {% set lead = ally_leader_id(h.id) %}{% set alls = allies_of(h.id) %}
       {% if lead %}<dt>阵营</dt><dd>助力于 {{ heir_label(get_heir(lead)) }}{% if get_heir(lead).caretaker_id == c.id or h.caretaker_id == c.id %}
         <form method="post" action="{{ url_for('heir_ally_leave', hid=h.id) }}" style="display:inline"><button class="plain" title="{{ '退出后 3 天内不能再投靠别处' if h.caretaker_id == c.id else '把他请出阵营' }}">{{ '退出阵营' if h.caretaker_id == c.id else '请出阵营' }}</button></form>{% endif %}</dd>
@@ -127,7 +128,7 @@
       {% if a.can_ban %}<form method="post" action="{{ url_for('heir_ban', hid=h.id) }}" class="row" style="display:inline"><button class="plain">{{ '允许探视' if h.visit_banned else '不许探视' }}</button></form>{% endif %}
       {% if a.courtship %}{% set cs = a.courtship %}
       <details class="sheet"><summary>公主婚事 · {{ '已成婚' if cs.married else '已定亲' if cs.row.betrothed_day else '物色夫婿' }}</summary>
-      {% if not cs.married %}<p class="muted">14岁起物色，16岁起请旨。每位公主每日一次行动，每次1精力；定亲后下一天可成婚。未达自主推荐门槛（公主圣眷35、主事母亲信任30），皇上按候选才德裁定。不限择婿天数。留京方便探望；抚蒙古封号高一等，自主推荐时主事母亲信任 +10，每 {{ MONGOL_LETTER_INTERVAL }} 天收到家书。</p>{% endif %}
+      {% if not cs.married %}<p class="muted">{{ HEIR_ADULT_AGE_YEARS }}岁成年那刻起物色（一夜长成{{ HEIR_COMING_AGE }}岁，可以请旨）。每位公主每日一次行动，每次1精力；定亲后下一天可成婚。未达自主推荐门槛（公主圣眷35、主事母亲信任30），皇上按候选才德裁定。不限择婿天数。留京方便探望；抚蒙古封号高一等，自主推荐时主事母亲信任 +10，每 {{ MONGOL_LETTER_INTERVAL }} 天收到家书。</p>{% endif %}
       {% if cs.row.betrothed_day %}{% for su in cs.candidates if su.id == cs.row.selected_id %}<p>定亲人选：<b>{{ su.name }}</b> · {{ su.family }}</p>{% endfor %}{% endif %}
       {% if cs.married %}<p>夫妻和睦 {{ cs.row.harmony }}/100 · 夫家境况 {{ cs.row.family_fortune }}/100 · 嫁妆 {{ cs.row.dowry }} 两</p>
         {% if cs.event_text %}<p>{{ cs.event_text }}</p>{% if cs.manager %}

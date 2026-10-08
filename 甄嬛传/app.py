@@ -1732,7 +1732,7 @@ def init_db():
                      'life_loss_months': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
         'bonus_events': {'rank_below': 'INTEGER NOT NULL DEFAULT 0', 'rank_only': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'ill_years': 'INTEGER NOT NULL DEFAULT -2', 'illness': "TEXT NOT NULL DEFAULT ''", 'ill_deadline_ts': 'REAL NOT NULL DEFAULT 0', 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'nickname': "TEXT NOT NULL DEFAULT ''", 'career': "TEXT NOT NULL DEFAULT ''", 'ally_ready_day': 'INTEGER NOT NULL DEFAULT 0', 'career_skill': 'INTEGER NOT NULL DEFAULT 0', 'career_work_day': 'INTEGER NOT NULL DEFAULT 0', 'ill_rolls': 'INTEGER NOT NULL DEFAULT -2', 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'ill_years': 'INTEGER NOT NULL DEFAULT -2', 'illness': "TEXT NOT NULL DEFAULT ''", 'ill_deadline_ts': 'REAL NOT NULL DEFAULT 0', 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'nickname': "TEXT NOT NULL DEFAULT ''", 'career': "TEXT NOT NULL DEFAULT ''", 'ally_ready_day': 'INTEGER NOT NULL DEFAULT 0', 'look_ref': "TEXT NOT NULL DEFAULT ''", 'career_skill': 'INTEGER NOT NULL DEFAULT 0', 'career_work_day': 'INTEGER NOT NULL DEFAULT 0', 'ill_rolls': 'INTEGER NOT NULL DEFAULT -2', 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'attr_years': 'INTEGER NOT NULL DEFAULT 0',
@@ -6475,6 +6475,8 @@ def set_skin():
         flash(BLOCKED_MSG, 'bad')
     elif any(skin_key(r['skin']) == skin_key(name) for r in q("SELECT skin FROM consorts WHERE skin!='' AND id!=? AND status!='dead'", (c['id'],))):
         flash('这个皮相已经有人用了，换一个吧。', 'bad')
+    elif skin_key(name) in {skin_key(r['look_ref']) for r in q("SELECT look_ref FROM heirs WHERE look_ref!=''")}:
+        flash('这个皮相已经有人用了，换一个吧。', 'bad')
     else:
         run("UPDATE consorts SET skin=? WHERE id=?", (name, c['id']))
         flash(f'皮相定为「{name}」。', 'good')
@@ -7032,7 +7034,7 @@ def heir_grow_stats(day):
             for par in heir_parents(h):
                 if par['user_id']: notify(par['id'], f"{heir_label(h)}长到 {years} 岁了，身量和心性都长了些：{parts}。", 'good')
 
-# ── 孩子生病：0 岁起每长一岁掷一次，到 14 岁成年为止 ──
+# ── 孩子生病：0 岁起每长一岁掷一次，到成年（12 岁）为止 ──
 # 轻症都不致命；重症只有「没人抚养」（养育所）时才可能夭折。有人养的，请太医治，不治就拖成病弱。
 HEIR_ILLNESSES = {
     'cold':    dict(name='风寒',     severe=False, cost=30,  text='受了凉，咳嗽流涕，小脸烧得发红。'),
@@ -7047,7 +7049,7 @@ HEIR_ILLNESSES = {
     'smallpox':dict(name='痘疹',     severe=True,  cost=200, text='高烧不退，满身起了红痘，太医看了直摇头。'),
     'lung':    dict(name='肺热喘急', severe=True,  cost=150, text='喘得厉害，胸口一起一伏，嘴唇都有些发紫。'),
 }
-HEIR_ILL_ADULT_YEARS = 14           # 到 14 岁成年为止，每一岁都可能病
+HEIR_ILL_ADULT_YEARS = 12           # 到成年（12 岁）为止，每一岁都可能病；成年一夜长成 16 岁，之后不再患这类病
 HEIR_ILL_BASE = 0.5                 # 每岁患病率最低 50%
 HEIR_ILL_PER_LOW_HEALTH = 0.004     # 体质每比 100 低 1 点，患病率 +0.4%
 HEIR_ILL_PREMATURE_MULT = 1.5       # 早产儿更容易生病
@@ -7543,8 +7545,10 @@ def custody_action(hid):
 
 # ── 成年（九点六节 E）：皇子封爵开府、孝敬、差事、替母求情；公主指婚 ─────────────────────
 
-HEIR_ADULT_AGE_YEARS = 14
-HEIR_ADULT_AGE_DAYS = HEIR_ADULT_AGE_YEARS * HEIR_DAYS_PER_YEAR  # 7 次结算满 14 岁
+HEIR_ADULT_AGE_YEARS = 12      # 2026-10-09 起 12 岁成年（原 14 岁）
+HEIR_COMING_AGE = 16           # 成年那一刻孩子一下长成这个岁数：皇子夺嫡、公主婚配（请旨）都从这儿开始
+HEIR_ADULT_AGE_DAYS = HEIR_ADULT_AGE_YEARS * HEIR_DAYS_PER_YEAR  # 满 12 岁
+app.jinja_env.globals.update(HEIR_ADULT_AGE_YEARS=HEIR_ADULT_AGE_YEARS, HEIR_COMING_AGE=HEIR_COMING_AGE)
 PRINCE_TITLES = [(80, '亲王'), (60, '郡王'), (40, '贝勒'), (0, '贝子')]
 FILIAL_SILVER = {'亲王': 24, '郡王': 16, '贝勒': 10, '贝子': 5}   # 每晚孝敬的银子，按情分分给生母、养母
 PRINCE_PLEAD_INTERVAL = 3   # 2026-09-28 从 7 压到 3
@@ -7970,16 +7974,56 @@ def heir_ally_tick(day):
 app.jinja_env.globals.update(get_heir=get_heir, allies_of=allies_of, ally_leader_id=ally_leader_id, ally_block=ally_block, ALLY_MAX=ALLY_MAX)
 
 
+# ── 孩子的长相（2026-10-09）：成年（12 岁）时随机得到一个「长相参照」，男孩从男名单、女孩从女名单里抽，不和任何妃嫔的皮相、别的孩子的长相重复 ──
+HEIR_LOOKS = {
+    '皇子': '张凌赫 许凯 曾舜晞 丁禹兮 侯明昊 宋威龙 吴磊 范丞丞 王星越 陈飞宇 周柯宇 陈哲远 邓为 张晚意 檀健次 常华森 林一 陈鑫海 胡先煦 周翊然 敖瑞鹏 丞磊 王弘毅 此沙 于适 黄景瑜 魏大勋 罗云熙'.split(),
+    '公主': ('赵露思 虞书欣 田曦薇 张婧仪 周也 王楚然 章若楠 孟子义 张子枫 赵今麦 刘浩存 向涵之 胡连馨 关晓彤 陈都灵 鞠婧祎 李兰迪 任敏 孙千 李一桐 王影璐 包上恩 艾米 张淼怡 卢洋洋 代露娃 姜佩瑶 万鹏 陈瑶 沈月 金晨 宋祖儿 袁冰妍 文咏珊 程潇 周洁琼 吴宣仪 孟美岐 庄达菲 黄日莹 徐若晗 黄杨钿甜 刘些宁 傅菁 彭小苒 陈意涵 张艺凡 朱丽岚 陈芳语 王艺瑾 戚砚笛 蔡文静 陈小纭 陈丽君 祝绪丹 陈钰琪 宣璐 蒋依依 李婷婷 加奈那 哈妮克孜 黄灿灿 张雅钦 徐好 滨边美波 桥本环奈 广濑铃 今田美樱 永野芽郁 福原遥 小芝风花 川口春奈 中条彩未 清原果耶').split(),
+}
+
+
+def heir_look_taken():
+    """已经被占用的长相（妃嫔的皮相 + 孩子的长相），按 skin_key 比较"""
+    used = {skin_key(r['skin']) for r in q("SELECT skin FROM consorts WHERE skin!=''")}
+    used |= {skin_key(r['look_ref']) for r in q("SELECT look_ref FROM heirs WHERE look_ref!=''")}
+    return used
+
+
+def assign_heir_look(h):
+    """给这个孩子随机抽一个长相；名单里的都被占光了就先空着（下次再试）"""
+    if h['look_ref'] or (h['npc_key'] if 'npc_key' in h.keys() else ''): return ''
+    used = heir_look_taken()
+    free = [n for n in HEIR_LOOKS.get(h['gender'], []) if skin_key(n) not in used]
+    if not free: return ''
+    pick = random.choice(free)
+    run("UPDATE heirs SET look_ref=? WHERE id=?", (pick, h['id']))
+    for par in heir_parents(h):
+        notify(par['id'], f"{heir_label(h)}长开了，眉眼越看越像{pick}。", 'info')
+    return pick
+
+
+def heir_jump_to_coming_age(h, day):
+    """成年那一刻，孩子一下长成 HEIR_COMING_AGE 岁（出生时刻往前推）；老档只有出生天数的按天数推"""
+    now_years = heir_age_days(h, day) * AGE_YEARS_PER_DAY
+    jump = HEIR_COMING_AGE - now_years
+    if jump <= 0: return
+    if 'born_ts' in h.keys() and h['born_ts'] and h['born_ts'] > 0:
+        run('UPDATE heirs SET born_ts=? WHERE id=?', (h['born_ts'] - jump * 86400 / AGE_YEARS_PER_DAY, h['id']))
+    else:
+        run('UPDATE heirs SET born_day=? WHERE id=?', (h['born_day'] - jump / AGE_YEARS_PER_DAY, h['id']))
+
+
 def heir_come_of_age(h, day):
     label = heir_label(h)
     run('UPDATE heirs SET adult_day=?, foster_request_to=0 WHERE id=?', (day, h['id']))
+    heir_jump_to_coming_age(h, day)      # 12 岁一夜长成 16 岁
     h = q('SELECT * FROM heirs WHERE id=?', (h['id'],), one=True)
+    assign_heir_look(h)
     if h['gender'] == '皇子' and h['career'] in CAREERS:      # 选了志向：不封爵、不争储，出宫自立门户
         cv = career_view(h)
         run("UPDATE heirs SET ambition=0 WHERE id=?", (h['id'],))
-        gazette(f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，不入朝堂，以{cv['name']}（{cv['tier']}）自立，出宫另居。", 'decree')
+        gazette(f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，一夜长成{HEIR_COMING_AGE}岁，不入朝堂，以{cv['name']}（{cv['tier']}）自立，出宫另居。", 'decree')
         for p in heir_parents(h):
-            notify(p['id'], f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，以{cv['name']}（{cv['tier']}）自立门户。往后每晚孝敬约 {career_income(h)} 两，每 {CAREER_WORK_INTERVAL} 天有机会出一件成果。", 'decree')
+            notify(p['id'], f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，一夜长成{HEIR_COMING_AGE}岁，以{cv['name']}（{cv['tier']}）自立门户。往后每晚孝敬约 {career_income(h)} 两，每 {CAREER_WORK_INTERVAL} 天有机会出一件成果。", 'decree')
         return
     if h['gender'] == '皇子':
         title = prince_title_for(heir_standing(h))
@@ -7987,18 +8031,18 @@ def heir_come_of_age(h, day):
         if not h['npc_key']:
             amb = clamp(35 + AMBITION_BASE.get(h['personality'], 0) + random.randint(-10, 10))
             run('UPDATE heirs SET ambition=? WHERE id=?', (amb, h['id']))
-        gazette(f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，封为{title}，出宫开府。", 'decree')
+        gazette(f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，一夜长成{HEIR_COMING_AGE}岁，封为{title}，出宫开府。", 'decree')
         if title == '亲王':
             for uid_ in {consort_uid(p_) for p_ in heir_parents(h)}:
                 add_prestige_uid(uid_, PRESTIGE_PRINCE_TITLE, f"{label}封了亲王")
         for p in heir_parents(h):
-            notify(p['id'], f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，皇上封为{title}，出宫开府了。往后每晚有孝敬银子，每 {ERRAND_INTERVAL} 天还会有一件差事等你帮他拿主意（去「子嗣」页）。", 'decree')
+            notify(p['id'], f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，一夜长成{HEIR_COMING_AGE}岁，皇上封为{title}，出宫开府了。往后每晚有孝敬银子，每 {ERRAND_INTERVAL} 天还会有一件差事等你帮他拿主意（去「子嗣」页）。", 'decree')
         return
     run("UPDATE heirs SET marriage='choice' WHERE id=?", (h['id'],))
     ensure_courtship(get_heir(h['id']))
     for parent in heir_parents(h):
-        notify(parent['id'], f"{label}年满14岁，可以开始物色夫婿了。去子嗣页打听、相看，16岁起可请旨赐婚。", 'info')
-    gazette(f"{label}年满14岁，宫中开始为她择婿。", 'news')
+        notify(parent['id'], f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，一夜长成{HEIR_COMING_AGE}岁，可以开始物色夫婿了。去子嗣页打听、相看，也可以请旨赐婚。", 'info')
+    gazette(f"{label}年满{HEIR_ADULT_AGE_YEARS}岁，长成{HEIR_COMING_AGE}岁的大姑娘，宫中开始为她择婿。", 'news')
 
 
 def heir_marriage_deadline_tick(day):
@@ -9293,7 +9337,7 @@ def princess_ending(h, winner, day):
     row = q("SELECT * FROM princess_courtships WHERE heir_id=?", (h['id'],), one=True)
     married = h['marriage'] in ('capital', 'mongol') and h['marry_day']
     if not married:
-        if age < 14: text = '年纪尚幼，仍在母亲身边，婚事等新朝再议'
+        if age < HEIR_ADULT_AGE_YEARS: text = '年纪尚幼，仍在母亲身边，婚事等新朝再议'
         else: text = '婚事尚未定下，新帝将替她在勋贵里另择良配'
         return text + ('；新帝是她的亲兄弟，必不会委屈了她' if kin else ''), 'single'
     suitor = q("SELECT * FROM princess_suitors WHERE id=?", (row['selected_id'],), one=True) if row and row['selected_id'] else None
@@ -13801,7 +13845,7 @@ def rankings():
     return render_template('rankings.html', boards=rankings_boards(), me=g.me, badge_name=badge_name)
 
 
-# ── 公主择婿：14 岁物色，16 岁请旨，固定候选与婚后家事 ──
+# ── 公主择婿：成年（12 岁，一夜长成 16 岁）起物色、请旨，固定候选与婚后家事 ──
 SUITOR_KINDS = {'noble': '京中勋贵', 'scholar': '文臣世家', 'general': '武将之家', 'mongol': '蒙古王公'}
 COURTSHIP_COSTS = {'investigate': 30, 'meet': 50, 'ask': 0, 'replace': 100}
 COURTSHIP_EVENTS = {
@@ -13846,7 +13890,7 @@ def new_suitor(h):
 
 
 def ensure_courtship(h):
-    if h['gender'] != '公主' or h['marriage'] != 'choice' or heir_age_years(h) < 14: return
+    if h['gender'] != '公主' or h['marriage'] != 'choice' or heir_age_years(h) < HEIR_ADULT_AGE_YEARS: return
     run('INSERT OR IGNORE INTO princess_courtships(heir_id) VALUES(?)', (h['id'],))
     count = q('SELECT COUNT(*) n FROM princess_suitors WHERE heir_id=? AND active=1', (h['id'],), one=True)['n']
     for _ in range(max(0, 3 - count)): new_suitor(h)
@@ -13925,7 +13969,7 @@ def princess_courtship(hid):
     ensure_courtship(h)
     row = q('SELECT * FROM princess_courtships WHERE heir_id=?', (hid,), one=True)
     if not row:
-        flash('年满14岁后才能开始择婿。', 'bad'); return redirect(url_for('heirs'))
+        flash(f'年满{HEIR_ADULT_AGE_YEARS}岁后才能开始择婿。', 'bad'); return redirect(url_for('heirs'))
     action = request.form.get('action', '')
     manager = courtship_manager(h)
     main = bool(manager and manager['id'] == c['id'])
