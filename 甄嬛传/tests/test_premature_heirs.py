@@ -160,6 +160,41 @@ class PrematureHeirTests(fixtures.unittest.TestCase):
         self.assertIn('早产', grave['label'])
         self.assertTrue(game.q('SELECT 1 FROM letters WHERE to_id=?', (mother,), one=True))
 
+    def test_buying_auto_doctor_costs_200_and_is_one_time(self):
+        mother = self.player('母', 4)
+        game.run('UPDATE consorts SET silver=500 WHERE id=?', (mother,))
+        self.login(mother)
+        self.client.post('/home/auto_doctor')
+        c = game.get_consort(mother)
+        self.assertEqual((c['auto_doctor'], c['silver']), (1, 500 - game.AUTO_DOCTOR_PRICE))
+        self.client.post('/home/auto_doctor')
+        self.assertEqual(game.get_consort(mother)['silver'], 500 - game.AUTO_DOCTOR_PRICE, '只买一次')
+        poor = self.player('穷', 4)
+        game.run('UPDATE consorts SET silver=50 WHERE id=?', (poor,))
+        self.login(poor)
+        self.client.post('/home/auto_doctor')
+        self.assertEqual(game.get_consort(poor)['auto_doctor'], 0)
+
+    def test_auto_doctor_treats_a_newly_sick_child_without_clicking(self):
+        mother = self.player('母', 4)
+        hid = self.heir(mother, False)
+        game.run('UPDATE heirs SET caretaker_id=? WHERE id=?', (mother, hid))
+        game.run('UPDATE consorts SET auto_doctor=1, silver=1000 WHERE id=?', (mother,))
+        with patch.object(game.random, 'random', lambda: 0.5), patch.object(game.random, 'choice', side_effect=lambda seq: next(k for k, v in game.HEIR_ILLNESSES.items() if not v['severe']) if isinstance(seq, list) and seq and isinstance(seq[0], str) and seq[0] in game.HEIR_ILLNESSES else seq[0]):
+            game.heir_fall_ill(game.get_heir(hid), game.cur_day())
+        self.assertEqual(game.get_heir(hid)['illness'], '', '自动请医，当场治好')
+        self.assertLess(game.get_consort(mother)['silver'], 1000, '诊金照扣')
+        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%自动请医%'", (mother,), one=True))
+
+    def test_auto_doctor_without_enough_silver_only_warns(self):
+        mother = self.player('母', 4)
+        hid = self.heir(mother, False)
+        game.run('UPDATE heirs SET caretaker_id=? WHERE id=?', (mother, hid))
+        game.run('UPDATE consorts SET auto_doctor=1, silver=0 WHERE id=?', (mother,))
+        game.heir_fall_ill(game.get_heir(hid), game.cur_day())
+        self.assertNotEqual(game.get_heir(hid)['illness'], '')
+        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%银子不够%'", (mother,), one=True))
+
     def test_treated_child_still_has_a_three_percent_death_chance(self):
         mother = self.player('母', 4)
         self.assertEqual(game.HEIR_ILL_TREATED_DEATH, 0.03)

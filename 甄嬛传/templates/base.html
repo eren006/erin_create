@@ -193,6 +193,7 @@ nav.halls-sub a.on{opacity:1}
     <a href="{{ url_for('family_page') }}" class="{{ 'on' if ep in ('family_page','clan','clan_of','clans') }}">家族</a>
     <a href="{{ url_for('gazette_page') }}" class="{{ 'on' if ep=='gazette_page' }}">邸报</a>
     <a href="{{ url_for('tribute') }}" class="{{ 'on' if ep=='tribute' }}">选贡品</a>
+    <a href="{{ url_for('palace_aid') }}" class="{{ 'on' if ep.startswith('palace_aid') }}">协理六宫</a>
     {% if incense_on %}<a href="{{ url_for('incense') }}" class="{{ 'on' if ep in ('incense','incense_burn') }}">添香</a>{% endif %}
     <a href="{{ url_for('daily_page') }}" class="{{ 'on' if ep=='daily_page' }}">日常</a>
     <a href="{{ url_for('memorial') }}" class="{{ 'on' if ep=='memorial' }}">宫史</a>

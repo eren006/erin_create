@@ -1664,7 +1664,7 @@ def init_db():
         'incense_events': {'ends_ts': 'REAL NOT NULL DEFAULT 0'},
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
         'banquet_entries': {'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'tier': 'INTEGER NOT NULL DEFAULT 1', 'buff': 'INTEGER NOT NULL DEFAULT 0', 'note': "TEXT NOT NULL DEFAULT ''"},
-        'consorts': {'nine_word': "TEXT NOT NULL DEFAULT ''", 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'birth_crisis': 'INTEGER NOT NULL DEFAULT 0', 'mood': 'INTEGER NOT NULL DEFAULT 50', 'pregnancy_secret': 'INTEGER NOT NULL DEFAULT 0', 'tryst_count': 'INTEGER NOT NULL DEFAULT 0', 'favor_mark': 'INTEGER NOT NULL DEFAULT -1', 'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'ill_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
+        'consorts': {'auto_doctor': 'INTEGER NOT NULL DEFAULT 0', 'nine_word': "TEXT NOT NULL DEFAULT ''", 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'birth_crisis': 'INTEGER NOT NULL DEFAULT 0', 'mood': 'INTEGER NOT NULL DEFAULT 50', 'pregnancy_secret': 'INTEGER NOT NULL DEFAULT 0', 'tryst_count': 'INTEGER NOT NULL DEFAULT 0', 'favor_mark': 'INTEGER NOT NULL DEFAULT -1', 'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'ill_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
                      'age_months': 'INTEGER NOT NULL DEFAULT 240',
                      'poisoned_day': 'INTEGER NOT NULL DEFAULT 0',
                      'poison_treatment': 'INTEGER NOT NULL DEFAULT 0',
@@ -7201,6 +7201,8 @@ def heir_fall_ill(h, day):
             notify(mother['id'], f"{label}在皇嗣养育所里病了：{ill['name']}。{ill['text']}孩子身边只有乳母，没有额娘守着，缩在被子里一声不吭，眼巴巴地望着门口。{'没人守着，恐怕凶多吉少。' if ill['severe'] else '乳母看顾着，只是夜里怕是要哭着找额娘。'}", 'bad')
     elif mother and mother['user_id']:      # 抚养人不是玩家（系统托管之类）：也告诉生母
         notify(mother['id'], f"{label}病了：{ill['name']}。{ill['text']}孩子不在你身边，病中还惦记着额娘。你帮不上忙，只能盼着{display_name(ct)}那边照看得周到些。", 'bad')
+    if ct and ct['user_id'] and ct['auto_doctor']:      # 买过「自动看病」：当场请太医
+        heir_auto_treat(get_heir(h['id']), get_consort(ct['id']))
 
 
 def heir_ill_resolve(h, cured_by_doctor=False):
@@ -7332,6 +7334,55 @@ def heir_illness_tick(day):
             heir_ill_resolve(h)
 
 
+def treat_heir(h, c, auto=False):
+    """请太医医治生病的孩子：先扣诊金，先掷 HEIR_ILL_TREATED_DEATH 夭折，再掷医治成功率。返回 (写给玩家的话, 好坏, 孩子是否没了)。
+    手动点和买了「自动看病」后的自动请医共用这一套"""
+    ill = HEIR_ILLNESSES[h['illness']]
+    add_silver(c['id'], -ill['cost'])
+    label = heir_label(h)
+    pre = '【自动请医】' if auto else ''
+    if random.random() < HEIR_ILL_TREATED_DEATH:      # 请了太医也有 3% 没救回来（银子已经花了）
+        heir_die_of_illness(h, ill, treated=True)
+        return f"{pre}太医尽力了，{label}还是没能救回来。", 'bad', True
+    if random.random() < HEIR_ILL_TREAT_SUCCESS[ill['severe']]:
+        run("UPDATE heirs SET illness='', ill_deadline_ts=0 WHERE id=?", (h['id'],))
+        feed(c['id'], f"请太医治好了{label}的{ill['name']}，花了 {ill['cost']} 两。")
+        return f"{pre}太医开了方子，{label}的{ill['name']}好了。花了 {ill['cost']} 两。", 'good', False
+    run("UPDATE heirs SET ill_deadline_ts=? WHERE id=?", (now_ts() + HEIR_ILL_HOURS * 3600 // 2, h['id']))
+    return f"{pre}太医用了药，{label}的{ill['name']}不见起色，只能再熬熬看（银子已花）。", 'bad', False
+
+
+app.jinja_env.globals['AUTO_DOCTOR_PRICE'] = 200
+AUTO_DOCTOR_PRICE = 200      # 在本宫买「自动看病」：之后孩子生病自动请太医，不用自己去点（一次买断，跟着这位妃嫔）
+
+
+def heir_auto_treat(h, c):
+    """孩子刚病倒：抚养人买过「自动看病」就当场请太医；银子不够就留一句话，还是得自己想办法"""
+    ill = HEIR_ILLNESSES[h['illness']]
+    if c['silver'] < ill['cost']:
+        notify(c['id'], f"{heir_label(h)}病了（{ill['name']}），本想自动请太医，可银子不够（要 {ill['cost']} 两），得你自己想办法了。", 'bad')
+        return
+    msg, kind, _ = treat_heir(h, c, auto=True)
+    notify(c['id'], msg, kind)
+
+
+@app.route('/home/auto_doctor', methods=['POST'])
+@login_required
+def buy_auto_doctor():
+    c = get_consort(g.me['id'])
+    if c['auto_doctor']:
+        flash('「自动看病」你已经买过了。', 'info')
+    elif c['status'] == 'cold':
+        flash('冷宫里买不了东西。', 'bad')
+    elif c['silver'] < AUTO_DOCTOR_PRICE:
+        flash(f'银子不够，「自动看病」要 {AUTO_DOCTOR_PRICE} 两。', 'bad')
+    else:
+        add_silver(c['id'], -AUTO_DOCTOR_PRICE)
+        run('UPDATE consorts SET auto_doctor=1 WHERE id=?', (c['id'],))
+        flash('已托内务府安排：往后孩子一病倒，会自动请太医医治，诊金照扣。', 'good')
+    return redirect(url_for('place', key='home'))
+
+
 @app.route('/heirs/treat/<int:hid>', methods=['POST'])
 @login_required
 @atomic
@@ -7343,19 +7394,8 @@ def heir_treat(hid):
         if not h['illness']: raise Reject('孩子眼下没病。')
         ill = HEIR_ILLNESSES[h['illness']]
         if c['silver'] < ill['cost']: raise Reject(f"请太医要 {ill['cost']} 两，银子不够。")
-        add_silver(c['id'], -ill['cost'])
-        label = heir_label(h)
-        if random.random() < HEIR_ILL_TREATED_DEATH:      # 请了太医也有 3% 没救回来（银子已经花了）
-            heir_die_of_illness(h, ill, treated=True)
-            flash(f"太医尽力了，{label}还是没能救回来。", 'bad')
-            return redirect(url_for('heirs'))
-        if random.random() < HEIR_ILL_TREAT_SUCCESS[ill['severe']]:
-            run("UPDATE heirs SET illness='', ill_deadline_ts=0 WHERE id=?", (hid,))
-            feed(c['id'], f"请太医治好了{label}的{ill['name']}，花了 {ill['cost']} 两。")
-            flash(f"太医开了方子，{label}的{ill['name']}好了。花了 {ill['cost']} 两。", 'good')
-        else:
-            run("UPDATE heirs SET ill_deadline_ts=? WHERE id=?", (now_ts() + HEIR_ILL_HOURS * 3600 // 2, hid))
-            flash(f"太医用了药，{label}的{ill['name']}不见起色，只能再熬熬看（银子已花）。", 'bad')
+        msg, kind, _ = treat_heir(h, c)
+        flash(msg, kind)
     except Reject as exc: flash(str(exc), 'bad')
     return redirect(url_for('heirs'))
 

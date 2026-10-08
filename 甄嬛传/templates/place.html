@@ -101,6 +101,8 @@
 {% if my_heirs %}
 <div class="sheet" style="margin:14px 0">
   <h3 style="margin-top:0">教养</h3>
+  {% if c.auto_doctor %}<p class="muted" style="margin:0 0 6px">已托内务府「自动看病」：孩子一病倒就自动请太医，诊金照扣。</p>
+  {% else %}<form method="post" action="{{ url_for('buy_auto_doctor') }}" class="row" style="margin:0 0 8px"><span class="muted">自动看病：买下后孩子生病自动请太医，不用自己去点。</span><button class="plain" {{ 'disabled' if c.silver < AUTO_DOCTOR_PRICE }}>买下（{{ AUTO_DOCTOR_PRICE }} 两）</button></form>{% endif %}
   <p class="muted" style="margin:0 0 6px">每晚结算付乳母月钱 / 师傅束脩：{% for h in my_heirs %}{{ heir_label(h) }} {{ heir_upkeep_cost(h) }} 两{{ '、' if not loop.last }}{% endfor %}。</p>
   {% for h in my_heirs %}
   <div style="margin:10px 0;padding-bottom:10px;border-bottom:1px solid var(--line)">

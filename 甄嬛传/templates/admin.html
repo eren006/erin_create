@@ -28,6 +28,12 @@
 <label>每人时限<select name="timeout_hours"><option value="8">8小时</option><option value="12">12小时</option><option value="24">24小时</option><option value="0">不自动跳过</option></select></label><button>开启本轮选贡品</button></form>
 <form method="post" action="{{ url_for('admin_tribute') }}" class="row"><button class="plain" name="action" value="skip">跳过当前人</button><button class="plain" name="action" value="close">关闭本轮</button></form>
 <p><a href="{{ url_for('tribute') }}">查看贡品与当前顺位</a></p>
+<h3>临时活动 · 辅助协理六宫</h3>
+<p>{% if palace_steward %}现任协理：{{ dn(palace_steward) }}{% else %}尚无人协理六宫，须先由贵妃以上玩家申请。{% endif %}</p>
+<p class="muted">协理者不参赛；其余在宫玩家开启时有1次机会，每小时恢复1次，可积攒，每轮总共10次。每次完成一件宫务，进度随机增加6～12；24小时截止后前两名各获势力20、德行5、银两300。同分影响前两名席位时随机补足名额。</p>
+<p class="muted">每人每轮另有3次干扰机会，同一人最多被干扰6次；每次让对方进度减少3～7，最低为0。</p>
+<form method="post" action="{{ url_for('admin_palace_aid') }}"><button {% if not palace_steward %}disabled{% endif %}>开启辅助协理六宫</button></form>
+<p><a href="{{ url_for('palace_aid') }}">查看宫务与评议</a></p>
 <h3>临时活动 · 寿康宫添香</h3>
 <p class="muted">太后寿辰前请六宫去佛堂添香祈福：每人每半个时辰一次，香火 +5~10，满 100 赏银 100 两并随机赐一份红花、麝香、哑蝉汤或胭脂霰（每人每轮只能领一次）。开启后 48 小时自动到期，也可提前关闭；已领的赏保留。</p>
 <form method="post" action="{{ url_for('admin_incense') }}" class="row"><button name="action" value="start">开启添香祈福</button><button class="plain" name="action" value="close">关闭本轮</button></form>

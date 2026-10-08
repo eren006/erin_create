@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}协理六宫{% endblock %}
+{% block body %}
+<h2>协理六宫</h2>
+{% if steward %}<p>{{ dn(steward) }}领命协理六宫，襄助料理各宫事务。</p>{% else %}<p>协理六宫一职暂缺，贵妃以上可申请，全宫只设一人。</p><form method="post" action="{{ url_for('palace_aid_apply') }}"><button>申请协理六宫</button></form>{% endif %}
+<h3>辅助宫务</h3>
+<p class="muted">协理者不参与竞争。开启时有1次机会，每小时恢复1次，未用的可积攒，每轮共10次；每次办妥宫务随机积累6～12进度。24小时后，进度前两名各获势力 +20、德行 +5、赏银300两；同分影响前两名席位时随机补足名额。</p>
+{% if event %}
+<p>截止：{{ ends }}（游戏时间） · {{ '正在料理宫务' if event.status == 'active' else '评议已定' }}</p>
+{% if event.status == 'active' %}
+<p>你已完成 {{ row.times if row else 0 }}/10 件宫务，累计进度 {{ row.progress if row else 0 }}，可用机会 {{ available }} 次。</p>
+{% if g.me.id == event.steward_id %}<p>你主持本轮宫务，不参与竞争。</p>{% else %}
+{% for title, story in PALACE_AID_STORIES %}
+<form method="post" action="{{ url_for('palace_aid_work') }}" style="display:inline-block;margin:4px"><input type="hidden" name="event_id" value="{{ event.id }}"><input type="hidden" name="task" value="{{ loop.index0 }}"><button {% if not available %}disabled{% endif %}>{{ title }}</button></form>
+{% endfor %}{% endif %}
+{% elif winners %}{% for w in winners %}{% set winner=get_consort(w.consort_id) %}<p>获选辅助宫务：{{ dn(winner) if winner else '已归档的姐妹' }}，势力 +20、德行 +5、赏银300两。</p>{% endfor %}{% else %}<p>本轮无人获赏。</p>{% endif %}
+<h3>宫务排行榜</h3>
+<p class="muted">每人每轮可干扰3次；同一人最多被干扰6次，每次减少3～7进度，最低为0。你剩余 {{ interference_left }} 次干扰机会。</p>
+{% for c in board %}<article class="sheet"><p>{{ loop.index }}. {{ dn(c) }} · 办妥 {{ c.times }} 件 · 进度 {{ c.progress }} · 已被干扰 {{ c.hit_count }}/6 次</p>
+{% if event.status == 'active' and g.me.id != event.steward_id and c.id != g.me.id %}<form method="post" action="{{ url_for('palace_aid_interfere') }}"><input type="hidden" name="event_id" value="{{ event.id }}"><input type="hidden" name="target_id" value="{{ c.id }}"><button class="plain" {% if not interference_left or c.hit_count >= 6 or c.progress <= 0 %}disabled{% endif %}>给她的宫务添些麻烦</button></form>{% endif %}</article>{% else %}<p class="muted">尚未有人接手宫务。</p>{% endfor %}
+{% else %}<p>尚未开启辅助宫务，待有人协理六宫后，由后台开启。</p>{% endif %}
+{% endblock %}
