@@ -6833,7 +6833,7 @@ HEIR_ILL_PREMATURE_MULT = 1.5       # 早产儿更容易生病
 HEIR_ILL_CAP = 0.95
 HEIR_ILL_SEVERE_SHARE = 0.15        # 生了病里，重症占的比例
 HEIR_ILL_ROLLS_PER_YEAR = 2         # 孩子每长一岁（12 小时）掷两次患病，也就是每 6 小时一次（2026-10-08 起，原每岁一次）；每次的概率按「每岁患病率」均分，一岁内总概率不变
-HEIR_ILL_HOURS = 24                 # 病了这么久还没人治，就按「没治」结算
+HEIR_ILL_HOURS = 6                  # 病了这么久还没人治，就按「没治」结算（2026-10-08 起 6 小时，原 24 小时）
 HEIR_ILL_TREAT_SUCCESS = {False: 1.0, True: 0.9}     # 太医医治成功率：轻症一定好，重症九成
 # 没治的后果。有人抚养：轻症自己好，只落一点体质；重症拖成病弱，不会死。没人抚养（养育所）：重症可能夭折。
 HEIR_ILL_WEAK = dict(health=8, cap=5)               # 病弱：体质 -8、体质上限 -5
