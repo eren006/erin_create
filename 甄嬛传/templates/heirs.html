@@ -5,18 +5,52 @@
 <p class="muted">本届字辈：皇子「{{ cur_gen['皇子'] }}」、公主「{{ cur_gen['公主'] }}」。孩子出生时皇上随机点三个字，母亲三选一，名字就是字辈加这个字。</p>
 <p class="muted">侍寝后有机会怀上龙胎，诊出喜脉后满24小时自动临盆，孕中可查看进度、安胎和胎教。诞下皇子的母亲在有名额时晋一级位分。孕中要当心，宫里不是人人都盼着你平安生产。</p>
 {% if rows %}
-<div class="scroll"><table>
-  <tr><th>皇嗣</th><th>生母</th><th>抚养</th><th>性格</th><th>资质</th><th>年龄</th><th>学问/骑射/品行/体质/容貌</th><th>情分</th><th></th></tr>
-  {% for h in rows %}{% set m = get_consort(h.mother_id) %}{% set fo = get_consort(h.caretaker_id) %}
-  <tr><td style="font-family:var(--kai);font-size:17px;white-space:nowrap">{{ heir_label(h) }}{% if h.name %}<br><span class="muted" style="font-family:var(--song);font-size:13px;white-space:nowrap">{{ heir_rank_title(h) }}</span>{% endif %}{% if h.zhuazhou %}<br><span class="muted" style="font-family:var(--song);font-size:12px">周岁抓周</span>{% endif %}</td>
-    <td>{{ dn(m) if m else '（早逝）' }}</td>
-    <td>{{ (dn(fo) if fo.id != h.mother_id else '（自己养）') if fo else '皇嗣养育所（NPC）' }}</td>
-    <td>{% set pe = heir_persona(h) %}{% if pe %}<span title="{{ pe.effect }}">{{ pe.name }}·{{ pe.tag }}</span><br><span class="muted" style="font-size:12px">{{ pe.text }}</span>{% endif %}</td>
-    <td class="muted" style="font-size:13px;white-space:nowrap">学 {{ gift_word(h.gift_study) }}<br>射 {{ gift_word(h.gift_riding) }}<br>品 {{ gift_word(h.gift_virtue) }}</td>
-    <td>{{ heir_age_years(h) }} 岁{% if h.premature %}<br><span class="muted">早产</span>{% endif %}{% if h.status=='crown' %}<br><span class="muted">太子</span>{% elif h.status=='deposed' %}<br><span class="muted">废黜圈禁</span>{% endif %}{% if h.title %}<br><span class="muted">{{ h.title }}{% if h.marriage=='capital' %}·留京{% elif h.marriage=='mongol' %}·抚蒙古{% endif %}</span>{% elif h.marriage=='choice' %}<br><span class="muted">待指婚</span>{% endif %}</td>
-    <td>{{ h.study }}/{{ h.riding }}/{{ h.virtue }}/{{ h.health }}（上限{{ h.health_max }}）/{{ h.appearance }}{% if h.temperament %}<br><span class="muted" title="{{ temper_desc(h.temperament) }}">气质：{{ h.temperament }}</span>{% endif %}</td>
-    <td>{{ h.caretaker_affinity }}{% if fo and fo.id != h.mother_id %}<span class="muted">（生母 {{ h.mother_affinity }}）</span>{% endif %}</td>
-    <td>{% if h.mother_id == c.id and not h.name %}{% set gen = h.gen_word or cur_gen[h.gender] %}
+<style>
+.heirs{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr))}
+.heir{padding:16px 18px;min-width:0}
+.heir .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:10px}
+.heir .nm{font-family:var(--kai);font-size:22px;line-height:1.35}
+.heir .nm small{display:block;font-family:var(--song);font-size:13px;color:var(--muted)}
+.heir .age{text-align:right;white-space:nowrap;font-size:15px}
+.heir .age small{display:block;font-size:12px;color:var(--muted)}
+.heir .meta{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:0 0 10px;font-size:14px}
+.heir .meta dt{color:var(--muted)}.heir .meta dd{margin:0;min-width:0}
+.heir .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin:0 0 8px;text-align:center}
+.heir .stats div{border:1px solid var(--line);padding:4px 2px;font-size:12px;color:var(--muted);line-height:1.4}
+.heir .stats b{display:block;font-size:17px;color:var(--ink);font-weight:600}
+.heir .gifts{margin:0 0 8px}
+.heir .ill{border:1px solid var(--line);border-left:4px solid var(--jin);background:var(--paper);padding:8px 12px;margin:0 0 10px;font-size:14px}.heir .ill.severe{border-left-color:var(--zhu)}
+.heir .acts{border-top:1px dashed var(--line);margin-top:12px;padding-top:12px}
+.heir .acts:empty{display:none}
+.heir .acts .row{margin:6px 0}
+@media(max-width:380px){.heir .stats{grid-template-columns:repeat(3,1fr)}}
+</style>
+<div class="heirs">
+  {% for h in rows %}{% set m = get_consort(h.mother_id) %}{% set fo = get_consort(h.caretaker_id) %}{% set pe = heir_persona(h) %}
+  <article class="sheet heir">
+    <div class="hd">
+      <div class="nm">{{ heir_label(h) }}{% if h.name %}<small>{{ heir_rank_title(h) }}</small>{% endif %}{% if h.zhuazhou %}<small>周岁抓周</small>{% endif %}</div>
+      <div class="age">{{ heir_age_years(h) }} 岁{% if h.premature %}<small>早产</small>{% endif %}{% if h.status=='crown' %}<small>太子</small>{% elif h.status=='deposed' %}<small>废黜圈禁</small>{% endif %}{% if h.title %}<small>{{ h.title }}{% if h.marriage=='capital' %}·留京{% elif h.marriage=='mongol' %}·抚蒙古{% endif %}</small>{% elif h.marriage=='choice' %}<small>待指婚</small>{% endif %}</div>
+    </div>
+    <dl class="meta">
+      <dt>生母</dt><dd>{{ dn(m) if m else '（早逝）' }}</dd>
+      <dt>抚养</dt><dd>{{ (dn(fo) if fo.id != h.mother_id else '（自己养）') if fo else '皇嗣养育所（NPC）' }}</dd>
+      {% if pe %}<dt>性格</dt><dd><span title="{{ pe.effect }}">{{ pe.name }}·{{ pe.tag }}</span><br><span class="muted" style="font-size:12px">{{ pe.text }}</span></dd>{% endif %}
+      {% if h.premature %}<dt>体质</dt><dd>早产体弱：体质长得慢，也更容易生病</dd>{% endif %}
+      <dt>情分</dt><dd>{{ h.caretaker_affinity }}{% if fo and fo.id != h.mother_id %}<span class="muted">（生母 {{ h.mother_affinity }}）</span>{% endif %}</dd>
+      {% if h.temperament %}<dt>气质</dt><dd><span title="{{ temper_desc(h.temperament) }}">{{ h.temperament }}</span></dd>{% endif %}
+    </dl>
+    {% if h.illness %}{% set ill = HEIR_ILLNESSES[h.illness] %}
+    <div class="ill {{ 'severe' if ill.severe }}"><b>{{ '重症' if ill.severe else '染病' }}：{{ ill.name }}</b><br><span class="muted">{{ ill.text }}</span>
+      {% if h.caretaker_id == c.id %}<form method="post" action="{{ url_for('heir_treat', hid=h.id) }}" class="row" style="margin-top:6px"><button title="花银子请太医；{{ HEIR_ILL_HOURS }} 小时内没治，{{ '一定拖成病弱' if ill.severe else '有五成落下病弱' }}">请太医医治（{{ ill.cost }} 两）</button></form>
+      {% elif h.caretaker_id == 0 %}<span class="muted">孩子在皇嗣养育所，没人替他请太医。</span>{% endif %}
+    </div>{% endif %}
+    <div class="stats" aria-label="学问 骑射 品行 体质 容貌">
+      <div><b>{{ h.study }}</b>学问</div><div><b>{{ h.riding }}</b>骑射</div><div><b>{{ h.virtue }}</b>品行</div><div><b>{{ h.health }}</b>体质/{{ h.health_max }}</div><div><b>{{ h.appearance }}</b>容貌</div>
+    </div>
+    <p class="muted gifts">资质：学 {{ gift_word(h.gift_study) }} · 射 {{ gift_word(h.gift_riding) }} · 品 {{ gift_word(h.gift_virtue) }}</p>
+    <div class="acts">
+    {% if h.mother_id == c.id and not h.name %}{% set gen = h.gen_word or cur_gen[h.gender] %}
       <div class="muted" style="font-size:13px;margin-bottom:4px">字辈「{{ gen }}」，皇上点了三个字，选一个：</div>
       <form method="post" class="row" style="gap:6px;flex-wrap:wrap"><input type="hidden" name="heir_id" value="{{ h.id }}">
         {% for ch, meaning in name_choice_view(h) %}<button class="plain" name="pick" value="{{ ch }}" title="{{ meaning }}" style="text-align:left"><b style="font-family:var(--kai);font-size:17px">{{ gen }}{{ ch }}</b><br><span class="muted" style="font-size:12px">{{ meaning }}</span></button>{% endfor %}
@@ -83,9 +117,11 @@
       {% if a.errand %}<div>差事：<b>{{ a.errand.name }}</b><br><span class="muted">{{ a.errand.line }}。{{ '已定：' ~ ERRAND_APPROACHES[a.errand.approach].name if a.errand.approach else '还没定办法，不选就稳妥办。' }}</span></div>
         <form method="post" action="{{ url_for('heir_errand', hid=h.id) }}" class="row">
           {% for k, ap in ERRAND_APPROACHES.items() if k != 'shift' or a.errand.can_shift %}<button class="plain" name="approach" value="{{ k }}">{{ ap.name }}</button>{% endfor %}</form>{% endif %}
-    {% endif %}</td></tr>
+    {% endif %}
+    </div>
+  </article>
   {% endfor %}
-</table></div>
+</div>
 {% else %}<p>宫里还没有新的皇嗣降生。</p>{% endif %}
-{% if losses %}<h3>早产夭折记录</h3>{% for loss in losses %}<p class="muted">第{{ loss.day }}天 · {{ loss.gender }} · {{ loss.reason }}</p>{% endfor %}{% endif %}
+{% if losses %}<h3>夭折记录</h3>{% for loss in losses %}<p class="muted">第{{ loss.day }}天 · {{ loss.gender }} · {{ loss.reason }}</p>{% endfor %}{% endif %}
 {% endblock %}

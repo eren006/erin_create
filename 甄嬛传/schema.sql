@@ -734,3 +734,21 @@ CREATE TABLE IF NOT EXISTS tribute_items (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tribute_display ON tribute_items(holder_id,display_slot) WHERE display_slot!='';
 
 CREATE TABLE IF NOT EXISTS birth_losses (id INTEGER PRIMARY KEY AUTOINCREMENT,mother_id INTEGER NOT NULL,gender TEXT NOT NULL,day INTEGER NOT NULL,created_ts REAL NOT NULL,reason TEXT NOT NULL);
+
+-- 临时活动「寿康宫添香」：每人每半个时辰添一炷香，进度满 100 领一次赏
+CREATE TABLE IF NOT EXISTS incense_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ status TEXT NOT NULL DEFAULT 'active',
+ started_ts REAL NOT NULL,
+ ends_ts REAL NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_incense_one_active ON incense_events(status) WHERE status='active';
+CREATE TABLE IF NOT EXISTS incense_progress (
+ event_id INTEGER NOT NULL,
+ consort_id INTEGER NOT NULL,
+ progress INTEGER NOT NULL DEFAULT 0,
+ last_ts REAL NOT NULL DEFAULT 0,
+ times INTEGER NOT NULL DEFAULT 0,
+ reward TEXT NOT NULL DEFAULT '',
+ PRIMARY KEY(event_id,consort_id)
+);

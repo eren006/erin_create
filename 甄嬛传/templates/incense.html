@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}寿康宫添香{% endblock %}
+{% block head %}<style>
+.incense-bar{height:14px;border:1px solid var(--line);background:var(--paper);margin:10px 0 4px}
+.incense-bar i{display:block;height:100%;background:var(--zhu)}
+.incense-rewards{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0;padding:0;list-style:none}
+.incense-rewards li{border:1px solid var(--line);background:var(--paper);padding:4px 12px;font-size:14px}
+</style>{% endblock %}
+{% block body %}
+<h2>寿康宫添香</h2>
+<p class="muted">太后寿辰将近，寿康宫佛堂请六宫姐妹轮流去添香祈福。每半个时辰可添一炷香，香火 +5~10；香火满 {{ goal }}，太后赏银 {{ silver }} 两，并从库里随手赐一份药材：{{ drugs|join('、') }}，赐哪样看运气。每人每轮只能领一次赏。活动开启后 {{ hours }} 小时到期。</p>
+{% if event %}
+<div class="sheet">
+  {% if ends %}<p class="muted" style="margin:0 0 8px">截止 {{ ends }}，到点香火收起。</p>{% endif %}
+  <b>你的香火：{{ row.progress if row else 0 }} / {{ goal }}</b>{% if row %} <span class="muted">· 已添 {{ row.times }} 炷</span>{% endif %}
+  <div class="incense-bar" role="progressbar" aria-valuenow="{{ row.progress if row else 0 }}" aria-valuemin="0" aria-valuemax="{{ goal }}"><i style="width:{{ (row.progress if row else 0) * 100 // goal }}%"></i></div>
+  {% if row and row.progress >= goal %}
+    <p>香火圆满，赏已领过{% if row.reward %}（{{ silver }} 两、{{ DRUGS[row.reward].name }}）{% endif %}。</p>
+  {% elif ready %}
+    <form method="post" action="{{ url_for('incense_burn') }}"><button>去佛前添一炷香</button></form>
+  {% else %}
+    <p class="muted">佛前的香还没燃尽，约 {{ wait_min }} 分钟后可再添。</p>
+    <button disabled>去佛前添一炷香</button>
+  {% endif %}
+  {% if c is defined and c and c.status != 'normal' %}<p class="muted">被禁足时去不了佛堂。</p>{% endif %}
+</div>
+{% else %}<p class="muted">眼下没有添香祈福的活动。</p>{% endif %}
+{% endblock %}

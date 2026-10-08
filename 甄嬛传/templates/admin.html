@@ -28,6 +28,10 @@
 <label>每人时限<select name="timeout_hours"><option value="8">8小时</option><option value="12">12小时</option><option value="24">24小时</option><option value="0">不自动跳过</option></select></label><button>开启本轮选贡品</button></form>
 <form method="post" action="{{ url_for('admin_tribute') }}" class="row"><button class="plain" name="action" value="skip">跳过当前人</button><button class="plain" name="action" value="close">关闭本轮</button></form>
 <p><a href="{{ url_for('tribute') }}">查看贡品与当前顺位</a></p>
+<h3>临时活动 · 寿康宫添香</h3>
+<p class="muted">太后寿辰前请六宫去佛堂添香祈福：每人每半个时辰一次，香火 +5~10，满 100 赏银 100 两并随机赐一份红花、麝香、哑蝉汤或胭脂霰（每人每轮只能领一次）。开启后 48 小时自动到期，也可提前关闭；已领的赏保留。</p>
+<form method="post" action="{{ url_for('admin_incense') }}" class="row"><button name="action" value="start">开启添香祈福</button><button class="plain" name="action" value="close">关闭本轮</button></form>
+<p><a href="{{ url_for('incense') }}">查看活动页</a></p>
 <h3>下旨（发到邸报）</h3>
 <form method="post" action="{{ url_for('admin_decree') }}" class="row">
   <input name="text" style="flex:1;min-width:220px" placeholder="例如：中秋家宴，六宫同庆。"><button class="plain">发布</button>
