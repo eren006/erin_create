@@ -736,6 +736,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_tribute_display ON tribute_items(holder_id
 
 CREATE TABLE IF NOT EXISTS birth_losses (id INTEGER PRIMARY KEY AUTOINCREMENT,mother_id INTEGER NOT NULL,gender TEXT NOT NULL,day INTEGER NOT NULL,created_ts REAL NOT NULL,reason TEXT NOT NULL);
 
+-- 一次性赏赐活动（大捷之类）：到点给所有在世玩家发银子，只发一次；错过 expire_ts 就作废
+CREATE TABLE IF NOT EXISTS bonus_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ title TEXT NOT NULL,
+ text TEXT NOT NULL,
+ silver INTEGER NOT NULL DEFAULT 0,
+ start_ts REAL NOT NULL,
+ expire_ts REAL NOT NULL,
+ status TEXT NOT NULL DEFAULT 'pending'   -- pending / done / expired
+);
+
 -- 临时活动「寿康宫添香」：每人每半个时辰添一炷香，进度满 100 领一次赏
 CREATE TABLE IF NOT EXISTS incense_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,

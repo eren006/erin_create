@@ -34,6 +34,24 @@ class LivingTests(unittest.TestCase):
 
     # ── 怀孕率 ───────────────────────────────────────────────────────────────
 
+    def test_bonus_event_pays_every_living_player_once_and_expires(self):
+        dead = self.player('亡')
+        game.run("UPDATE consorts SET status='dead' WHERE id=?", (dead,))
+        before = {i: self.c(i)['silver'] for i in (self.atk, self.tgt, dead)}
+        game.run("INSERT INTO bonus_events(title,text,silver,start_ts,expire_ts) VALUES('大捷','前线大捷，皇上龙颜大悦。',300,1000,5000)")
+        with patch.object(game, 'now_ts', return_value=999): game.bonus_tick()
+        self.assertEqual(self.c()['silver'], before[self.atk], '没到点不发')
+        with patch.object(game, 'now_ts', return_value=1001):
+            game.bonus_tick(); game.bonus_tick()
+        self.assertEqual(self.c(self.atk)['silver'], before[self.atk] + 300)
+        self.assertEqual(self.c(self.tgt)['silver'], before[self.tgt] + 300)
+        self.assertEqual(self.c(dead)['silver'], before[dead], '已故的不发')
+        self.assertTrue(any('大捷' in t and '300' in t for t in self.msgs()))
+        game.run("INSERT INTO bonus_events(title,text,silver,start_ts,expire_ts) VALUES('过期','x',300,1000,2000)")
+        with patch.object(game, 'now_ts', return_value=3000): game.bonus_tick()
+        self.assertEqual(self.c(self.atk)['silver'], before[self.atk] + 300, '错过时限作废')
+        self.assertEqual(game.q("SELECT status FROM bonus_events WHERE title='过期'", one=True)['status'], 'expired')
+
     def test_no_pregnancy_after_four_children(self):
         game.run("UPDATE consorts SET pregnancy_misses=0 WHERE id=?", (self.atk,))
         for n in range(game.MAX_CHILDREN):

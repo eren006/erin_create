@@ -9805,12 +9805,28 @@ def age_noon_tick(now):
     run("UPDATE consorts SET age_months=age_months+? WHERE status NOT IN ('xiunv','dead')", (AGE_MONTHS_PER_DAY // 2,))
 
 @atomic
+def bonus_tick():
+    """一次性赏赐（bonus_events）：到了 start_ts 就给所有在世玩家各发 silver 两，只发一次；错过 expire_ts 作废。每分钟由 maybe_settle 调"""
+    now = now_ts()
+    for ev in q("SELECT * FROM bonus_events WHERE status='pending' AND start_ts<=?", (now,)):
+        if now > ev['expire_ts']:
+            run("UPDATE bonus_events SET status='expired' WHERE id=?", (ev['id'],)); continue
+        run("UPDATE bonus_events SET status='done' WHERE id=?", (ev['id'],))
+        players = q("SELECT id FROM consorts WHERE user_id IS NOT NULL AND status!='dead'")
+        for p in players:
+            add_silver(p['id'], ev['silver'])
+            notify(p['id'], f"{ev['title']}：{ev['text']}赏银 {ev['silver']} 两已到账。", 'good')
+        gazette(f"{ev['title']}！{ev['text']}六宫各得赏银 {ev['silver']} 两。", 'decree')
+
+
+@atomic
 def maybe_settle():
     """翻牌每 2 小时一轮（每轮 2 位）、精力和晋封每 4 小时、22点宴会、0点日结算；补执行时也先发宴会奖励。"""
     now=datetime.now(TZ)
     st=state()
     if not st['event_started'] or st['maintenance']:return
     tribute_tick()
+    bonus_tick()
     illness_cure_tick()
     heir_claim_tick()
     resolve_births(st['day'],include_legacy=False)
