@@ -458,10 +458,10 @@ def roll_secret():
 YINZHEN_OLD_PRICE, YINZHEN_PRICE = 60, 100     # 2026-10-07 银针涨价，已持有的按差价补扣（migrate_yinzhen_price）
 
 ITEMS = {
-    'renshen':  dict(name='老山参', price=60, usable=True, desc='体质 +15'),
+    'renshen':  dict(name='老山参', price=60, usable=True, desc='体质 +15（每天限用一次）'),
     'shuhen':   dict(name='舒痕胶', price=150, usable=True, desc='容貌 +3（每天限用一次）'),
     'shujin':   dict(name='蜀锦新衣', price=80, usable=True, desc='今晚翻牌子的机会大增'),
-    'qinpu':    dict(name='前朝琴谱', price=50, usable=True, desc='才艺 +3'),
+    'qinpu':    dict(name='前朝琴谱', price=50, usable=True, desc='才艺 +3（每天限用一次）'),
     'cuisheng': dict(name='催产丹', price=150, usable=True, desc='有孕时服用：缩短孕期 6 小时，可连着吃'),
     'antai':    dict(name='安胎药', price=100, usable=False, desc='放在身边：有孕时若遭人下药，可保住胎儿一次'),
     'ruyi':     dict(name='玉如意', price=120, usable=False, desc='赠给别人，对方好感 +15'),
@@ -1606,6 +1606,7 @@ def init_db():
         db.executescript(f.read())
     # 幂等迁移：旧角色从更新时开始计龄，不按旧存档天数追溯增长。
     migrations = {
+        'tribute_turns': {'rank': 'INTEGER NOT NULL DEFAULT 0'},
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
         'banquet_entries': {'partner_id': 'INTEGER NOT NULL DEFAULT 0', 'tier': 'INTEGER NOT NULL DEFAULT 1', 'buff': 'INTEGER NOT NULL DEFAULT 0', 'note': "TEXT NOT NULL DEFAULT ''"},
         'consorts': {'health_max': 'INTEGER NOT NULL DEFAULT 100', 'birth_crisis': 'INTEGER NOT NULL DEFAULT 0', 'mood': 'INTEGER NOT NULL DEFAULT 50', 'pregnancy_secret': 'INTEGER NOT NULL DEFAULT 0', 'tryst_count': 'INTEGER NOT NULL DEFAULT 0', 'favor_mark': 'INTEGER NOT NULL DEFAULT -1', 'dying_since_ts': 'REAL NOT NULL DEFAULT 0', 'four_word': "TEXT NOT NULL DEFAULT ''", 'title_choices': "TEXT NOT NULL DEFAULT ''", 'confine_until_ts': 'REAL NOT NULL DEFAULT 0', 'badge': "TEXT NOT NULL DEFAULT ''", 'guide_mama': "TEXT NOT NULL DEFAULT ''", 'garden_plots': 'INTEGER NOT NULL DEFAULT 3',
@@ -1777,6 +1778,7 @@ def init_db():
             ceiling = 'MIN(NEW.health_max,CASE WHEN NEW.birth_crisis=1 THEN 10 ELSE NEW.health_max END)' if table == 'consorts' else 'NEW.health_max'
             db.execute(f"CREATE TRIGGER IF NOT EXISTS {table}_health_cap_{operation.lower()} AFTER {operation} ON {table} WHEN NEW.health>{ceiling} BEGIN UPDATE {table} SET health={ceiling} WHERE id=NEW.id; END")
     retire_musk(db)
+    backfill_tribute_ranks(db)
     migrate_families(db)
     if not db.execute("SELECT 1 FROM game_state WHERE id=1").fetchone():
         now = datetime.now(TZ)
@@ -1879,6 +1881,11 @@ def migrate_families(db):
             db.execute("UPDATE consorts SET seq=?, lineage=?, peak_rank=MAX(peak_rank,?), prestige_top=MAX(prestige_top,?) WHERE id=? AND lineage=''",
                        (i + 1, lineage, rank, rank, cid))
             prev = given
+
+
+def backfill_tribute_ranks(db):
+    """旧的选贡品活动没有位分快照（rank=0）：按每人当前位分补上，让进行中的活动也改成同位分一批同时挑；幂等，只动 rank=0 的行"""
+    db.execute("UPDATE tribute_turns SET rank=COALESCE((SELECT rank FROM consorts WHERE consorts.id=tribute_turns.consort_id),0) WHERE rank=0")
 
 
 def retire_musk(db):
@@ -5039,8 +5046,16 @@ def shop_use(key):
         daily_inc(c['id'], 'use_shuhen')
         add_stat(c['id'], 'appearance', 3); msg = '容貌 +3。'
     elif key == 'renshen':
+        if daily_count(c['id'], 'use_renshen') >= 1:
+            flash('老山参一天吃一次就够了，虚不受补。', 'bad')
+            return redirect(url_for('shop'))
+        daily_inc(c['id'], 'use_renshen')
         add_stat(c['id'], 'health', 15); msg = '体质 +15。'
     elif key == 'qinpu':
+        if daily_count(c['id'], 'use_qinpu') >= 1:
+            flash('琴谱一天翻一遍就够了，贪多嚼不烂。', 'bad')
+            return redirect(url_for('shop'))
+        daily_inc(c['id'], 'use_qinpu')
         add_stat(c['id'], 'talent', 3); msg = '才艺 +3。'
     elif key == 'cuisheng':
         if not c['pregnant_since'] or not c['pregnancy_started_ts'] or affliction(c['id'], 'chunxin', cur_day()):
@@ -12835,46 +12850,72 @@ def tribute_current(event):
     return q("SELECT * FROM tribute_turns WHERE event_id=? AND status='waiting' ORDER BY position LIMIT 1", (event['id'],), one=True)
 
 
+def tribute_group(event):
+    """当前这一批：排在最前的人，加上开启时位分相同、还在等的所有人，大家同时挑，先确认的先得。旧活动（rank=0）一人一批"""
+    first = tribute_current(event)
+    if not first: return []
+    if not first['rank']: return [first]
+    return list(q("SELECT * FROM tribute_turns WHERE event_id=? AND status='waiting' AND rank=? ORDER BY position", (event['id'], first['rank'])))
+
+
+def tribute_skip(event, turn, reason):
+    run("UPDATE tribute_turns SET status='skipped' WHERE event_id=? AND consort_id=?", (event['id'], turn['consort_id']))
+    if get_consort(turn['consort_id']): feed(turn['consort_id'], reason)
+
+
 def tribute_advance(event):
-    """跳过失去参与资格的人；新轮次从当前时刻起计时。"""
+    """跳过失去参与资格的人；新一批从当前时刻起计时，同位分的人一起收到通知。"""
     while True:
-        turn = tribute_current(event)
+        group = tribute_group(event)
         remaining = q('SELECT COUNT(*) n FROM tribute_items WHERE event_id=? AND holder_id=0', (event['id'],), one=True)['n']
-        if not turn or not remaining:
+        if not group or not remaining:
             run("UPDATE tribute_events SET status='finished' WHERE id=?", (event['id'],))
             gazette('本次六宫选贡品已经结束，所得贡品可摆进寝宫。', 'news')
             return
-        person = get_consort(turn['consort_id'])
-        if person and person['status'] not in ('dead', 'cold', 'xiunv'):
+        valid = []
+        for turn in group:
+            person = get_consort(turn['consort_id'])
+            if person and person['status'] not in ('dead', 'cold', 'xiunv'): valid.append((turn, person))
+            else: tribute_skip(event, turn, '因已无法参与，本次选贡品顺位交给下一位。')
+        if valid:
             run('UPDATE tribute_events SET turn_started_ts=? WHERE id=?', (now_ts(), event['id']))
-            notify(person['id'], f"轮到你选贡品了，最多选{min(turn['quota'], remaining)}件。去选贡品页挑好后一并确认，或直接让给下一位。", 'info')
+            together = f"与你同位分的{len(valid) - 1}位姐妹一起，" if len(valid) > 1 else ''
+            for turn, person in valid:
+                notify(person['id'], f"轮到你选贡品了，{together}最多选{min(turn['quota'], remaining)}件；同位分的人同时挑，先确认的先得，被别人先选走的要重新选。去选贡品页挑好后一并确认，或直接让给下一批。", 'info')
             return
-        run("UPDATE tribute_turns SET status='skipped' WHERE event_id=? AND consort_id=?", (event['id'], turn['consort_id']))
-        if person: feed(person['id'], '因已无法参与，本次选贡品顺位交给下一位。')
 
 
 @atomic
 def tribute_tick():
     event = active_tribute()
     if not event or state()['maintenance']: return
-    turn = tribute_current(event)
-    if not turn: tribute_advance(event); return
-    person = get_consort(turn['consort_id'])
-    invalid = not person or person['status'] in ('dead', 'cold', 'xiunv')
+    group = tribute_group(event)
+    if not group: tribute_advance(event); return
     expired = event['timeout_hours'] > 0 and now_ts() >= event['turn_started_ts'] + event['timeout_hours'] * 3600
-    if invalid or expired:
-        run("UPDATE tribute_turns SET status='skipped' WHERE event_id=? AND consort_id=?", (event['id'], turn['consort_id']))
-        if person:
-            feed(person['id'], '本轮选贡品' + ('已超时未选' if expired else '已无法参与') + '，顺位交给下一位。')
-            notify(person['id'], '本轮选贡品已跳过，轮到下一位了。', 'info')
+    changed = False
+    for turn in group:
+        person = get_consort(turn['consort_id'])
+        invalid = not person or person['status'] in ('dead', 'cold', 'xiunv')
+        if invalid or expired:
+            tribute_skip(event, turn, '本轮选贡品' + ('已超时未选' if expired else '已无法参与') + '，顺位交给下一位。')
+            if person and not invalid: notify(person['id'], '本轮选贡品已跳过，轮到下一批了。', 'info')
+            changed = True
+    if changed and not tribute_group_open(event, group[0]['rank'], group[0]['consort_id']):
         tribute_advance(event)
+
+
+def tribute_group_open(event, rank, consort_id):
+    """这一批里是否还有人在等（rank=0 的旧活动一人一批，不存在「这一批」）"""
+    if not rank: return False
+    return bool(q("SELECT 1 FROM tribute_turns WHERE event_id=? AND status='waiting' AND rank=?", (event['id'], rank), one=True))
 
 
 def tribute_home_reminder(c):
     tribute_tick()
     event = active_tribute()
-    turn = tribute_current(event) if event else None
-    if not turn or turn['consort_id'] != c['id']: return None
+    group = tribute_group(event) if event else []
+    turn = next((t for t in group if t['consort_id'] == c['id']), None)
+    if not turn: return None
     remaining = q('SELECT COUNT(*) n FROM tribute_items WHERE event_id=? AND holder_id=0', (event['id'],), one=True)['n']
     if not remaining: return None
     minutes = max(1, math.ceil((event['turn_started_ts'] + event['timeout_hours'] * 3600 - now_ts()) / 60)) if event['timeout_hours'] else None
@@ -12889,13 +12930,13 @@ def start_tribute(low_quota=1, timeout_hours=8):
     eid = run('INSERT INTO tribute_events(started_ts,turn_started_ts,timeout_hours,low_quota) VALUES(?,?,?,?)',
         (now_ts(), now_ts(), timeout_hours, low_quota)).lastrowid
     for pos, c in enumerate(players):
-        run('INSERT INTO tribute_turns(event_id,consort_id,position,quota) VALUES(?,?,?,?)', (eid, c['id'], pos, 3 if c['rank'] >= 5 else 2 if c['rank'] == 4 else 1))
+        run('INSERT INTO tribute_turns(event_id,consort_id,position,quota,rank) VALUES(?,?,?,?,?)', (eid, c['id'], pos, 3 if c['rank'] >= 5 else 2 if c['rank'] == 4 else 1, c['rank']))
     catalog = [(grade, name) for grade, names in TRIBUTE_CATALOG.items() for name in names]
     random.shuffle(catalog)  # 顺序固定落库，但不能从展示顺序猜出等级
     for grade, name in catalog:
         run('INSERT INTO tribute_items(event_id,name,grade,description) VALUES(?,?,?,?)',
             (eid, name, grade, '内务府此次进呈，可置于寝宫赏玩；确认所选后揭晓品级。'))
-    gazette('内务府进呈76件贡品，六宫按位分从高到低依次挑选；嫔及以上最多三件、贵人两件、贵人以下一件，确认后揭晓品级。去「选贡品」查看顺位。', 'news')
+    gazette('内务府进呈76件贡品，六宫按位分从高到低依次挑选，同位分的人同时挑、先确认的先得；嫔及以上最多三件、贵人两件、贵人以下一件，确认后揭晓品级。去「选贡品」查看顺位。', 'news')
     for c in players: notify(c['id'], '临时活动「选贡品」已开启，按开启时位分依次挑选，请查看你的顺位。', 'info')
     tribute_advance(q('SELECT * FROM tribute_events WHERE id=?', (eid,), one=True))
     return eid
@@ -12918,10 +12959,8 @@ def admin_tribute():
                 run("UPDATE tribute_events SET status='closed' WHERE id=?", (event['id'],))
                 gazette('内务府宣布本次选贡品活动收官，已领贡品保留。', 'news')
             else:
-                turn = tribute_current(event)
-                if turn:
-                    run("UPDATE tribute_turns SET status='skipped' WHERE event_id=? AND consort_id=?", (event['id'], turn['consort_id']))
-                    if get_consort(turn['consort_id']): feed(turn['consort_id'], '由内务府将选贡品顺位交给下一位。')
+                for turn in tribute_group(event):
+                    tribute_skip(event, turn, '由内务府将选贡品顺位交给下一批。')
                 tribute_advance(event)
             flash('活动进度已更新。', 'good')
         else: raise Reject('请选择活动操作。')
@@ -12934,12 +12973,14 @@ def admin_tribute():
 def tribute():
     tribute_tick()
     event = active_tribute()
-    turn = tribute_current(event) if event else None
+    group = tribute_group(event) if event else []
+    turn = group[0] if group else None
     queue = q('SELECT t.*,c.surname,c.given,c.rank,c.title,c.status AS consort_status FROM tribute_turns t JOIN consorts c ON c.id=t.consort_id WHERE t.event_id=? ORDER BY position', (event['id'],)) if event else []
     items = q('SELECT * FROM tribute_items WHERE event_id=? ORDER BY id', (event['id'],)) if event else []
     mine = q('SELECT * FROM tribute_items WHERE holder_id=? ORDER BY grade DESC,id', (g.me['id'],))
     return render_template('tribute.html', event=event, turn=turn, queue=queue, items=items, mine=mine, grades=TRIBUTE_GRADES,
-        get_consort=get_consort, DISPLAY_SLOTS=DISPLAY_SLOTS, is_turn=bool(turn and turn['consort_id'] == g.me['id']))
+        get_consort=get_consort, DISPLAY_SLOTS=DISPLAY_SLOTS, group=group, my_turn=next((t for t in group if t['consort_id'] == g.me['id']), None),
+        is_turn=any(t['consort_id'] == g.me['id'] for t in group))
 
 
 @app.route('/tribute/choose', methods=['POST'])
@@ -12948,27 +12989,33 @@ def tribute():
 def tribute_choose():
     tribute_tick()
     event = active_tribute()
-    turn = tribute_current(event) if event else None
+    group = tribute_group(event) if event else []
+    turn = next((t for t in group if t['consort_id'] == g.me['id']), None)
     try:
         c = get_consort(g.me['id'])
-        if not turn or turn['consort_id'] != c['id'] or c['status'] in ('dead', 'cold', 'xiunv'): raise Reject('现在还没有轮到你选贡品。')
+        if not turn or c['status'] in ('dead', 'cold', 'xiunv'): raise Reject('现在还没有轮到你选贡品。')
         if int(request.form.get('event_id', 0)) != event['id']: raise Reject('活动轮次已经变化，请刷新页面。')
         ids = [int(v) for v in request.form.getlist('item_id')]
         if len(ids) != len(set(ids)) or len(ids) > turn['quota']: raise Reject(f"本轮最多选{turn['quota']}件，不能重复选择。")
         if request.form.get('pass') == '1': ids = []
         elif not ids: raise Reject('请至少选一件贡品，或点击主动让过。')
-        picked = []
+        picked, taken = [], []
         for iid in ids:
-            item = q('SELECT * FROM tribute_items WHERE id=? AND event_id=? AND holder_id=0', (iid, event['id']), one=True)
-            if not item: raise Reject('有贡品已被领走或不属于本轮，请刷新后再选。')
-            picked.append(item)
+            item = q('SELECT * FROM tribute_items WHERE id=? AND event_id=?', (iid, event['id']), one=True)
+            if not item: raise Reject('有贡品不属于本轮，请刷新后再选。')
+            if item['holder_id']: taken.append(item)
+            else: picked.append(item)
+        if taken:      # 同位分同时挑，先确认的先得：全部不领，请她重新选
+            who = '、'.join(f"「{it['name']}」已被{display_name(get_consort(it['holder_id']))}先选走" for it in taken)
+            raise Reject(f"{who}，这次没有领取，请重新选择。")
         for item in picked:
             run('UPDATE tribute_items SET holder_id=?,acquired_day=? WHERE id=?', (c['id'], cur_day(), item['id']))
         run("UPDATE tribute_turns SET status='done' WHERE event_id=? AND consort_id=?", (event['id'], c['id']))
         names = '、'.join(f"{it['name']}（{TRIBUTE_GRADES[it['grade']]}）" for it in picked)
-        feed(c['id'], f'选贡品：领了{names}，已将顺位交给下一位。' if picked else '选贡品：主动让过，将顺位交给下一位。')
-        tribute_advance(event)
-        flash(f'贡品品级揭晓：{names}。已收入宫中，可到寝宫陈设摆放。' if picked else '已让给下一位。', 'good')
+        waiting = tribute_group_open(event, turn['rank'], c['id'])
+        feed(c['id'], (f'选贡品：领了{names}。' if picked else '选贡品：主动让过。') + ('同位分的姐妹还在挑。' if waiting else '已将顺位交给下一批。'))
+        if not waiting: tribute_advance(event)
+        flash(f'贡品品级揭晓：{names}。已收入宫中，可到寝宫陈设摆放。' if picked else ('已让过。' if waiting else '已让给下一批。'), 'good')
     except (Reject, ValueError) as exc: flash(str(exc), 'bad')
     return redirect(url_for('tribute'))
 

@@ -172,4 +172,55 @@ class TributeTests(unittest.TestCase):
             reminder = game.tribute_home_reminder(game.get_consort(self.tgt))
             self.assertEqual((reminder['hours'], reminder['minutes']), (8, 0))
 
+    def test_same_rank_choose_together_first_confirm_wins_and_conflict_asks_to_reselect(self):
+        third = self.player('第三位', rank=5)
+        eid = self.start()
+        group = [t['consort_id'] for t in game.tribute_group(game.active_tribute())]
+        self.assertEqual(set(group), {self.atk, third})
+        for who in (self.atk, third):
+            self.login(who)
+            self.assertIn('轮到你选贡品了！', self.client.get('/').get_data(as_text=True))
+        ids = [i['id'] for i in self.available(eid)[:3]]
+        self.login(self.atk)
+        self.choose(eid, [ids[0]])
+        self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], third)      # 这一批还没选完，不换人
+        self.login(third)
+        page = self.choose(eid, [ids[0], ids[1]]).get_data(as_text=True)
+        self.assertIn('先选走', page)
+        self.assertIn('请重新选择', page)
+        self.assertEqual(len(self.available(eid)), 75)                                          # 一件都没领，整单作废
+        self.assertEqual(game.q('SELECT status FROM tribute_turns WHERE consort_id=?', (third,), one=True)['status'], 'waiting')
+        self.choose(eid, [ids[1]])
+        self.assertEqual(len(self.available(eid)), 74)
+        self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], self.tgt)      # 两人都选完才轮到下一批
+        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '轮到你选贡品了%'", (self.tgt,), one=True))
+
+    def test_same_rank_timeout_skips_the_whole_group(self):
+        third = self.player('第三位', rank=5)
+        with patch.object(game, 'now_ts', return_value=100000): eid = self.start()
+        with patch.object(game, 'now_ts', return_value=100000 + 8*3600):
+            game.tribute_tick()
+        statuses = {r['consort_id']: r['status'] for r in game.q('SELECT * FROM tribute_turns WHERE event_id=?', (eid,))}
+        self.assertEqual((statuses[self.atk], statuses[third]), ('skipped', 'skipped'))
+        self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], self.tgt)
+
+    def test_pass_in_a_group_waits_for_the_others(self):
+        third = self.player('第三位', rank=5)
+        eid = self.start()
+        self.choose(eid, **{'pass': '1'})
+        self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], third)
+        self.login(third)
+        self.choose(eid, [self.available(eid)[0]['id']])
+        self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], self.tgt)
+
+    def test_legacy_event_without_rank_snapshot_is_grouped_after_backfill(self):
+        third = self.player('第三位', rank=5)
+        eid = self.start()
+        game.run("UPDATE tribute_turns SET rank=0 WHERE event_id=?", (eid,))      # 模拟升级前开启的旧活动
+        self.assertEqual(len(game.tribute_group(game.active_tribute())), 1)         # 补快照前一人一批
+        db = game.get_db()
+        game.backfill_tribute_ranks(db); db.commit()
+        group = {t['consort_id'] for t in game.tribute_group(game.active_tribute())}
+        self.assertEqual(group, {self.atk, third})
+
 if __name__ == '__main__': unittest.main()

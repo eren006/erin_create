@@ -716,6 +716,7 @@ CREATE TABLE IF NOT EXISTS tribute_turns (
  consort_id INTEGER NOT NULL,
  position INTEGER NOT NULL,
  quota INTEGER NOT NULL,
+ rank INTEGER NOT NULL DEFAULT 0,
  status TEXT NOT NULL DEFAULT 'waiting',
  PRIMARY KEY(event_id,consort_id),
  UNIQUE(event_id,position)

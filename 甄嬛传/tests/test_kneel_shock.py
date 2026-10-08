@@ -58,5 +58,25 @@ class KneelShockTests(unittest.TestCase):
         self.assertEqual(game.get_consort(self.tgt)['pregnant_since'], 9)
 
 
+class ItemDailyLimitTests(unittest.TestCase):
+    setUp = fixtures.LifecycleTests.setUp
+    tearDown = fixtures.LifecycleTests.tearDown
+    player = fixtures.LifecycleTests.player
+    login = fixtures.LifecycleTests.login
+
+    def test_renshen_shuhen_qinpu_once_a_day(self):
+        game.run("UPDATE consorts SET health=50, appearance=50, talent=50 WHERE id=?", (self.atk,))
+        self.login(self.atk)
+        for key, col, gain in (('renshen', 'health', 15), ('shuhen', 'appearance', 3), ('qinpu', 'talent', 3)):
+            game.inv_add(self.atk, key, 2)
+            self.client.post(f'/shop/use/{key}')
+            self.client.post(f'/shop/use/{key}')
+            self.assertEqual(game.get_consort(self.atk)[col], 50 + gain, key)
+            self.assertEqual(game.inv_qty(self.atk, key), 1, key)      # 第二次被拒，药不扣
+            game.run("DELETE FROM daily_counters")
+            self.client.post(f'/shop/use/{key}')
+            self.assertEqual(game.get_consort(self.atk)[col], 50 + gain * 2, key)      # 隔天又能用
+
+
 if __name__ == '__main__':
     unittest.main()
