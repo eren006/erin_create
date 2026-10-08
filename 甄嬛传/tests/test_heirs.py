@@ -262,6 +262,35 @@ class HeirTests(unittest.TestCase):
         r = self.client.post(f'/heirs/raise/{hid}', data=dict(opt='study'))
         self.assertEqual(game.q('SELECT study FROM heirs WHERE id=?', (hid,), one=True)['study'], 20)
 
+    def test_unpaid_upkeep_can_cost_influence_and_trust(self):
+        self.heir(self.atk)
+        game.run('UPDATE consorts SET silver=0, influence=50, trust=50 WHERE id=?', (self.atk,))
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.heir_upkeep(game.cur_day())
+        c = game.get_consort(self.atk)
+        self.assertEqual((c['influence'], c['trust']), (50 - game.HEIR_UNPAID_PENALTY_INFLUENCE, 50 - game.HEIR_UNPAID_PENALTY_TRUST))
+        game.run('UPDATE consorts SET influence=50, trust=50 WHERE id=?', (self.atk,))
+        with patch.object(game.random, 'random', return_value=0.99):      # 另一半的概率不扣
+            game.heir_upkeep(game.cur_day())
+        c = game.get_consort(self.atk)
+        self.assertEqual((c['influence'], c['trust']), (50, 50))
+
+    def test_paid_upkeep_never_costs_influence_or_trust(self):
+        self.heir(self.atk)
+        game.run('UPDATE consorts SET silver=5000, influence=50, trust=50 WHERE id=?', (self.atk,))
+        with patch.object(game.random, 'random', return_value=0.0):
+            game.heir_upkeep(game.cur_day())
+        c = game.get_consort(self.atk)
+        self.assertEqual((c['influence'], c['trust']), (50, 50))
+
+    def test_adopting_someone_elses_child_costs_ten_more_per_night(self):
+        day = game.cur_day()
+        own = self.heir(self.atk)
+        adopted = self.heir(self.tgt, caretaker=self.atk)
+        o = game.q('SELECT * FROM heirs WHERE id=?', (own,), one=True)
+        a = game.q('SELECT * FROM heirs WHERE id=?', (adopted,), one=True)
+        self.assertEqual(game.heir_upkeep_cost(a, day), game.heir_upkeep_cost(o, day) + game.HEIR_ADOPT_EXTRA_FEE)
+
     def test_limited_times_per_day_per_heir(self):
         hid = self.heir(self.atk, study=20)
         game.run('UPDATE consorts SET energy=20 WHERE id=?', (self.atk,))

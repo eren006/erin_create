@@ -120,7 +120,7 @@ MOTHER_BY_SON_INFLUENCE = 6     # 母凭子贵已封顶（嫔以上）时，改�
 MOTHER_BY_SON_MAX_RANK = 5   # 母凭子贵最多晋到嫔位（rank 5），再往上要靠自己的圣宠、德行和名额
 PLAYER_MAX_RANK = 11   # 皇后位是普通位分，跟其他位分一样按圣宠/德行/名额晋封——名额（RANK_SLOTS[11]=1）常年被 NPC 皇后占着，除非她没了、进了冷宫，才轮得到玩家
 
-PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:40,7:58,8:78,9:108,10:148,11:188}      # 2026-10-09：妃起（妃 50→55，其上各档 +5）      # 2026-10-08：四妃及以上各档调高（原 55/70/110/150）
+PROMOTE_INFLUENCE = {2:2,3:6,4:12,5:25,6:40,7:58,8:88,9:128,10:178,11:228}      # 2026-10-09：妃起（妃 50→55，其上各档 +5）      # 2026-10-08：四妃及以上各档调高（原 55/70/110/150）
 INFLUENCE_LOW_NIGHTS = 2          # 2026-10-07 起：势力连续这么多晚低于当前位分要求，降一级
 PROMOTE_INFLUENCE_REWARD = 3     # 第一次晋到嫔位及以上的每一级，额外奖励势力（2026-10-07 起）
 INFLUENCE_GAINS = dict(divide=3,rumor=5,steal=1,frame=10,drug=10,expose=10,witch=18,punish=10)
@@ -6811,11 +6811,19 @@ app.jinja_env.globals['HEIR_TUTOR_AGE'] = HEIR_TUTOR_AGE
 app.jinja_env.globals['HEIR_UNPAID_NIGHTS'] = HEIR_UNPAID_NIGHTS
 
 
+HEIR_UNPAID_PENALTY_CHANCE = 0.5     # 夜里交不起乳母费/师傅束脩（有孩子没付上），有这么大概率被人议论失了体面：势力、信任各扣一点（一个人一晚最多扣一次，不论欠几个孩子）
+HEIR_UNPAID_PENALTY_INFLUENCE, HEIR_UNPAID_PENALTY_TRUST = 4, 4
+HEIR_ADOPT_EXTRA_FEE = 10      # 收养别人生的孩子（抚养人不是生母），每个孩子每晚乳母费再多 10 两（2026-10-09 起）
+
+
 def heir_upkeep_cost(h, day=None):
-    return HEIR_TUTOR_FEE if heir_age_years(h, day) >= HEIR_TUTOR_AGE else HEIR_NURSE_WAGE
+    base = HEIR_TUTOR_FEE if heir_age_years(h, day) >= HEIR_TUTOR_AGE else HEIR_NURSE_WAGE
+    adopted = bool(h['caretaker_id']) and h['caretaker_id'] != h['mother_id']
+    return base + (HEIR_ADOPT_EXTRA_FEE if adopted else 0)
 
 
 app.jinja_env.globals['heir_upkeep_cost'] = heir_upkeep_cost
+app.jinja_env.globals['HEIR_ADOPT_EXTRA_FEE'] = HEIR_ADOPT_EXTRA_FEE
 
 
 def heir_upkeep(day):
@@ -6835,6 +6843,10 @@ def heir_upkeep(day):
         if total: add_silver(c['id'], -total)
         for h in paid: run('UPDATE heirs SET unpaid_days=0 WHERE id=?', (h[0]['id'],))
         taken, warned = [], []
+        if owed and random.random() < HEIR_UNPAID_PENALTY_CHANCE:
+            run("UPDATE consorts SET influence=MAX(0, influence-?) WHERE id=?", (HEIR_UNPAID_PENALTY_INFLUENCE, c['id']))
+            add_trust(c['id'], -HEIR_UNPAID_PENALTY_TRUST)
+            notify(c['id'], f"宫里传开了：{display_name(c)}连孩子的乳母月钱、师傅束脩都付不起，失了体面。势力 -{HEIR_UNPAID_PENALTY_INFLUENCE}，皇上那边的信任 -{HEIR_UNPAID_PENALTY_TRUST}。", 'bad')
         for h in owed:
             add_heir_affinity(h['id'], 'caretaker', HEIR_UNPAID_AFFINITY)
             n = h['unpaid_days'] + 1

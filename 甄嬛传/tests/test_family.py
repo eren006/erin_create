@@ -1253,8 +1253,8 @@ class EmpressRankTests(unittest.TestCase):
     login = test_heirs.fixtures.LifecycleTests.login
 
     def promote(self, cid, prestige_top=10):
-        game.run('UPDATE consorts SET rank=10, prestige_top=?, favor=?, virtue=?, rank_since_day=1 WHERE id=?',
-                 (prestige_top, game.PROMOTE_FAVOR[11], game.PROMOTE_VIRTUE[11], cid))
+        game.run('UPDATE consorts SET rank=10, prestige_top=?, favor=?, virtue=?, influence=?, rank_since_day=1 WHERE id=?',
+                 (prestige_top, game.PROMOTE_FAVOR[11], game.PROMOTE_VIRTUE[11], game.PROMOTE_INFLUENCE[11] + 20, cid))
         # 晋位本身不靠掷骰，但同一次结算里家主升迁、时疫这些不相关的概率事件会消耗全局的 random 状态——
         # 不摁住它们，这条用例会不会 flaky 全看别的测试文件先跑了几次随机数，摁到 0.99 让那些支线都不触发
         with patch.object(game, 'npc_schemes'), patch.object(game.random, 'random', return_value=0.99):
