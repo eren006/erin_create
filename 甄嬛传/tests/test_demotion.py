@@ -78,6 +78,14 @@ class DemotionTests(unittest.TestCase):
         self.assertIn(back[0]['method'], ('divide', 'rumor'))
         self.assertEqual(back[0]['status'], 'done')
 
+    def test_no_retaliation_against_sworn_sisters(self):
+        self.prep(atk_rank=4, tgt_rank=4)
+        game.run("UPDATE consorts SET silver=2000, influence=40, eyes_until_day=99999 WHERE id=?", (self.tgt,))
+        with patch.object(game, 'AUTO_SCHEME_CONSORTS', {self.tgt}), patch.object(game, 'sisters_of', side_effect=lambda cid: [self.atk] if cid == self.tgt else [self.tgt]), \
+                patch.object(game, 'INTRIGUE_REALTIME', True), patch.object(game.random, 'random', return_value=0.0):
+            self.client.post('/intrigue/submit', data={'method': 'rumor', 'target_id': self.tgt})
+        self.assertEqual(len(game.q("SELECT * FROM intrigues WHERE attacker_id=?", (self.tgt,))), 0)
+
     def test_no_retaliation_without_eyes_or_for_other_players(self):
         self.prep(atk_rank=4, tgt_rank=4)
         game.run("UPDATE consorts SET eyes_until_day=0 WHERE id=?", (self.tgt,))

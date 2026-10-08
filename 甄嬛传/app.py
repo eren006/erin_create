@@ -2137,6 +2137,7 @@ def auto_retaliate(victim_id, attacker_id):
     day = cur_day()
     if not v or not t or v['status'] != 'normal' or is_sick(v) or intrigue_capped(victim_id): return
     if t['status'] in ('xiunv', 'cold', 'dead') or (t['user_id'] and t['entered_day'] >= day) or bully_block(v, t): return
+    if attacker_id in sisters_of(victim_id): return      # 结拜姐妹之间不回敬
     if daily_count(victim_id, f'retaliate:{attacker_id}'): return
     if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')", (attacker_id, day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX: return
     methods = [m for m in ('divide', 'rumor') if v['silver'] >= INTRIGUES[m]['silver'] and v['rank'] >= INTRIGUES[m]['min_rank']
