@@ -115,7 +115,7 @@ class LifecycleTests(unittest.TestCase):
 
     def test_untreated_odds_and_survival_protection(self):
         self.poison()
-        with patch.object(game.random, 'random', return_value=0.30):   # 没请太医：0.30 < 三成五，活
+        with patch.object(game.random, 'random', return_value=0.01):   # 离魂草没请太医：存活率只有 5%～15%，0.01 才活
             game.resolve_poison_crises(11)
         c = game.get_consort(self.tgt)
         self.assertEqual(c['status'], 'normal')
@@ -242,11 +242,15 @@ class EmperorTests(unittest.TestCase):
 
     def test_bed_and_audience_create_scenes_and_recap(self):
         c3 = self.player('丙')
-        with patch.object(game.random, 'random', return_value=0.99):
+        with patch.object(game.random, 'random', return_value=0.99), patch.object(game, 'bed_count', return_value=2):   # 每轮翻几位是随机的，这里固定 2 位
             game.settle_day()
         scenes = [game.get_scene(game.get_consort(i)) for i in (self.atk, self.tgt, c3)]
+        self.assertEqual(sorted((s['key'], s.get('bed')) for s in scenes if s), [('audience', 1), ('audience', 1)])   # 每轮 2 人侍寝，结算不再顺带召见
+        from datetime import datetime
+        game.audience_tick(datetime(2026, 10, 8, game.AUDIENCE_HOURS[0], 0, tzinfo=game.TZ))      # 白天召见：剩下没场景的人
+        scenes = [game.get_scene(game.get_consort(i)) for i in (self.atk, self.tgt, c3)]
         kinds = sorted((s['key'], s.get('bed')) for s in scenes if s)
-        self.assertEqual(kinds, [('audience', 0), ('audience', 1), ('audience', 1)])   # 每轮 2 人侍寝，剩下的 1 人被召见
+        self.assertEqual(kinds, [('audience', 0), ('audience', 1), ('audience', 1)])   # 2 人侍寝，剩下的 1 人被白天召见
         st = game.state()
         self.assertTrue(game.json.loads(st['last_bed_pool']))
         # 早上先进「昨夜宫中」，看完再去定夺场景

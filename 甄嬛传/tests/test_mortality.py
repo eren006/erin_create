@@ -177,10 +177,13 @@ class IllnessOnsetTests(unittest.TestCase):
         at = lambda h, m=0: datetime(2026, 10, 8, h, m, tzinfo=game.TZ)
         calls = []
         with patch.object(game, 'epidemic_roll', side_effect=lambda d: calls.append(d)):
-            game.epidemic_roll_tick(at(12, 0)); game.epidemic_roll_tick(at(18, 0)); game.epidemic_roll_tick(at(23, 59))
+            h1, h2 = game.EPIDEMIC_ROLL_HOURS      # 1 点和 13 点各判一轮
+            game.epidemic_roll_tick(at(h1, 0)); game.epidemic_roll_tick(at(h1, 30)); game.epidemic_roll_tick(at(h2 - 1, 59))
             self.assertEqual(len(calls), 1)
-            game.epidemic_roll_tick(at(0, 0).replace(day=9))
+            game.epidemic_roll_tick(at(h2, 0)); game.epidemic_roll_tick(at(23, 59))
             self.assertEqual(len(calls), 2)
+            game.epidemic_roll_tick(at(h1, 0).replace(day=9))
+            self.assertEqual(len(calls), 3)
 
     def test_already_poisoned_does_not_also_fall_ill(self):
         game.run('UPDATE consorts SET poisoned_day=? WHERE id=?', (game.cur_day(), self.atk))
@@ -215,14 +218,17 @@ class IllnessOnsetTests(unittest.TestCase):
         at = lambda h, m=0: datetime(2026, 10, 8, h, m, tzinfo=game.TZ)
         calls = []
         with patch.object(game, 'illness_roll', side_effect=lambda d: calls.append(d)):
-            game.illness_roll_tick(at(6, 0)); game.illness_roll_tick(at(6, 1)); game.illness_roll_tick(at(11, 59))
+            a, b, c, d = game.ILLNESS_ROLL_HOURS      # 3/9/15/21 点各判一轮
+            game.illness_roll_tick(at(a, 0)); game.illness_roll_tick(at(a, 1)); game.illness_roll_tick(at(b - 1, 59))
             self.assertEqual(len(calls), 1)
-            game.illness_roll_tick(at(12, 0))
+            game.illness_roll_tick(at(b, 0))
             self.assertEqual(len(calls), 2)
-            game.illness_roll_tick(at(18, 5)); game.illness_roll_tick(at(23, 0))
+            game.illness_roll_tick(at(c, 5)); game.illness_roll_tick(at(c + 1, 0))
             self.assertEqual(len(calls), 3)
-            game.illness_roll_tick(at(0, 0).replace(day=9))
+            game.illness_roll_tick(at(d, 0)); game.illness_roll_tick(at(23, 0))
             self.assertEqual(len(calls), 4)
+            game.illness_roll_tick(at(a, 0).replace(day=9))
+            self.assertEqual(len(calls), 5)
 
 
 class IllnessCrisisTests(unittest.TestCase):

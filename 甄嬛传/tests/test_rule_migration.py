@@ -53,5 +53,6 @@ class RuleMigrationTests(unittest.TestCase):
             with patch.object(game.random,'random',return_value=0):
                 result=game.resolve_drug(game.q('SELECT * FROM intrigues WHERE id=?',(itid,),one=True))[0]
             self.assertEqual(result,'success')
-            self.assertEqual(game.q('SELECT drug_ready_day FROM users WHERE id=?',(uid,),one=True)[0],10+cooldown)
+            # 离魂草（lihun）成功不再给下药人账号冷却（2026-10-07 起），其他药仍冷却 1 天
+            self.assertEqual(game.q('SELECT drug_ready_day FROM users WHERE id=?',(uid,),one=True)[0],0 if drug=='lihun' else 10+cooldown)
             self.assertEqual(game.get_consort(self.tgt)['drugged_until_day'],10+cooldown)
