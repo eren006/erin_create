@@ -35,23 +35,29 @@ class FavorCareTests(unittest.TestCase):
         game.run('UPDATE consorts SET protected_until_day=10 WHERE id=?',(self.atk,))
         self.assertEqual(game.ordinary_illness_chance(game.get_consort(self.atk),10),0)
 
+    def cure(self,hours):
+        with patch.object(game,'now_ts',return_value=100000):game.illness_cure_tick()
+        with patch.object(game,'now_ts',return_value=100000+hours*3600-1):game.illness_cure_tick()
+        self.assertTrue(game.get_consort(self.atk)['ill_day'])
+        with patch.object(game,'now_ts',return_value=100000+hours*3600):game.illness_cure_tick()
+
     def test_hot_automatic_doctor_and_fast_recovery(self):
         self.set_care(150);silver=game.get_consort(self.atk)['silver']
         game.fall_ill(self.atk,10,'风寒')
         c=game.get_consort(self.atk);self.assertEqual(c['ill_treatment'],1)
         self.assertEqual(c['silver'],silver)
         game.run('UPDATE consorts SET health=20 WHERE id=?',(self.atk,))
-        with patch.object(game.random,'random',return_value=.79):game.resolve_illness_crises(11)
+        self.cure(6)
         self.assertFalse(game.get_consort(self.atk)['ill_day'])
         self.assertEqual(game.get_consort(self.atk)['health'],50)
 
-    def test_low_treated_recovers_after_two_nights(self):
+    def test_low_treated_recovers_six_hours_after_treatment(self):
         self.set_care(0);game.fall_ill(self.atk,10,'风寒')
         self.client.post(f'/treat/{self.atk}')
-        with patch.object(game.random,'random',return_value=.49):
-            game.resolve_illness_crises(11)
+        with patch.object(game.random,'random',return_value=.99):
+            game.resolve_illness_crises(11)          # 请了太医：夜里不掷生死
             self.assertTrue(game.get_consort(self.atk)['ill_day'])
-            game.resolve_illness_crises(12)
+        self.cure(6)
         self.assertFalse(game.get_consort(self.atk)['ill_day'])
 
     def test_untreated_low_risk_and_sister_paid_treatment(self):
@@ -61,8 +67,10 @@ class FavorCareTests(unittest.TestCase):
         self.client.post(f'/treat/{self.atk}')
         self.assertEqual(game.get_consort(self.tgt)['silver'],silver-game.treat_cost(game.get_consort(self.atk)))
         self.assertEqual(game.get_consort(self.atk)['ill_treatment'],1)
-        with patch.object(game.random,'random',return_value=.51):game.resolve_illness_crises(12)
-        self.assertEqual(game.get_consort(self.atk)['status'],'dead')
+        with patch.object(game.random,'random',return_value=.99):game.resolve_illness_crises(12)
+        self.assertEqual(game.get_consort(self.atk)['status'],'normal')      # 请了太医的不会病死
+        self.cure(6)
+        self.assertFalse(game.get_consort(self.atk)['ill_day'])
 
     def test_untreated_low_dies_next_night(self):
         self.set_care(0);game.fall_ill(self.atk,10,'风寒')
@@ -72,6 +80,9 @@ class FavorCareTests(unittest.TestCase):
     def test_regaining_favor_upgrades_ongoing_care(self):
         self.set_care(0);game.fall_ill(self.atk,10,'风寒');self.set_care(150)
         with patch.object(game.random,'random',return_value=.79):game.resolve_illness_crises(11)
+        self.assertEqual(game.get_consort(self.atk)['ill_care'],'hot')      # 重新得宠，升级成免费诊治
+        self.assertEqual(game.get_consort(self.atk)['ill_treatment'],1)
+        self.cure(6)
         self.assertFalse(game.get_consort(self.atk)['ill_day'])
 
     def test_income_streak_grace_then_recovers(self):

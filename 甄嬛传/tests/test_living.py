@@ -557,12 +557,13 @@ class LivingTests(unittest.TestCase):
         self.assertEqual(self.c()['status'], 'normal')
 
     def test_blessing_helps_survive_illness(self):
-        game.run("UPDATE consorts SET ill_day=5, ill_treatment=1, blessing=50 WHERE id=?", (self.atk,))
-        with patch.object(game.random, 'random', return_value=0.78):   # 请了太医七成，福报 50 再 +10%
+        # 请了太医的现在 6 小时后必好；福报只影响没请太医的那一掷：普通待遇 35%，福报 50 再 +10% → 45%
+        game.run("UPDATE consorts SET ill_day=5, ill_treatment=0, ill_care='normal', blessing=50 WHERE id=?", (self.atk,))
+        with patch.object(game.random, 'random', return_value=0.40):
             game.resolve_illness_crises(6)
         self.assertEqual(self.c()['status'], 'normal')
-        game.run("UPDATE consorts SET ill_day=5, ill_treatment=1, blessing=0 WHERE id=?", (self.atk,))
-        with patch.object(game.random, 'random', return_value=0.78):
+        game.run("UPDATE consorts SET ill_day=5, ill_treatment=0, ill_care='normal', blessing=0 WHERE id=?", (self.atk,))
+        with patch.object(game.random, 'random', return_value=0.40):
             game.resolve_illness_crises(6)
         self.assertEqual(self.c()['status'], 'dead')
 

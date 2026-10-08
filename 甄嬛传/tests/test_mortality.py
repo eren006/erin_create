@@ -253,12 +253,16 @@ class IllnessCrisisTests(unittest.TestCase):
         other = self.player('丙')
         game.fall_ill(other, 10, '久病体虚')
         game.run('UPDATE consorts SET ill_treatment=1 WHERE id=?', (other,))
-        with patch.object(game.random, 'random', return_value=0.5):   # 落在 90% 以内，请了太医该活
-            game.resolve_illness_crises(11)
+        self.cure_after_hours(6)      # 请了太医，6 小时后痊愈，不用掷生死
         c = game.get_consort(other)
         self.assertEqual(c['status'], 'normal')
         self.assertEqual(c['ill_day'], 0)
-        self.assertGreaterEqual(c['protected_until_day'], 11)
+        self.assertGreaterEqual(c['protected_until_day'], game.cur_day())
+
+    def cure_after_hours(self, hours):
+        with patch.object(game, 'now_ts', return_value=100000): game.illness_cure_tick()      # 开始计时
+        with patch.object(game, 'now_ts', return_value=100000 + hours * 3600 - 1): game.illness_cure_tick()
+        with patch.object(game, 'now_ts', return_value=100000 + hours * 3600): game.illness_cure_tick()
 
     def test_same_night_onset_not_resolved(self):
         day = game.cur_day()
@@ -270,10 +274,10 @@ class IllnessCrisisTests(unittest.TestCase):
     def test_recovered_gets_rescue_protection(self):
         game.fall_ill(self.atk, 10, '久病体虚')
         game.run('UPDATE consorts SET ill_treatment=1 WHERE id=?', (self.atk,))
-        with patch.object(game.random, 'random', return_value=0.0):
-            game.resolve_illness_crises(11)
+        self.cure_after_hours(game.ILL_CURE_HOURS)
         c = game.get_consort(self.atk)
-        self.assertEqual(c['protected_until_day'], 11 + game.RESCUE_PROTECT_DAYS)
+        self.assertEqual(c['ill_day'], 0)
+        self.assertEqual(c['protected_until_day'], game.cur_day() + game.RESCUE_PROTECT_DAYS)
 
     def test_ally_can_treat_with_enough_affinity(self):
         game.fall_ill(self.tgt, game.cur_day(), '久病体虚')

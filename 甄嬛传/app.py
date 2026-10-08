@@ -1654,7 +1654,7 @@ def init_db():
                      'influence_low_days': 'INTEGER NOT NULL DEFAULT 0',
                      'ill_care': "TEXT NOT NULL DEFAULT 'normal'",
                      'ill_day': 'INTEGER NOT NULL DEFAULT 0',
-                     'ill_treatment': 'INTEGER NOT NULL DEFAULT 0',
+                     'ill_treatment': 'INTEGER NOT NULL DEFAULT 0', 'ill_treated_ts': 'REAL NOT NULL DEFAULT 0',
                      'weak_days': 'INTEGER NOT NULL DEFAULT 0',
                      'postpartum_until': 'INTEGER NOT NULL DEFAULT 0',
                      'heir_event': "TEXT NOT NULL DEFAULT ''",
@@ -9583,7 +9583,7 @@ def backup_db(backup_dir):
 @app.route('/help')
 def help_page():
     """玩法说明：不用登录就能看；数字全部从游戏里的常量读，调数值后自动跟着变"""
-    return render_template('help.html', ACTIONS={k: a for k, a in ACTIONS.items() if k not in ('attend', 'shoukang')},
+    return render_template('help.html', ILL_CURE_HOURS=ILL_CURE_HOURS, ACTIONS={k: a for k, a in ACTIONS.items() if k not in ('attend', 'shoukang')},
                            RANK_NAMES=RANK_NAMES, RANK_SLOTS=RANK_SLOTS, STIPEND=STIPEND, FAVOR_CARE=FAVOR_CARE, favor_care_tier=favor_care_tier, favor_stipend=favor_stipend, PROMOTE_FAVOR=PROMOTE_FAVOR,
                            PROMOTE_VIRTUE=PROMOTE_VIRTUE, MAID_QUOTA=MAID_QUOTA, MAID_WAGE=MAID_WAGE,
                            diet_norm={r: diet_cost(r, 'normal') for r in range(1, 10)}, DIETS=DIETS, DIET_RATIO=DIET_RATIO,
@@ -9696,6 +9696,7 @@ def maybe_settle():
     st=state()
     if not st['event_started'] or st['maintenance']:return
     tribute_tick()
+    illness_cure_tick()
     resolve_births(st['day'],include_legacy=False)
     key=latest_bedding_slot(now)
     pace_key=latest_pace_slot(now)
@@ -10143,11 +10144,33 @@ def fall_ill(cid, day, cause):
     cfg=FAVOR_CARE[tier]
     if c['user_id']:
         care='皇上已命太医诊治，免付诊金。' if treatment else f"请在{'下一次结算' if settling() else '明晚结算（今晚那次不判）'}前请太医（{treat_cost(c)} 两，可由姐妹代付）。"
-        notify(cid,f"你{cause}，体质 -15。{care}本次为{cfg['name']}待遇：治疗后存活率 {int(cfg['survive']*100)}%，未治疗 {int(cfg['untreated']*100)}%；治疗成功需 {cfg['recover_nights']} 次结算康复（福报另有加成）。",'bad')
+        notify(cid,f"你{cause}，体质 -15。{care}本次为{cfg['name']}待遇：请了太医，{ILL_CURE_HOURS} 小时后病就好了；不请太医的话，夜里结算时 {int(cfg['untreated']*100)}% 能熬过去（福报另有加成），熬不过去就是病重不治。",'bad')
         guide_tip(cid,'sick','「早请太医，姐妹也能替你垫诊金。」')
     ill_digest('sick', f'{display_name(c)}{cause}')
     night_mark(cid,'ill')
     auto_treat(cid)
+
+
+ILL_CURE_HOURS = 6      # 2026-10-08 起：看了太医（含得宠免费诊治），6 小时后病就好了
+
+
+def cure_illness(c, day):
+    cfg = FAVOR_CARE[c['ill_care'] if c['ill_care'] in FAVOR_CARE else 'normal']
+    run("UPDATE consorts SET ill_day=0,ill_treatment=0,ill_treated_ts=0,ill_care='normal',protected_until_day=?,health=MAX(health,?) WHERE id=?", (day + RESCUE_PROTECT_DAYS, cfg['recovery_health'], c['id']))
+    if c['user_id']:
+        notify(c['id'], f"太医的药见效了，你的病好了。接下来 {RESCUE_PROTECT_DAYS} 天静养。", 'good')
+        night_mark(c['id'], 'ill_rescued')
+    ill_digest('well', display_name(c))
+
+
+def illness_cure_tick():
+    """每分钟：已经请了太医的病人，从诊治算起满 ILL_CURE_HOURS 小时就痊愈（不用等结算、也不再掷生死）。旧数据没有诊治时间的，从此刻起算"""
+    now = now_ts()
+    for c in q("SELECT * FROM consorts WHERE status!='dead' AND ill_day>0 AND (ill_treatment=1 OR ill_care='hot')"):
+        if not c['ill_treated_ts']:
+            run("UPDATE consorts SET ill_treatment=1, ill_treated_ts=? WHERE id=?", (now, c['id']))
+        elif now >= c['ill_treated_ts'] + ILL_CURE_HOURS * 3600:
+            cure_illness(c, cur_day())
 
 
 def resolve_illness_crises(day):
@@ -10158,8 +10181,11 @@ def resolve_illness_crises(day):
             run("UPDATE consorts SET ill_care='hot',ill_treatment=1 WHERE id=?",(c['id'],))
         cfg=FAVOR_CARE[tier]
         treated=bool(c['ill_treatment']) or tier=='hot'
-        if treated and day-c['ill_day']<cfg['recover_nights']:
-            notify(c['id'],'太医正在治疗，今晚继续卧床，下一次结算判断康复。','info')
+        if treated:      # 请了太医的，6 小时后由 illness_cure_tick 治好，不再掷生死
+            if c['ill_treated_ts'] and now_ts() >= c['ill_treated_ts'] + ILL_CURE_HOURS * 3600:
+                cure_illness(get_consort(c['id']), day)
+            else:
+                notify(c['id'],f'太医正在治疗，{ILL_CURE_HOURS} 小时内就能痊愈。','info')
             continue
         chance=min(.995,(cfg['survive'] if treated else cfg['untreated'])+blessing_survive_bonus(c))
         if random.random()>=chance:
@@ -10280,7 +10306,7 @@ def treat(tid):
             text=f'太医来了，按当前待遇与福报，预计存活率 {round(poison_survival_chance(t, treated=True)*100)}%，下一次结算见分晓。'
         else:
             cfg=FAVOR_CARE[t['ill_care']]
-            text=f"太医来了，{cfg['name']}待遇治疗后基础存活率 {int(cfg['survive']*100)}%，病后第 {cfg['recover_nights']} 次结算判断康复，福报另有加成。"
+            text=f"太医来了，{ILL_CURE_HOURS} 小时后病就好了。"
         if c['id'] != tid:
             notify(tid, f'{display_name(c)}替你请了太医。{text}', 'good')
             add_affinity(c['id'], tid, 5)

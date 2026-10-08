@@ -140,8 +140,8 @@
 
 <h4>圣宠、收入与疾病</h4>
 <p>待遇按在宫玩家的圣宠排名定，每晚结算时统一算一次：前 {{ (FAVOR_HOT_PCT*100)|int }}%（且圣宠至少 {{ FAVOR_HOT_MIN }}）为得宠，后 {{ (FAVOR_LOW_PCT*100)|int }}% 连续两晚后为失宠，其余普通。在宫玩家不足 {{ FAVOR_RANK_MIN_POP }} 人时不分排名，回到固定线：圣宠 ≥150 得宠，<40 连续两晚失宠。新人前三天保护收入、免于普通随机染病；体虚、冷宫、产后与时疫仍可能致病。</p>
-<table><tr><th>待遇</th><th>每日月例与赏银</th><th>普通随机染病</th><th>治疗后存活</th><th>不治疗存活</th><th>治疗成功康复</th></tr>
-{% for key,cfg in FAVOR_CARE.items() %}<tr><td>{{ cfg.name }}</td><td>基本月例 ×{{ cfg.stipend_factor }}{% if cfg.reward %} +{{ cfg.reward }} 两{% endif %}（向下取整）</td><td>{{ (cfg.sick_chance*100)|int }}%</td><td>{{ (cfg.survive*100)|int }}%</td><td>{{ (cfg.untreated*100)|int }}%</td><td>{{ cfg.recover_nights }} 次结算</td></tr>{% endfor %}</table>
+<table><tr><th>待遇</th><th>每日月例与赏银</th><th>普通随机染病</th><th>请太医后</th><th>不请太医存活</th></tr>
+{% for key,cfg in FAVOR_CARE.items() %}<tr><td>{{ cfg.name }}</td><td>基本月例 ×{{ cfg.stipend_factor }}{% if cfg.reward %} +{{ cfg.reward }} 两{% endif %}（向下取整）</td><td>{{ (cfg.sick_chance*100)|int }}%</td><td>{{ ILL_CURE_HOURS }} 小时后痊愈</td><td>{{ (cfg.untreated*100)|int }}%</td></tr>{% endfor %}</table>
 <p>得宠染病由皇帝免费派太医，病愈体质至少 50；其他待遇需自费（官女子、答应 20 两，常在 30 两，贵人 40 两，嫔以上 50 两）或由姐妹代付，病愈体质至少 35。失宠治疗期间多卧床一晚；不治疗则下一晚立即判断生死。患病时锁定待遇，病中重新得宠可升级为御医救治。福报能提高存活率，最高 99.5%。冷宫不发月例、按失宠治疗。随机染病是额外基础风险，体虚、产后及时疫另算。</p>
 <h4>年龄与玩法时间对照</h4>
 <p>以第 1 天皇帝 20 岁、妃子 18 岁入宫，第 3 天出生的孩子为例；年龄按各日已完成的结算计算，出生当晚记为 0 岁。所有人每次结算都增长 2 岁。</p>
