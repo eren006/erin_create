@@ -46,14 +46,14 @@
   {% for k, m in INTRIGUES.items() %}
     {% set off = c.rank < m.min_rank or c.silver < m.silver or c.energy < m.energy or (m.get('item') and inventory.get(m.item,0) < 1) %}
     <label class="{{ 'off' if off }}"><input type="radio" name="method" value="{{ k }}" required {{ 'disabled' if off }}>
-      <b>{{ m.name }}</b>　<span class="muted">{% if m.energy %}精力 {{ m.energy }}{% else %}不花精力{% endif %}{% if m.silver %}　银子 {{ m.silver }}{% endif %}{% if m.get('item') %}　需{{ ITEMS[m.item].name }}（有 {{ inventory.get(m.item,0) }}）{% endif %}{% if m.min_rank > 1 %}　{{ RANK_NAMES[m.min_rank] }}以上{% endif %}{% if not m.npc_ok %}　只能对玩家{% endif %}</span><br>{{ m.desc }}</label>
+      <b>{{ m.name }}</b>　<span class="muted">{% if m.energy %}精力 {{ m.energy }}{% else %}不花精力{% endif %}{% if m.silver %}　银子 {{ m.silver }}{% endif %}{% if INFLUENCE_GAINS.get(k) %}　<b>得手势力 +{{ INFLUENCE_GAINS[k] }}</b>（没成但没败露 +{{ [1, (INFLUENCE_GAINS[k] * FIZZLE_INFLUENCE_FRACTION)|round|int]|max }}）{% endif %}{% if m.get('item') %}　需{{ ITEMS[m.item].name }}（有 {{ inventory.get(m.item,0) }}）{% endif %}{% if m.min_rank > 1 %}　{{ RANK_NAMES[m.min_rank] }}以上{% endif %}{% if not m.npc_ok %}　只能对玩家{% endif %}</span><br>{{ m.desc }}</label>
   {% endfor %}
   </div>
   <fieldset><legend>下药时选用</legend>
   <label for="drug">手里的药</label><select id="drug" name="drug"><option value="">请选择</option>
   {% for k, d in DRUGS.items() %}{% if inventory.get(k,0) %}<option value="{{ k }}">{{ d.name }} ×{{ inventory[k] }}</option>{% endif %}{% endfor %}</select>
   <label for="effect">用「无名」时的药性</label><select id="effect" name="effect">{% for k,d in DRUGS.items() %}{% if k not in ('wuming','lihun') %}<option value="{{ k }}">{{ d.name }} — {{ d.desc }}</option>{% endif %}{% endfor %}</select>
-  <label for="agent">经手人</label><select id="agent" name="agent_maid_id"><option value="0">自己动手（成算 -15%，失手必被察觉）</option>{% for m in agents %}<option value="{{ m.id }}">{{ m.name }}（{{ dn(get_consort(m.owner_id)) }}宫里）</option>{% endfor %}</select>
+  <label for="agent">经手人</label><select id="agent" name="agent_maid_id"><option value="0">自己动手（成算 -8%，失手必被察觉）</option>{% for m in agents %}<option value="{{ m.id }}">{{ m.name }}（{{ dn(get_consort(m.owner_id)) }}宫里）</option>{% endfor %}</select>
   <p class="muted">新人入宫1天内不能下药，也不能被下药。普通药得手后冷却1天，致命药2天，受害者同期受保护。执行前撤回退药；成功才触发账号冷却，撤回不退当日谋划次数及精力。</p></fieldset>
   <button>安排下去</button>
 </form>

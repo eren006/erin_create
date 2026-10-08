@@ -3755,6 +3755,38 @@ def shorten_punishment(helper, t):
             notify(t['id'], '禁足解了。', 'good')
     return cut
 
+KNEEL_HEALTH_LOSS = 8          # 罚跪扣体质（2026-10-08 起责罚罚跪也扣）
+KNEEL_PREGNANCY_RISK = 0.10    # 有孕的人被罚跪，这么大概率动胎气：满 18 小时前小产，满 18 小时后提前临盆（早产）
+
+KNEEL_HARM_FAVOR_LOSS = 20     # 罚跪害得孕妇小产或早产，下令的人被追究：圣宠 -20、禁足半天
+
+def kneel_blame(punisher, t, what):
+    if not punisher: return
+    cut_favor(punisher['id'], KNEEL_HARM_FAVOR_LOSS)
+    confine(punisher['id'])
+    notify(punisher['id'], f"你罚跪{display_name(t)}，害得她{what}。皇上震怒：禁足半天，圣宠 -{KNEEL_HARM_FAVOR_LOSS}。", 'bad')
+    gazette(f"{display_name(punisher)}罚跪有孕的{display_name(t)}，致其{what}，皇上下旨禁足。", 'scandal')
+
+def kneel_shock(t, punisher=None):
+    """罚跪的体质损失，以及对孕妇的小概率冲击。返回要附在通知后面的话"""
+    add_stat(t['id'], 'health', -KNEEL_HEALTH_LOSS)
+    t = get_consort(t['id'])
+    if not t['pregnant_since'] or not t['pregnancy_started_ts'] or random.random() >= KNEEL_PREGNANCY_RISK: return ''
+    if inv_qty(t['id'], 'antai'):
+        inv_add(t['id'], 'antai', -1)
+        return '你有孕在身，幸好有安胎药，动了胎气却保住了胎儿。'
+    if time.time() - t['pregnancy_started_ts'] < PRETERM_START_HOURS * 3600:
+        run('UPDATE consorts SET pregnant_since=0,pregnancy_started_ts=0,postpartum_until=? WHERE id=?', (cur_day() + POSTPARTUM_SICK_DAYS, t['id']))
+        run("UPDATE afflictions SET status='done' WHERE consort_id=? AND drug='chunxin'", (t['id'],))
+        night_mark(t['id'], 'miscarriage')
+        gazette(f"{display_name(t)}不幸小产，皇上痛惜不已。", 'scandal')
+        kneel_blame(punisher, t, '小产')
+        return '你有孕在身，跪得动了胎气，小产了。'
+    st = prenatal_state(t); st['force_preterm'] = 1
+    run('UPDATE consorts SET prenatal=? WHERE id=?', (json.dumps(st), t['id']))
+    kneel_blame(punisher, t, '动了胎气，提前临盆')
+    return '你有孕在身，跪得动了胎气，要提前临盆了。'
+
 CHASTISE_MODES = ('kneel', 'fine', 'confine')
 CHASTISE_FAVOR, CHASTISE_FINE, CHASTISE_AFFINITY, CHASTISE_INFLUENCE = 8, 80, -10, 3
 
@@ -3777,7 +3809,8 @@ def do_chastise(c, cfg):
     me = display_name(c)
     if mode == 'kneel':
         lost = cut_favor(t['id'], CHASTISE_FAVOR)
-        pen, what = f"圣宠 -{lost}", '罚跪'
+        shock = kneel_shock(t, c)
+        pen, what = f"圣宠 -{lost}，体质 -{KNEEL_HEALTH_LOSS}" + (f"。{shock}" if shock else ''), '罚跪'
     elif mode == 'fine':
         fined = min(CHASTISE_FINE, t['silver'])
         add_silver(t['id'], -fined)
@@ -5054,7 +5087,7 @@ def intrigue():
     partners = [p for p in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND id!=? AND status='normal' ORDER BY rank DESC", (c['id'],)) if conspire_affinity(c['id'], p['id']) > CONSPIRE_AFFINITY_MIN]
     known = q("""SELECT k.target_id, c.secret, c.secret_revealed FROM known_secrets k
                  JOIN consorts c ON c.id=k.target_id WHERE k.knower_id=?""", (c['id'],))
-    return render_template('intrigue.html', c=c, targets=intrigue_targets(c), INTRIGUES=INTRIGUES, mine=mine, invites=invites, partners=partners,
+    return render_template('intrigue.html', c=c, targets=intrigue_targets(c), INTRIGUES=INTRIGUES, INFLUENCE_GAINS=INFLUENCE_GAINS, FIZZLE_INFLUENCE_FRACTION=FIZZLE_INFLUENCE_FRACTION, mine=mine, invites=invites, partners=partners,
                            CONSPIRE_METHODS=CONSPIRE_METHODS, CONSPIRE_BONUS=CONSPIRE_BONUS, CONSPIRE_COST_RATIO=CONSPIRE_COST_RATIO, conspire_cost=conspire_cost,
                            known=known, SECRETS=SECRETS, day=day, get_consort=get_consort,
                            used_today=intrigue_capped(c['id']), inventory={k: inv_qty(c['id'], k) for k in (*ITEMS, *DRUGS)}, agents=drug_agents(c['id']))
@@ -8611,11 +8644,14 @@ def resolve_births(day, include_legacy=True):
                 if elapsed < PRETERM_START_HOURS * 3600: continue
                 slot = int(elapsed // 3600)
                 checked = prenatal_state(c)
-                if checked.get('_preterm_hour', 0) >= slot: continue
-                checked['_preterm_hour'] = slot
-                run('UPDATE consorts SET prenatal=? WHERE id=?', (json.dumps(checked), c['id']))
-                if random.random() >= preterm_chance(c): continue
-                premature = True
+                if checked.get('force_preterm'):      # 被罚跪动了胎气，不等整点检查，这一轮就临盆
+                    premature = True
+                else:
+                    if checked.get('_preterm_hour', 0) >= slot: continue
+                    checked['_preterm_hour'] = slot
+                    run('UPDATE consorts SET prenatal=? WHERE id=?', (json.dumps(checked), c['id']))
+                    if random.random() >= preterm_chance(c): continue
+                    premature = True
         elif not include_legacy or day - c['pregnant_since'] < PREGNANCY_DAYS:
             continue
         crisis = premature and random.random() < preterm_crisis_chance(c)
@@ -11210,15 +11246,14 @@ def discipline_error(head, target, action, day):
     if head['discipline_ready_day'] > day: return f"第 {head['discipline_ready_day']} 天才能再传话。"
     if not target or not target['user_id'] or target['id'] == head['id'] or not same_palace(head, target) or target['hall'] not in ('east', 'west', 'back'):
         return '这位不在你宫中听差。'
-    if action == 'kneel' and target['pregnant_since']: return '她有孕在身，不能罚跪。'
     return None
 
 
 def apply_discipline(head, target, action, day):
     if action == 'kneel':
-        add_stat(target['id'], 'health', -8)
+        shock = kneel_shock(target, head)
         add_affinity(head['id'], target['id'], -5)
-        text = f"{display_name(head)}传话，罚你在廊下跪了一阵。体质 -8，好感 -5。"
+        text = f"{display_name(head)}传话，罚你在廊下跪了一阵。体质 -{KNEEL_HEALTH_LOSS}，好感 -5。{shock}"
     else:
         add_affinity(head['id'], target['id'], 5)
         text = f"{display_name(head)}遣人来赏你，叮嘱宫人好生照应。好感 +5。"

@@ -143,9 +143,9 @@
   <div class="what">{{ room.name }} · {% if person %}<span class="{{ 'muted' if person.npc_key }}">{{ dn(person) }}{{ '（本宫）' if person.id == c.id }}{{ '（禁足）' if person.status == 'confined' }}</span>{% else %}<span class="muted">空着</span>{% endif %}</div>
   {% if is_head and person and person.user_id and room.key != 'main' %}
   <form method="post" action="{{ url_for('housing_discipline', tid=person.id) }}">
-    <button name="action" value="kneel" class="plain" {{ 'disabled' if c.discipline_ready_day > gs.day or person.pregnant_since }}>罚跪</button>
+    <button name="action" value="kneel" class="plain" {{ 'disabled' if c.discipline_ready_day > gs.day }}>罚跪</button>
     <button name="action" value="reward" class="plain" {{ 'disabled' if c.discipline_ready_day > gs.day }}>赏</button>
-    {% if person.pregnant_since %}<span class="muted">有孕，免罚跪</span>{% endif %}
+    {% if person.pregnant_since %}<span class="muted">她有孕在身，罚跪可能动胎气（小产或早产），你要被禁足、扣圣宠</span>{% endif %}
   </form>
   {% endif %}
 </div>
@@ -174,7 +174,7 @@
       {% elif key == 'chastise' %}
         {% if locked %}{% elif chastise_targets %}
         <select name="target_id" aria-label="责罚谁">{% for p in chastise_targets %}<option value="{{ p.id }}">{{ dn(p) }}</option>{% endfor %}</select>
-        <select name="mode" aria-label="怎么罚"><option value="kneel">罚跪（圣宠 -8）</option><option value="fine">罚俸（银子 -80）</option><option value="confine">禁足半天</option></select>
+        <select name="mode" aria-label="怎么罚"><option value="kneel">罚跪（圣宠 -8、体质 -8；对孕妇有小概率动胎气，害她小产或早产你要被禁足、扣圣宠）</option><option value="fine">罚俸（银子 -80）</option><option value="confine">禁足半天</option></select>
         {% else %}{% set blocked = true %}<span class="muted">眼下没有可责罚的低位妃嫔</span>{% endif %}
       {% elif key == 'plead' %}
         {% if plead_targets %}
