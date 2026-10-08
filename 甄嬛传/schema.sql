@@ -300,6 +300,7 @@ CREATE TABLE IF NOT EXISTS heir_claims (
     consort_id  INTEGER NOT NULL,
     heir_id     INTEGER NOT NULL,
     day         INTEGER NOT NULL,
+    ts          REAL NOT NULL DEFAULT 0,
     PRIMARY KEY (consort_id, heir_id)
 );
 

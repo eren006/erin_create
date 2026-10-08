@@ -1610,6 +1610,7 @@ def init_db():
         db.executescript(f.read())
     # 幂等迁移：旧角色从更新时开始计龄，不按旧存档天数追溯增长。
     migrations = {
+        'heir_claims': {'ts': 'REAL NOT NULL DEFAULT 0'},
         'tribute_turns': {'rank': 'INTEGER NOT NULL DEFAULT 0'},
         'incense_events': {'ends_ts': 'REAL NOT NULL DEFAULT 0'},
         'afflictions': {'expires_ts': 'REAL NOT NULL DEFAULT 0','restore_stat': "TEXT NOT NULL DEFAULT ''",'restore_delta': 'INTEGER NOT NULL DEFAULT 0','ticks': 'INTEGER NOT NULL DEFAULT 0','last_tick_day': 'INTEGER NOT NULL DEFAULT -1'},'families': {'career_path': "TEXT NOT NULL DEFAULT ''", 'background': "TEXT NOT NULL DEFAULT ''"},
@@ -7577,23 +7578,41 @@ def sow_discord(target, source_label, attacker=None):
     return ok
 
 
-def heir_orphan_tick(day):
-    """养育所接受玩家孩子，申请在夜间统一抽签，无申请时持续照料。"""
+HEIR_CLAIM_WAIT_HOURS = 1      # 2026-10-08 起：求领养的申请，从最早一份递上去算起 1 小时就定夺，不用等夜里结算
+
+
+def resolve_heir_claims(h):
+    """养育所孩子的领养申请抽签。有人中签返回 True，没有符合条件的申请返回 False"""
+    claims = q("SELECT c.* FROM heir_claims hc JOIN consorts c ON c.id=hc.consort_id WHERE hc.heir_id=? AND c.status='normal' AND c.user_id IS NOT NULL AND c.rank>=? ORDER BY hc.day,c.id", (h['id'], raise_min_rank(h)))
+    if claims:
+        win = pick_weighted(claims, [max(1, c['trust'] + c['rank'] * 5) for c in claims])
+        run('UPDATE heirs SET caretaker_id=?,caretaker_affinity=50,visit_banned=0,concealed=0 WHERE id=?', (win['id'], h['id']))
+        adopt_bonus_grant(win['id'], h['id'])
+        gazette(f"皇上准{display_name(win)}从养育所领养{heir_label(h)}。", 'decree')
+        for c in claims:
+            notify(c['id'], f"{heir_label(h)}由{display_name(win)}领养。", 'good' if c['id'] == win['id'] else 'info')
+        mother = get_consort(h['mother_id'])
+        if mother and mother['user_id'] and mother['id'] != win['id']:
+            notify(mother['id'], f"{heir_label(h)}已由{display_name(win)}领养，晋到{raise_rank_name(h)}位后可申请领回。", 'info')
+    run('DELETE FROM heir_claims WHERE heir_id=?', (h['id'],))
+    return bool(claims)
+
+
+def heir_claim_tick():
+    """每分钟：最早的一份申请满 HEIR_CLAIM_WAIT_HOURS 小时就定夺；旧申请没有时间，从此刻起算"""
+    now = now_ts()
+    run("UPDATE heir_claims SET ts=? WHERE ts=0", (now,))
     for h in q("SELECT * FROM heirs WHERE caretaker_id=0 AND adult_day=0"):
-        claims = q("SELECT c.* FROM heir_claims hc JOIN consorts c ON c.id=hc.consort_id WHERE hc.heir_id=? AND c.status='normal' AND c.user_id IS NOT NULL AND c.rank>=? ORDER BY hc.day,c.id", (h['id'], raise_min_rank(h)))
-        if claims:
-            win = pick_weighted(claims, [max(1, c['trust'] + c['rank'] * 5) for c in claims])
-            run('UPDATE heirs SET caretaker_id=?,caretaker_affinity=50,visit_banned=0,concealed=0 WHERE id=?', (win['id'], h['id']))
-            adopt_bonus_grant(win['id'], h['id'])
-            gazette(f"皇上准{display_name(win)}从养育所领养{heir_label(h)}。", 'decree')
-            for c in claims:
-                notify(c['id'], f"{heir_label(h)}由{display_name(win)}领养。", 'good' if c['id'] == win['id'] else 'info')
-            mother = get_consort(h['mother_id'])
-            if mother and mother['user_id'] and mother['id'] != win['id']:
-                notify(mother['id'], f"{heir_label(h)}已由{display_name(win)}领养，晋到{raise_rank_name(h)}位后可申请领回。", 'info')
-        else:
+        first = q("SELECT MIN(ts) m FROM heir_claims WHERE heir_id=?", (h['id'],), one=True)['m']
+        if first and now >= first + HEIR_CLAIM_WAIT_HOURS * 3600:
+            resolve_heir_claims(h)
+
+
+def heir_orphan_tick(day):
+    """养育所接受玩家孩子，没抽中的申请夜里统一再抽一次，无申请时持续照料。"""
+    for h in q("SELECT * FROM heirs WHERE caretaker_id=0 AND adult_day=0"):
+        if not resolve_heir_claims(h):
             run('UPDATE heirs SET study=MIN(100,study+2),riding=MIN(100,riding+2),virtue=MIN(100,virtue+2) WHERE id=?', (h['id'],))
-        run('DELETE FROM heir_claims WHERE heir_id=?', (h['id'],))
 
 
 def heir_ambition_tick(day):
@@ -7735,7 +7754,7 @@ def succession():
     princesses = [h for h in q("SELECT * FROM heirs WHERE caretaker_id=? AND gender='公主'", (c['id'],)) if heir_age_years(h, day) >= RIVAL_MIN_AGE]
     orphans = q("SELECT * FROM heirs WHERE caretaker_id=0 AND adult_day=0")
     my_claims = {r['heir_id'] for r in q("SELECT heir_id FROM heir_claims WHERE consort_id=?", (c['id'],))}
-    return render_template('succession.html', c=c, day=day, board=board, stances=stances, mine_adult_princes=mine_adult_princes,
+    return render_template('succession.html', HEIR_CLAIM_WAIT_HOURS=HEIR_CLAIM_WAIT_HOURS, c=c, day=day, board=board, stances=stances, mine_adult_princes=mine_adult_princes,
                            my_kids_exam=my_kids_exam, princesses=princesses, orphans=orphans, my_claims=my_claims,
                            get_consort=get_consort, heir_standing=heir_standing, STANCE_ACTS=STANCE_ACTS, GIFTS=GIFTS,
                            SUCCESSION_MOVES=SUCCESSION_MOVES, STANCE_LOCK_DAYS=STANCE_LOCK_DAYS, PERSUADE_ENERGY=PERSUADE_ENERGY,
@@ -7833,8 +7852,8 @@ def succession_claim(hid):
     if err:
         flash(err, 'bad'); return redirect(url_for('succession'))
     run('UPDATE consorts SET energy=energy-1 WHERE id=?', (c['id'],))
-    run("INSERT INTO heir_claims (consort_id, heir_id, day) VALUES (?,?,?)", (c['id'], hid, cur_day()))
-    flash(f"你在养心殿求了皇上。今晚结算时，皇上会在求过的人里挑一位（信任高、位分高的更有把握）。", 'good')
+    run("INSERT INTO heir_claims (consort_id, heir_id, day, ts) VALUES (?,?,?,?)", (c['id'], hid, cur_day(), now_ts()))
+    flash(f"你在养心殿求了皇上。{HEIR_CLAIM_WAIT_HOURS} 小时后，皇上会在求过的人里挑一位（信任高、位分高的更有把握）。", 'good')
     return redirect(url_for('succession'))
 
 
@@ -9707,6 +9726,7 @@ def maybe_settle():
     if not st['event_started'] or st['maintenance']:return
     tribute_tick()
     illness_cure_tick()
+    heir_claim_tick()
     resolve_births(st['day'],include_legacy=False)
     key=latest_bedding_slot(now)
     pace_key=latest_pace_slot(now)

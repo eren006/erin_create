@@ -53,6 +53,25 @@ class EmptyCourtTests(unittest.TestCase):
         self.assertEqual(self.row(hid)['caretaker_id'], self.atk)
         self.assertFalse(game.q('SELECT * FROM heir_claims'))
 
+    def test_claim_is_decided_after_the_wait_not_at_night(self):
+        hid = self.heir(self.tgt, caretaker=0, born=9, zhuazhou='book')
+        with patch.object(game, 'now_ts', return_value=100000):
+            self.client.post(f'/succession/claim/{hid}')
+            game.heir_claim_tick()
+        with patch.object(game, 'now_ts', return_value=100000 + game.HEIR_CLAIM_WAIT_HOURS * 3600 - 1): game.heir_claim_tick()
+        self.assertEqual(self.row(hid)['caretaker_id'], 0)
+        with patch.object(game, 'now_ts', return_value=100000 + game.HEIR_CLAIM_WAIT_HOURS * 3600): game.heir_claim_tick()
+        self.assertEqual(self.row(hid)['caretaker_id'], self.atk)
+        self.assertFalse(game.q('SELECT * FROM heir_claims'))
+
+    def test_legacy_claim_without_timestamp_starts_counting_from_now(self):
+        hid = self.heir(self.tgt, caretaker=0, born=9, zhuazhou='book')
+        game.run("INSERT INTO heir_claims (consort_id, heir_id, day, ts) VALUES (?,?,?,0)", (self.atk, hid, 9))
+        with patch.object(game, 'now_ts', return_value=500000): game.heir_claim_tick()
+        self.assertEqual(self.row(hid)['caretaker_id'], 0)
+        with patch.object(game, 'now_ts', return_value=500000 + game.HEIR_CLAIM_WAIT_HOURS * 3600): game.heir_claim_tick()
+        self.assertEqual(self.row(hid)['caretaker_id'], self.atk)
+
     def test_promoted_mother_reclaims_without_random_failure(self):
         hid = self.heir(self.atk, caretaker=0, born=9, zhuazhou='book')
         game.run('UPDATE consorts SET rank=4 WHERE id=?', (self.atk,))
