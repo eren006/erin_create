@@ -121,5 +121,34 @@ class HarmLogTests(unittest.TestCase):
         self.assertIn(game.display_name(game.get_consort(self.atk)), page)
 
 
+class VirtueSourceTests(unittest.TestCase):
+    setUp = fixtures.LifecycleTests.setUp
+    tearDown = fixtures.LifecycleTests.tearDown
+    player = fixtures.LifecycleTests.player
+    login = fixtures.LifecycleTests.login
+
+    def test_sutra_and_charity_give_virtue_once_a_day(self):
+        game.run("UPDATE consorts SET virtue=30, energy=8, silver=500, status='normal' WHERE id=?", (self.atk,))
+        self.login(self.atk)
+        for key, cost_silver, cost_energy in (('sutra', 0, 1), ('charity', 40, 0)):
+            before = game.get_consort(self.atk)
+            self.client.post(f'/act/{key}', data={'back': 'shoukanggong' if key == 'sutra' else 'jingren'})
+            after = game.get_consort(self.atk)
+            self.assertEqual(after['virtue'], before['virtue'] + 2, key)
+            self.assertEqual((before['silver'] - after['silver'], before['energy'] - after['energy']), (cost_silver, cost_energy), key)
+            self.client.post(f'/act/{key}')
+            self.assertEqual(game.get_consort(self.atk)['virtue'], after['virtue'], key)      # 每天一次
+
+    def test_shoukanggong_place_and_map_tile(self):
+        self.login(self.atk)
+        page = self.client.get('/place/shoukanggong')
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('抄经', page.get_data(as_text=True))
+        self.assertIn('施粥赈济', self.client.get('/place/jingren').get_data(as_text=True))
+        home = self.client.get('/').get_data(as_text=True)
+        self.assertIn('寿康宫', home)
+        self.assertIn('/place/shoukanggong', home)
+
+
 if __name__ == '__main__':
     unittest.main()

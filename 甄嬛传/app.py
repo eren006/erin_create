@@ -633,6 +633,10 @@ ACTIONS = {
                     desc='为禁足或冷宫中的姐妹求情，缩短日子。成败看皇上对你的信任'),
     'pray':    dict(name='去佛堂礼佛', energy=1, silver=0, daily=1, when={'normal', 'confined'},
                     desc='添香油钱，攒福报：福报高的人不容易老死、病重时活路更大。这五天没对人使过计的「躺平」之人，佛前还有机会延年益寿'),
+    'sutra':   dict(name='抄经', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
+                    desc='到寿康宫佛前抄一日经书，静心养德，德行 +2'),
+    'charity': dict(name='施粥赈济', energy=0, silver=40, daily=1, when={'normal'}, sick_block=True,
+                    desc='拿出 40 两在宫门口施粥，周济杂役宫人，德行 +2'),
     'shoukang': dict(name='去寿康宫请安', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True,
                      desc='太妃姑母会悄悄告诉你一件宫里的旧事。3 天一次'),
     'pizhe':   dict(name='陪皇上批折子', energy=1, silver=0, daily=1, when={'normal'}, sick_block=True, min_rank=5,
@@ -3619,6 +3623,18 @@ def do_rest(c, cfg):
     add_stat(c['id'], 'health', 8)
     return "你歇了一日，喝了几盏参汤。体质 +8。", 'good'
 
+def do_sutra(c, cfg):
+    charge(c, cfg)
+    add_stat(c['id'], 'virtue', 2)
+    return '你在寿康宫佛前抄了一日经书，心里静了下来。德行 +2。', 'good'
+
+
+def do_charity(c, cfg):
+    charge(c, cfg)
+    add_stat(c['id'], 'virtue', 2)
+    return f"你拿出 {cfg['silver']} 两在宫门口施粥，周济了不少杂役宫人，都念你的好。德行 +2。", 'good'
+
+
 def do_reflect(c, cfg):
     charge(c, cfg)
     add_stat(c['id'], 'virtue', 2)
@@ -4172,7 +4188,7 @@ def tryst_hush(clue_id):
 
 
 ACTION_HANDLERS = dict(tryst=do_tryst, tryst_expose=do_tryst_expose, maid_snack=do_maid_snack, maid_shop=do_maid_shop, maid_scribe=do_maid_scribe, maid_watch=do_maid_watch, maid_gossip=do_maid_gossip, schemestudy=do_schemestudy, perform=do_perform, palace_work=do_palace_work, aid=do_aid, greet=do_greet, study=do_study, groom=do_groom, rest=do_rest, reflect=do_reflect,
-                       eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend, pizhe=do_pizhe, chastise=do_chastise, shoukang=do_shoukang, pray=do_pray)
+                       eyes=do_eyes, seek=do_seek, garden=do_garden, visit=do_visit, spy=do_spy, plead=do_plead, attend=do_attend, pizhe=do_pizhe, chastise=do_chastise, shoukang=do_shoukang, pray=do_pray, sutra=do_sutra, charity=do_charity)
 
 # ── 秘密坦白 ───────────────────────────────────────────────────────────────────
 
@@ -5823,6 +5839,8 @@ FEED_TEXT = {
     'pizhe':       lambda t: '陪皇上批了折子',
     'chastise':    lambda t: ((f"寻了个由头，罚{display_name(t)}跪了半日" if request.form.get('mode') == 'kneel' else f"寻了个由头，罚了{display_name(t)}的俸银" if request.form.get('mode') == 'fine' else f"寻了个由头，把{display_name(t)}禁了足") if t else '责罚了低位的妃嫔'),
     'shoukang':    lambda t: '去寿康宫给太妃请安',
+    'sutra':       lambda t: '在寿康宫佛前抄了经',
+    'charity':     lambda t: '在宫门口施了粥',
 }
 
 def feed(cid, text):
@@ -10300,7 +10318,8 @@ def rebirth():
 
 PLACES = {
     'home':    dict(name='本宫', actions=['study', 'schemestudy', 'groom', 'rest', 'reflect', 'eyes', 'shoukang', 'tryst']),
-    'jingren': dict(name='礼仪堂', actions=['greet', 'palace_work', 'aid', 'chastise']),
+    'jingren': dict(name='礼仪堂', actions=['greet', 'palace_work', 'aid', 'charity', 'chastise']),
+    'shoukanggong': dict(name='寿康宫', actions=['sutra']),
     'garden':  dict(name='御花园', actions=['garden']),
     'yangxin': dict(name='养心殿', actions=['seek', 'perform', 'pizhe', 'attend', 'plead']),
 }
@@ -10317,6 +10336,8 @@ def map_tiles(c):
     return [
         dict(key='garden', name='御花园', area='garden', url=url_for('place', key='garden'),
              note=shut or (f'还能逛 {garden_left} 次' if garden_left > 0 else '今天逛够了'), off=bool(shut)),
+        dict(key='shoukanggong', name='寿康宫', area='shoukanggong', url=url_for('place', key='shoukanggong'),
+             note=shut or ('今日已抄经' if daily_count(c['id'], 'sutra') else '抄经养德'), off=bool(shut)),
         dict(key='yangxin', name='养心殿', area='yangxin', url=url_for('place', key='yangxin'),
              note=shut or f"皇上此刻{st['emperor_mood']}", off=bool(shut)),
         dict(key='home', name=residence_name(c), area='home', url=url_for('place', key='home'),
