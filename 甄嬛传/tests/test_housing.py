@@ -47,7 +47,7 @@ class HousingTests(unittest.TestCase):
 
     @unittest.skip("历史规则：固定妃嫔/预设皇嗣已取消，由 test_empty_court 覆盖新规则")
     def test_initial_palaces_npcs_and_seven_free_mains(self):
-        self.assertEqual(len(game.PALACES), 13)
+        self.assertEqual(len(game.PALACES), 15)
         self.assertNotIn('承乾宫', game.PALACES)
         self.assertEqual(len([p for p in game.PALACES.values() if p['group']=='东六宫']), 5)
         self.assertEqual(self.npc('caoguiren')['hall'], 'east')
@@ -385,3 +385,18 @@ class HousingTests(unittest.TestCase):
             self.assertTrue({'hall','discipline_ready_day','housing_waiting'}<=fields)
             self.assertEqual(game.q("SELECT hall FROM consorts WHERE npc_key='huanghou'",one=True)[0],'main')
         game.DB_PATH=original
+
+
+class StandaloneCourtyardTests(HousingTests):
+    def test_four_standalone_courtyards_each_with_four_rooms(self):
+        solo = [n for n, p in game.PALACES.items() if p['group'] == '独院']
+        self.assertEqual(len(solo), 4)
+        self.assertIn('听雨轩', solo); self.assertIn('栖霞阁', solo)
+        for n in ('听雨轩', '栖霞阁'):
+            self.assertTrue(game.PALACES[n]['desc'] and game.PALACES[n]['main'])
+        self.assertEqual(len(game.PALACES), 15)
+
+    def test_new_courtyard_rooms_can_be_assigned(self):
+        cid = self.housed('住新院', 2, '听雨轩', 'east')
+        self.assertEqual((game.get_consort(cid)['palace'], game.get_consort(cid)['hall']), ('听雨轩', 'east'))
+        self.assertTrue(self.client.get('/palaces').status_code in (200, 302))

@@ -328,7 +328,7 @@ LONG_UNSEEN_DAYS = 3        # 这么多天没见过皇上，算"久未见驾"（
 
 TITLE_POOL = list('莞安祺瑾婉容贞淳柔懿宁怡颖璟瑶玥韵馨娴嘉恬澜宸昭徽祥和敏')      # 淑德贤惠留给四妃，不进普通封号池
 
-# 承乾宫暂不开放；十三处宫院各四间，初始七间正殿留待晋封。
+# 承乾宫暂不开放；十五处宫院各四间（2026-10-09 起独院加到四处：延庆殿、听雨轩、栖霞阁、碎玉轩），初始七间正殿留待晋封。
 PALACES = {
     '景仁宫': dict(group='东六宫', desc='东边甬道到此一折，宫门便藏在两株古柏后。庭中砖缝修得齐整，雨后也少见积水。', main='正殿檐下悬着素色宫灯，长窗相对，晨间一眼能望到庭心。'),
     '钟粹宫': dict(group='东六宫', desc='宫墙近处有一道旧钟楼的影子，晴日总要缓缓挪过院落。廊柱漆色稍旧，石阶却被洒扫得发亮。', main='正殿临着宽阶，窗格细密，日光落在地上如一张浅金的网。'),
@@ -342,6 +342,8 @@ PALACES = {
     '长春宫': dict(group='西六宫', desc='宫前两丛丁香开得早，花谢以后仍有绿叶遮着窗。后院石桌一角微缺，宫人说是搬树时不慎磕的。', main='正殿临着花庭，帘钩样式古朴，春风来时满屋都是丁香气。'),
     '咸福宫': dict(group='西六宫', desc='院落方整，廊檐低缓，住在这里的人说话也像放轻了些。西墙根留着一小片苔痕，洒扫时总绕开它。', main='正殿陈设疏朗，一张长案靠着明窗，午后适合静坐理线。'),
     '延庆殿': dict(group='独院', desc='这处院子离热闹的宫巷稍远，门前青石常覆着薄薄落叶。没有穿行的近路，来人多是专程探望。', main='正殿帘色清淡，药柜藏在屏后，窗外竹叶替屋里滤去强光。'),
+    '听雨轩': dict(group='独院', desc='院子不大，一进门便是一口浅浅的荷缸，雨点打在叶上，整座院落都跟着响。檐下竹帘年年换新，宫人说是怕雨声太闷。', main='正殿窗对着荷缸，下雨天不必点灯，水光就映在案头。'),
+    '栖霞阁': dict(group='独院', desc='阁子建在一处小坡上，台阶比别处多出七八级，傍晚时分满窗都是晚霞。来往的人少，风过廊角才有些动静。', main='正殿朝西，日落时霞光铺满半间屋子，陈设都选了暖色。'),
     '碎玉轩': dict(group='独院', desc='小院缩在一段曲墙后，转过月洞门才见屋舍。墙边一株老梅枝干倾斜，宫人年年替它添一根支木。', main='正殿不甚宽大，窗边恰容一榻，冬日坐着便能看见梅枝。'),
 }
 HALL_NAMES = dict(main='正殿', east='东配殿', west='西配殿', back='后殿')
@@ -7060,8 +7062,10 @@ HEIR_ILL_WEAK = dict(health=8, cap=5)               # 病弱：体质 -8、体�
 HEIR_ILL_LIGHT_HEALTH = 3
 HEIR_ILL_RAISED_LIGHT_WEAK = 0.50                    # 有人养但没请太医的轻症，也有五成拖成病弱
 HEIR_ILL_ORPHAN_LIGHT_WEAK = 0.50                    # 养育所里的轻症有五成拖成病弱
-HEIR_ILL_ORPHAN_SEVERE_EXTRA = 0.05     # 重症在养育所里夭折率再 +5%（共 20%）
-HEIR_ILL_ORPHAN_DEATH = 0.15      # 皇嗣养育所（NPC 照料）里病了没人医治，不论轻重，夭折率 15%（2026-10-09 起；原来只有重症有，35%，折合所有病只有约 5%）
+HEIR_ILL_RAISED_DEATH = 0.10      # 养在宫里（有抚养人）的孩子病了没请太医，有 10% 夭折（2026-10-09 起；原来一定不会死，先定 5% 又改 10%）
+HEIR_ILL_TREATED_DEATH = 0.03     # 请了太医医治，也有 3% 还是没救回来
+HEIR_ILL_ORPHAN_SEVERE_EXTRA = 0.0      # 重症在养育所里夭折率的额外加成（曾是 +5%；2026-10-09 夭折率定为 30% 一视同仁，加成清零，想重症更高改这里）
+HEIR_ILL_ORPHAN_DEATH = 0.30      # 皇嗣养育所（NPC 照料）里病了没人医治，不论轻重，夭折率 15%（2026-10-09 起；原来只有重症有，35%，折合所有病只有约 5%）
 HEIR_ILL_ORPHAN_SEVERE_WEAK = 0.40
 HEIR_ILL_LOW_HEALTH_BONUS = 0.002                   # 体质越低，重症没治时越危险（每低 1 点 +0.2%，死亡/病弱都加）
 
@@ -7078,10 +7082,11 @@ def heir_ill_outcomes(h, severe=None):
     sev = HEIR_ILL_SEVERE_SHARE if severe is None else (1.0 if severe else 0.0)
     light = 1 - sev
     if h['caretaker_id']:
-        weak_l = min(1.0, HEIR_ILL_RAISED_LIGHT_WEAK + low)
-        weak = light * weak_l + sev
-        res = [('落下病弱（体质 -%d，上限 -%d）' % (HEIR_ILL_WEAK['health'], HEIR_ILL_WEAK['cap']), weak),
-               ('自己熬过去（体质 -%d）' % HEIR_ILL_LIGHT_HEALTH, light * (1 - weak_l))]
+        d = HEIR_ILL_RAISED_DEATH
+        weak_l = min(1.0 - d, HEIR_ILL_RAISED_LIGHT_WEAK + low)
+        weak = light * weak_l + sev * (1 - d)
+        res = [('夭折', d), ('落下病弱（体质 -%d，上限 -%d）' % (HEIR_ILL_WEAK['health'], HEIR_ILL_WEAK['cap']), weak),
+               ('自己熬过去（体质 -%d）' % HEIR_ILL_LIGHT_HEALTH, light * (1 - d - weak_l))]
     else:
         die_l = min(1.0, HEIR_ILL_ORPHAN_DEATH + low)
         die_s = min(1.0, HEIR_ILL_ORPHAN_DEATH + HEIR_ILL_ORPHAN_SEVERE_EXTRA + low)
@@ -7164,10 +7169,14 @@ def heir_ill_resolve(h, cured_by_doctor=False):
     raised = bool(ct)
     low = max(0, 100 - h['health']) * HEIR_ILL_LOW_HEALTH_BONUS
     if raised:
+        r = random.random()
+        if r < HEIR_ILL_RAISED_DEATH:
+            heir_die_of_illness(h, ill)
+            return
         if ill['severe']:
             weaken_heir(h, f"{label}的{ill['name']}拖着没治，病好了，人却落下了病根。")
             return
-        if random.random() < HEIR_ILL_RAISED_LIGHT_WEAK + low:
+        if r < HEIR_ILL_RAISED_DEATH + HEIR_ILL_RAISED_LIGHT_WEAK + low:
             weaken_heir(h, f"{label}的{ill['name']}没请太医，拖得久了，落下了病根。")
             return
         run('UPDATE heirs SET health=MAX(1,health-?) WHERE id=?', (HEIR_ILL_LIGHT_HEALTH, h['id']))
@@ -7195,13 +7204,15 @@ def weaken_heir(h, text):
     heir_notify_kin(h, f"{text}体质 -{HEIR_ILL_WEAK['health']}，体质上限 -{HEIR_ILL_WEAK['cap']}。", 'bad')
 
 
-def heir_die_of_illness(h, ill):
+def heir_die_of_illness(h, ill, treated=False):
     label = heir_label(h)
+    ct = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
+    where = f"{display_name(ct)}宫中" if ct else '皇嗣养育所'
     run('INSERT INTO birth_losses(mother_id,gender,day,created_ts,reason) VALUES(?,?,?,?,?)',
-        (h['mother_id'], h['gender'], cur_day(), now_ts(), f"{ill['name']}夭折（皇嗣养育所）"))
-    heir_notify_kin(h, f"{label}在皇嗣养育所里染了{ill['name']}，没能救回来。", 'bad')
+        (h['mother_id'], h['gender'], cur_day(), now_ts(), f"{ill['name']}夭折（{where}）"))
+    heir_notify_kin(h, (f"{label}在{where}染了{ill['name']}，请了太医也没能救回来。" if treated else f"{label}在{where}染了{ill['name']}，没请太医，没能救回来。") if ct else f"{label}在皇嗣养育所里染了{ill['name']}，没能救回来。", 'bad')
     heir_delete(h['id'])
-    gazette(f"皇嗣养育所传出消息：{label}染{ill['name']}夭折。", 'news')
+    gazette(f"{where}传出消息：{label}染{ill['name']}夭折。", 'news')
 
 
 def heir_illness_tick(day):
@@ -7234,6 +7245,10 @@ def heir_treat(hid):
         if c['silver'] < ill['cost']: raise Reject(f"请太医要 {ill['cost']} 两，银子不够。")
         add_silver(c['id'], -ill['cost'])
         label = heir_label(h)
+        if random.random() < HEIR_ILL_TREATED_DEATH:      # 请了太医也有 3% 没救回来（银子已经花了）
+            heir_die_of_illness(h, ill, treated=True)
+            flash(f"太医尽力了，{label}还是没能救回来。", 'bad')
+            return redirect(url_for('heirs'))
         if random.random() < HEIR_ILL_TREAT_SUCCESS[ill['severe']]:
             run("UPDATE heirs SET illness='', ill_deadline_ts=0 WHERE id=?", (hid,))
             feed(c['id'], f"请太医治好了{label}的{ill['name']}，花了 {ill['cost']} 两。")
@@ -7244,7 +7259,7 @@ def heir_treat(hid):
     except Reject as exc: flash(str(exc), 'bad')
     return redirect(url_for('heirs'))
 
-app.jinja_env.globals.update(PLAYER_MAX_RANK=PLAYER_MAX_RANK, RANK_FEI=RANK_FEI, guiren_chance=guiren_chance, PREGNANCY_HOURS=PREGNANCY_HOURS, HEIR_RAISE_DAILY=HEIR_RAISE_DAILY, prestige_label=prestige_label, HEIR_ILLNESSES=HEIR_ILLNESSES, HEIR_ILL_HOURS=HEIR_ILL_HOURS, heir_ill_view=heir_ill_view)
+app.jinja_env.globals.update(HEIR_ILL_TREATED_DEATH=HEIR_ILL_TREATED_DEATH, PLAYER_MAX_RANK=PLAYER_MAX_RANK, RANK_FEI=RANK_FEI, guiren_chance=guiren_chance, PREGNANCY_HOURS=PREGNANCY_HOURS, HEIR_RAISE_DAILY=HEIR_RAISE_DAILY, prestige_label=prestige_label, HEIR_ILLNESSES=HEIR_ILLNESSES, HEIR_ILL_HOURS=HEIR_ILL_HOURS, heir_ill_view=heir_ill_view)
 
 
 def heir_growth_tick(day):

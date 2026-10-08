@@ -57,7 +57,7 @@
     </div>
     {% set iv = heir_ill_view(h) %}{% if iv %}<div class="ill-clock {{ 'ill' if iv.ill }}">
       {% if iv.ill %}<b>{{ iv.name }}{{ '（重症）' if iv.severe }}</b> · 没人医治的结算倒计时 <b class="cd" data-secs="{{ iv.secs }}">{{ iv.secs // 3600 }} 小时 {{ iv.secs % 3600 // 60 }} 分</b>
-        <div class="muted">到点没医治，结果：{% for t, p in iv.outcomes %}{{ t }} {{ p }}%{{ '；' if not loop.last }}{% endfor %}{% if iv.treat %}。请太医医治成功率 {{ iv.treat }}%{% endif %}</div>
+        <div class="muted">到点没医治，结果：{% for t, p in iv.outcomes %}{{ t }} {{ p }}%{{ '；' if not loop.last }}{% endfor %}{% if iv.treat %}。请太医医治成功率 {{ iv.treat }}%（治了也有 {{ (HEIR_ILL_TREATED_DEATH * 100)|round|int }}% 没救回来）{% endif %}</div>
       {% else %}<b>下次患病判定</b>{% if iv.secs is not none %} <b class="cd" data-secs="{{ iv.secs }}">{{ iv.secs // 3600 }} 小时 {{ iv.secs % 3600 // 60 }} 分</b> 后{% else %}每 6 小时一次{% endif %}，这一次患病概率 <b>{{ iv.chance }}%</b>
         <div class="muted">真病了：{{ iv.severe_share }}% 是重症。{{ HEIR_ILL_HOURS }} 小时内没人医治的结果：{% for t, p in iv.outcomes %}{{ t }} {{ p }}%{{ '；' if not loop.last }}{% endfor %}。</div>
       {% endif %}
