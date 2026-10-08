@@ -9082,7 +9082,8 @@ def bed_weight(c, day):
     return max(1, w)
 
 BED_ROUND_HOURS = tuple(range(24))    # 翻牌（侍寝）每 1 小时一轮：0/1/2/…/23 点（2026-10-07 起；先前每 2 小时、最早每 4 小时）
-PACE_ROUND_HOURS = (0,4,8,12,16,20)         # 精力回复、晋封检查仍是每 4 小时一次，和翻牌轮分开
+PACE_ROUND_HOURS = (0,4,8,12,16,20)         # 晋封检查仍是每 4 小时一次，和翻牌轮分开
+ENERGY_ROUND_HOURS = tuple(range(0,24,2))   # 精力回复每 2 小时一次（2026-10-08 起，原每 4 小时）
 
 
 def eligible_bedding(c,day):
@@ -9174,6 +9175,9 @@ def latest_bedding_slot(now):
 
 def latest_pace_slot(now):
     return latest_slot(now,PACE_ROUND_HOURS)
+
+def latest_energy_slot(now):
+    return latest_slot(now,ENERGY_ROUND_HOURS)
 
 
 def mood_tick(now):
@@ -9653,11 +9657,11 @@ def on_server_error(e):
     return '出了点问题，已经记下了，稍后再试。', 500
 
 
-ENERGY_REGEN = 3   # 除结算那一轮外，每 4 小时（4/8/12/16/20 点）每人回 3 点精力（2026-10-08 起，原 2 点），封顶 ENERGY_MAX；0 点日结算回满
+ENERGY_REGEN = 2   # 除结算那一轮外，每 2 小时（2/4/…/22 点）每人回 2 点精力（2026-10-08 起；此前每 4 小时回 3 点），封顶 ENERGY_MAX；0 点日结算回满
 
 @atomic
 def energy_tick(key):
-    """每 4 小时回精力（用 PACE_ROUND_HOURS 的时点，不是翻牌轮）；不受皇上病重/国丧影响"""
+    """每 2 小时回精力（用 ENERGY_ROUND_HOURS 的时点，不是翻牌轮）；不受皇上病重/国丧影响"""
     st = state()
     if st['last_energy_key'] == key or key.endswith(':%02d' % SETTLE_HOUR): return
     run('UPDATE game_state SET last_energy_key=? WHERE id=1', (key,))
@@ -9730,7 +9734,7 @@ def maybe_settle():
     resolve_births(st['day'],include_legacy=False)
     key=latest_bedding_slot(now)
     pace_key=latest_pace_slot(now)
-    energy_tick(pace_key)
+    energy_tick(latest_energy_slot(now))
     dying_tick()
     age_noon_tick(now)
     remit_tick(now)
