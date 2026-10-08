@@ -139,6 +139,17 @@ class PrematureHeirTests(fixtures.unittest.TestCase):
         self.assertIn('你的孩子', page)
         self.assertIn('墓地', self.client.get('/heirs').get_data(as_text=True))
 
+    def test_every_way_a_child_can_die_leaves_a_grave_and_a_letter(self):
+        mother = self.player('母', 4)
+        game.run("UPDATE consorts SET pregnant_since=10,pregnancy_started_ts=100000,prenatal='{}',pregnancy_secret=1 WHERE id=?", (mother,))
+        with patch.object(game.time, 'time', return_value=100000 + game.PREGNANCY_MIN_SECONDS + 60), patch.object(game, 'TRYST_BLOOD_CHECK', 1.0), patch.object(game, 'TWIN_CHANCE', 0), patch.object(game, 'preterm_chance', return_value=0):
+            game.resolve_births(10, False)
+        self.assertEqual(game.q('SELECT COUNT(*) n FROM heirs WHERE mother_id=?', (mother,), one=True)['n'], 0)
+        grave = game.q('SELECT * FROM birth_losses WHERE mother_id=?', (mother,), one=True)
+        self.assertTrue(grave and grave['epitaph'] and '血脉存疑' in grave['epitaph'])
+        letter = game.q('SELECT * FROM letters WHERE to_id=? ORDER BY id DESC', (mother,), one=True)
+        self.assertTrue(letter and letter['sender_label'] == '养心殿的总管太监')
+
     def test_premature_birth_death_is_recorded_too(self):
         mother = self.player('母', 4)
         game.run("UPDATE consorts SET pregnant_since=10,pregnancy_started_ts=100000,prenatal='{}' WHERE id=?", (mother,))

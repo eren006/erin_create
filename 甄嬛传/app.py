@@ -7253,7 +7253,7 @@ DEATH_LETTER_CLOSE = [
 ]
 
 
-def record_child_death(h, cause, where, treated=False, how='illness'):
+def record_child_death(h, cause, where, treated=False, how='illness', announce=True):
     """孩子夭折：记进墓地（含墓志）、发邸报、给母亲写一封信。调用方负责删除孩子本人。h 可以是 heirs 行或出生时夭折的描述 dict"""
     day = cur_day()
     mother = get_consort(h['mother_id']) if h['mother_id'] else None
@@ -7271,12 +7271,15 @@ def record_child_death(h, cause, where, treated=False, how='illness'):
            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (h['mother_id'], h['gender'], day, now_ts(), f"{cause_txt}夭折（{where}）", label, age, where, cause_txt, epitaph, born_day, look, ordinal, name))
     pool = DEATH_GAZETTE if treated or how != 'illness' else DEATH_GAZETTE_UNTREATED
-    gazette(random.choice(pool).format(where=where, label=label, cause=cause_txt, age=age_txt, mother=mother_txt), 'news')
+    if announce:
+        gazette(random.choice(pool).format(where=where, label=label, cause=cause_txt, age=age_txt, mother=mother_txt), 'news')
     if mother and mother['user_id']:
         treat = '太医来了几回，方子换了又换' if treated else '想去请太医，却已来不及了'
         sender = '皇嗣养育所的乳母' if where == '皇嗣养育所' else (f"{where}的乳母" if age < 6 else f"{where}的教养嬷嬷")
         if how == 'birth': sender = '太医院的稳婆'
+        if how == 'decree': sender = '养心殿的总管太监'
         body = random.choice(DEATH_LETTER_OPEN) + '\n' + (
+            f"{label}的事，皇上已有旨意，孩子没能留下。奴才奉命传话，只求小主节哀，莫要再惹圣怒，保全自己要紧。" if how == 'decree' else
             f"{label}落地时没有哭出一声。稳婆和太医拼尽了全力，孩子还是没能睁开眼。小主，是奴婢们没用。" if how == 'birth'
             else random.choice(DEATH_LETTER_BODY).format(label=label, cause=cause_txt, treat=treat)) + '\n' + random.choice(DEATH_LETTER_CLOSE)
         run("""INSERT INTO letters (from_id, to_id, day, body, sender_label, created_ts) VALUES (0,?,?,?,?,?)""", (mother['id'], day, body, sender, now_ts()))
@@ -9973,7 +9976,10 @@ def resolve_births(day, include_legacy=True):
                          gift_text(dict(gift_study=gifts['study'], gift_riding=gifts['riding'], gift_virtue=gifts['virtue']))))
         if c['pregnancy_secret']:
             if random.random() < TRYST_BLOOD_CHECK:      # 偷情怀的孩子，出生时验亲败露：孩子赐死，母亲同样重罚
-                for hid_ in born_ids: run("DELETE FROM heirs WHERE id=?", (hid_,))
+                for hid_ in born_ids:
+                    kid = get_heir(hid_)
+                    if kid: record_child_death(kid, '血脉存疑', f"{display_name(c)}宫中", how='decree', announce=False)      # 孩子也要入墓地、给母亲留一封信；邸报由 tryst_punish 统一发
+                    heir_delete(hid_)
                 tryst_punish(c['id'], '败露：孩子滴血验亲不合，皇上震怒，孩子赐死')
                 continue
             run("UPDATE consorts SET pregnancy_secret=0 WHERE id=?", (c['id'],))
