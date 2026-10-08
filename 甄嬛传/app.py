@@ -6851,6 +6851,45 @@ def heir_ill_chance(h):
     return min(HEIR_ILL_CAP, p)
 
 
+def heir_ill_outcomes(h, severe=None):
+    """没人医治时的结果和概率（百分比，已含体质越低越危险的加成）。severe=None：还没病，按「真病了」的轻重症占比加权；True/False：已经是重症/轻症"""
+    low = max(0, 100 - h['health']) * HEIR_ILL_LOW_HEALTH_BONUS
+    sev = HEIR_ILL_SEVERE_SHARE if severe is None else (1.0 if severe else 0.0)
+    light = 1 - sev
+    if h['caretaker_id']:
+        weak_l = min(1.0, HEIR_ILL_RAISED_LIGHT_WEAK + low)
+        weak = light * weak_l + sev
+        res = [('落下病弱（体质 -%d，上限 -%d）' % (HEIR_ILL_WEAK['health'], HEIR_ILL_WEAK['cap']), weak),
+               ('自己熬过去（体质 -%d）' % HEIR_ILL_LIGHT_HEALTH, light * (1 - weak_l))]
+    else:
+        weak_l = min(1.0, HEIR_ILL_ORPHAN_LIGHT_WEAK + low)
+        die = sev * min(1.0, HEIR_ILL_ORPHAN_SEVERE_DEATH + low)
+        weak_s = sev * max(0.0, min(1.0, HEIR_ILL_ORPHAN_SEVERE_DEATH + HEIR_ILL_ORPHAN_SEVERE_WEAK + 2 * low) - min(1.0, HEIR_ILL_ORPHAN_SEVERE_DEATH + low))
+        weak = light * weak_l + weak_s
+        res = [('夭折', die), ('落下病弱（体质 -%d，上限 -%d）' % (HEIR_ILL_WEAK['health'], HEIR_ILL_WEAK['cap']), weak),
+               ('平安熬过', max(0.0, 1 - die - weak))]
+    return [(t, round(p * 100)) for t, p in res if p > 0]
+
+
+def heir_ill_view(h):
+    """子嗣页的病情倒计时：在病的给结算倒计时和没治的后果；没病的给下一次判定的倒计时、概率和可能的后果"""
+    if h['adult_day'] or (h['npc_key'] if 'npc_key' in h.keys() else ''): return None
+    now = now_ts()
+    if h['illness']:
+        ill = HEIR_ILLNESSES[h['illness']]
+        return dict(ill=True, name=ill['name'], severe=ill['severe'], ends_ts=h['ill_deadline_ts'], secs=max(0, int(h['ill_deadline_ts'] - now)),
+                    outcomes=heir_ill_outcomes(h, ill['severe']), treat=round(HEIR_ILL_TREAT_SUCCESS[ill['severe']] * 100) if h['caretaker_id'] else None)
+    slot_len = 86400 / (AGE_YEARS_PER_DAY * HEIR_ILL_ROLLS_PER_YEAR)
+    last_slot = HEIR_ILL_ADULT_YEARS * HEIR_ILL_ROLLS_PER_YEAR + HEIR_ILL_ROLLS_PER_YEAR - 1
+    nxt = None
+    if h['born_ts'] and h['born_ts'] > 0:
+        cur = int((now - h['born_ts']) // slot_len)
+        if cur >= last_slot: return None
+        nxt = h['born_ts'] + (cur + 1) * slot_len
+    return dict(ill=False, ends_ts=nxt, secs=max(0, int(nxt - now)) if nxt else None, chance=round(heir_ill_roll_chance(h) * 100),
+                severe_share=round(HEIR_ILL_SEVERE_SHARE * 100), outcomes=heir_ill_outcomes(h))
+
+
 def heir_ill_roll_chance(h):
     """每 6 小时一掷的概率：让一岁内的总患病率仍是 heir_ill_chance"""
     return 1 - (1 - heir_ill_chance(h)) ** (1 / HEIR_ILL_ROLLS_PER_YEAR)
@@ -6981,7 +7020,7 @@ def heir_treat(hid):
     except Reject as exc: flash(str(exc), 'bad')
     return redirect(url_for('heirs'))
 
-app.jinja_env.globals.update(HEIR_ILLNESSES=HEIR_ILLNESSES, HEIR_ILL_HOURS=HEIR_ILL_HOURS)
+app.jinja_env.globals.update(HEIR_ILLNESSES=HEIR_ILLNESSES, HEIR_ILL_HOURS=HEIR_ILL_HOURS, heir_ill_view=heir_ill_view)
 
 
 def heir_growth_tick(day):

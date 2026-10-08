@@ -20,6 +20,7 @@
 .heir .stats b{display:block;font-size:17px;color:var(--ink);font-weight:600}
 .heir .gifts{margin:0 0 8px}
 .heir .ill{border:1px solid var(--line);border-left:4px solid var(--jin);background:var(--paper);padding:8px 12px;margin:0 0 10px;font-size:14px}.heir .ill.severe{border-left-color:var(--zhu)}
+.heir .ill-clock{font-size:13px;margin:0 0 8px;padding:6px 10px;border:1px dashed var(--line)}.heir .ill-clock.ill{border-color:var(--jin)}
 .heir .acts{border-top:1px dashed var(--line);margin-top:12px;padding-top:12px}
 .heir .acts:empty{display:none}
 .heir .acts .row{margin:6px 0}
@@ -48,6 +49,13 @@
     <div class="stats" aria-label="学问 骑射 品行 体质 容貌">
       <div><b>{{ h.study }}</b>学问</div><div><b>{{ h.riding }}</b>骑射</div><div><b>{{ h.virtue }}</b>品行</div><div><b>{{ h.health }}</b>体质/{{ h.health_max }}</div><div><b>{{ h.appearance }}</b>容貌</div>
     </div>
+    {% set iv = heir_ill_view(h) %}{% if iv %}<div class="ill-clock {{ 'ill' if iv.ill }}">
+      {% if iv.ill %}<b>{{ iv.name }}{{ '（重症）' if iv.severe }}</b> · 没人医治的结算倒计时 <b class="cd" data-secs="{{ iv.secs }}">{{ iv.secs // 3600 }} 小时 {{ iv.secs % 3600 // 60 }} 分</b>
+        <div class="muted">到点没医治，结果：{% for t, p in iv.outcomes %}{{ t }} {{ p }}%{{ '；' if not loop.last }}{% endfor %}{% if iv.treat %}。请太医医治成功率 {{ iv.treat }}%{% endif %}</div>
+      {% else %}<b>下次患病判定</b>{% if iv.secs is not none %} <b class="cd" data-secs="{{ iv.secs }}">{{ iv.secs // 3600 }} 小时 {{ iv.secs % 3600 // 60 }} 分</b> 后{% else %}每 6 小时一次{% endif %}，这一次患病概率 <b>{{ iv.chance }}%</b>
+        <div class="muted">真病了：{{ iv.severe_share }}% 是重症。{{ HEIR_ILL_HOURS }} 小时内没人医治的结果：{% for t, p in iv.outcomes %}{{ t }} {{ p }}%{{ '；' if not loop.last }}{% endfor %}。</div>
+      {% endif %}
+    </div>{% endif %}
     <p class="muted gifts">资质：学 {{ gift_word(h.gift_study) }} · 射 {{ gift_word(h.gift_riding) }} · 品 {{ gift_word(h.gift_virtue) }}</p>
     <div class="acts">
     {% if h.caretaker_id == c.id %}<form method="post" action="{{ url_for('heir_nickname', hid=h.id) }}" class="row" style="gap:6px"><input name="nickname" value="{{ h.nickname }}" maxlength="{{ NICKNAME_MAX_LEN }}" placeholder="乳名（最多 {{ NICKNAME_MAX_LEN }} 字）" aria-label="乳名" style="width:9em"><button class="plain" title="养在自己宫里的孩子可以起乳名，会显示在名字后的括号里；留空清掉">{{ '改乳名' if h.nickname else '起乳名' }}</button></form>{% endif %}
@@ -125,4 +133,9 @@
 </div>
 {% else %}<p>宫里还没有新的皇嗣降生。</p>{% endif %}
 {% if losses %}<h3>夭折记录</h3>{% for loss in losses %}<p class="muted">第{{ loss.day }}天 · {{ loss.gender }} · {{ loss.reason }}</p>{% endfor %}{% endif %}
+<script>
+(function(){var els=document.querySelectorAll('.cd[data-secs]');if(!els.length)return;var t0=Date.now();
+function tick(){var d=Math.floor((Date.now()-t0)/1000);els.forEach(function(e){var s=Math.max(0,(+e.dataset.secs)-d);e.textContent=Math.floor(s/3600)+' 小时 '+Math.floor(s%3600/60)+' 分'+(s<3600?' '+(s%60)+' 秒':'')});}
+setInterval(tick,1000);})();
+</script>
 {% endblock %}

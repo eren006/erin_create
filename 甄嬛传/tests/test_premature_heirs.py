@@ -85,6 +85,25 @@ class PrematureHeirTests(fixtures.unittest.TestCase):
         self.assertEqual(len(calls), 1, '同一格内每小时的重复调用不再掷')
         self.assertEqual(game.get_heir(hid)['ill_rolls'], 4)
 
+    def test_heirs_page_shows_illness_countdown_and_outcomes(self):
+        mother = self.player('母', 4)
+        well = self.heir(mother, False)
+        game.run("UPDATE heirs SET caretaker_id=?, born_ts=?, ill_rolls=5 WHERE id=?", (mother, game.now_ts() - 3600 * 7.5, well))
+        ill = self.sick(mother, 'cold', ill_deadline_ts=game.now_ts() + 2.5 * 3600)
+        self.login(mother)
+        body = self.client.get('/heirs').get_data(as_text=True)
+        self.assertIn('下次患病判定', body)
+        self.assertIn('没人医治的结算倒计时', body)
+        v = game.heir_ill_view(game.get_heir(well))
+        self.assertAlmostEqual(v['secs'], 3600 * 4.5, delta=5)      # 7.5 小时，下一格在第 12 小时
+        self.assertEqual(game.heir_ill_view(game.get_heir(ill))['secs'] // 3600, 2)
+
+    def test_outcome_percentages_sum_to_100(self):
+        for caretaker in (7, 0):
+            for sev in (None, True, False):
+                out = game.heir_ill_outcomes(dict(health=70, caretaker_id=caretaker), sev)
+                self.assertLessEqual(abs(sum(p for _, p in out) - 100), 1, (caretaker, sev, out))
+
     def test_treat_costs_silver_and_cures(self):
         mother = self.player('母', 4)
         hid = self.sick(mother, 'cold')
