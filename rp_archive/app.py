@@ -9652,7 +9652,7 @@ def _admin_ops_for_bot(db, sid, done):
 
 _PLUGIN_OFFICIAL_VERSION = (1, 10, 7)   # 网页发起官约 / 官电要这个版本以上的插件
 _PLUGIN_BOTTLE_VERSION = (1, 10, 8)   # 网页漂流瓶要这个版本以上的插件（它才认得「网页漂流瓶开着就停用群里的」）
-_PLUGIN_REL_VERSION = (1, 11, 0)   # 网页关系线要这个版本以上的插件（它才认得 rel_ops、会交上关系线副本）
+_PLUGIN_REL_VERSION = (1, 10, 9)   # 网页关系线要这个版本以上的插件（它才认得 rel_ops、会交上关系线副本）
 _PLUGIN_MIN_VERSION = (1, 10, 4)   # 网页快速设置 / 参数页 / 批量发放要这个版本以上的插件才会执行
 
 def _plugin_status(db, sid):
