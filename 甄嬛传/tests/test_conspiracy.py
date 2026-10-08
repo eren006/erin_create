@@ -30,6 +30,21 @@ class ConspiracyTests(unittest.TestCase):
 
     def silver(self, cid): return game.get_consort(cid)['silver']
 
+    def test_auto_accept_for_listed_partner_and_skips_when_target_is_her_sister(self):
+        self.make_partner()
+        a0, p0 = self.silver(self.atk), self.silver(self.pal)
+        cost = game.conspire_cost(game.INTRIGUES['rumor'])
+        with patch.object(game, 'AUTO_ACCEPT_CONSPIRE', {self.pal}):
+            it = self.invite()
+        self.assertEqual(it['status'], 'done' if it['result'] else 'pending')      # 当场应下并办完
+        self.assertNotEqual(it['status'], 'invited')
+        self.assertEqual((self.silver(self.atk), self.silver(self.pal)), (a0 - cost, p0 - cost))
+        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%已自动应下%'", (self.pal,), one=True))
+        game.run("DELETE FROM intrigues"); game.run("DELETE FROM daily_counters")
+        with patch.object(game, 'AUTO_ACCEPT_CONSPIRE', {self.pal}), patch.object(game, 'sisters_of', side_effect=lambda cid: [self.tgt] if cid == self.pal else []):
+            it = self.invite()
+        self.assertEqual(it['status'], 'invited')                              # 目标是她姐妹：留给本人定
+
     def test_invite_costs_nothing_until_accepted(self):
         self.make_partner()
         a0, p0 = self.silver(self.atk), self.silver(self.pal)

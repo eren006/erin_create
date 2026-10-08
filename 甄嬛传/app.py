@@ -2119,6 +2119,7 @@ def auto_scheme_on_promotion(target_id):
         a, t = get_consort(aid), get_consort(target_id)
         if not a or not t or a['id'] == t['id'] or a['status'] != 'normal' or is_sick(a): continue
         if t['status'] in ('xiunv', 'cold', 'dead') or (t['user_id'] and t['entered_day'] >= day) or bully_block(a, t): continue
+        if target_id in sisters_of(aid): continue      # 结拜姐妹晋升不害
         if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')", (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX: continue
         method = next((m for m in ('frame', 'rumor') if a['rank'] >= INTRIGUES[m]['min_rank'] and a['silver'] >= INTRIGUES[m]['silver']), None)
         if not method: continue
@@ -5168,10 +5169,15 @@ def intrigue_submit():
         flash(err, 'bad')
         return redirect(url_for('intrigue'))
     if pid:   # 合谋：只发邀请，对方点头后双方才扣银子、精力和今天的谋划名额
-        run("""INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts, status, partner_id)
-               VALUES (?,?,?,?,0,'',?,'invited',?)""", (day, c['id'], tid, method, now_ts(), pid))
+        inv_id = run("""INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts, status, partner_id)
+               VALUES (?,?,?,?,0,'',?,'invited',?)""", (day, c['id'], tid, method, now_ts(), pid)).lastrowid
         notify(pid, f"{display_name(c)}邀你合谋对{display_name(t)}「{cfg['name']}」：成算各 +{int(CONSPIRE_BONUS*100)}%，每人 {conspire_cost(cfg)} 两，败露两人一起受罚。去「使计」页回话，一天内有效。", 'info')
-        flash(f"已把合谋的意思递给{display_name(partner)}，等她点头；一天内不回话就作废，期间不扣你的银子。", 'info')
+        auto_accept_conspire(inv_id)
+        now_status = q("SELECT status FROM intrigues WHERE id=?", (inv_id,), one=True)['status']
+        if now_status == 'invited':
+            flash(f"已把合谋的意思递给{display_name(partner)}，等她点头；一天内不回话就作废，期间不扣你的银子。", 'info')
+        else:
+            flash(f"{display_name(partner)}当场应下了合谋，你们各付了 {conspire_cost(cfg)} 两，事情已经办完，详情见本宫消息。", 'good')
         return redirect(url_for('intrigue'))
     run("UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?", (cfg['energy'], cfg['silver'], c['id']))
     if cfg.get('item'): inv_add(c['id'], cfg['item'], -1)
@@ -5192,6 +5198,47 @@ def intrigue_submit():
         flash('已安排下去。截宠要等对方被翻牌时才见分晓。', 'info')
     return redirect(url_for('intrigue'))
 
+AUTO_ACCEPT_CONSPIRE = {30}      # 怡嫔：有人邀请合谋就自动同意（目标是她的结拜姐妹的除外）
+
+
+def conspire_accept(it, c):
+    """合谋邀请的接受：检查、扣费、结算。返回 (错误或None, 结算结果, 每人花费)。玩家点「应下」和自动同意共用"""
+    day = cur_day()
+    a, t, cfg = get_consort(it['attacker_id']), get_consort(it['target_id']), INTRIGUES[it['method']]
+    err = None
+    if c['status'] != 'normal' or is_sick(c): err = '你眼下顾不上这件事。'
+    elif a['status'] != 'normal' or is_sick(a): err = f"{display_name(a)}眼下顾不上这件事。"
+    elif t['status'] in ('xiunv', 'cold', 'dead'): err = '这个人已经不能当目标了。'
+    elif intrigue_capped(a['id']): err = f"{display_name(a)}今天已经另有谋划了。"
+    elif a['energy'] < cfg['energy']: err = f"{display_name(a)}精力不够了。"
+    elif a['silver'] < conspire_cost(cfg): err = f"{display_name(a)}银子不够了。"
+    elif q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')", (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
+        err = '今天盯着她的人已经够多了，换个日子吧。'
+    elif it['method'] == 'expose' and t['secret_revealed']: err = '这件事已经没有可告发的了。'
+    elif it['method'] == 'steal' and (t['pregnant_since'] or is_sick(t)): err = '她今晚本就侍不了寝。'
+    elif it['method'] == 'punish': err = punish_block(a, t, day)
+    if not err: err = conspire_partner_block(a, c, cfg, t, day)
+    if err: return err, None, 0
+    cost = conspire_cost(cfg)
+    for x in (a, c):
+        run("UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?", (cfg['energy'], cost, x['id']))
+        daily_inc(x['id'], 'intrigue')
+    if it['method'] == 'punish': run('UPDATE consorts SET punish_ready_day=? WHERE id=?', (day + PUNISH_COOLDOWN, a['id']))
+    run("UPDATE intrigues SET status='pending', day=?, silver_paid=?, partner_silver=?, created_ts=? WHERE id=?", (day, cost, cost, now_ts(), it['id']))
+    notify(a['id'], f"{display_name(c)}答应了合谋：对{display_name(t)}的「{cfg['name']}」已安排下去，你们各付了 {cost} 两。", 'good')
+    return None, resolve_now(it['id']), cost
+
+
+def auto_accept_conspire(iid):
+    it = q("SELECT * FROM intrigues WHERE id=? AND status='invited'", (iid,), one=True)
+    if not it or it['partner_id'] not in AUTO_ACCEPT_CONSPIRE: return
+    c = get_consort(it['partner_id'])
+    if it['target_id'] in sisters_of(c['id']): return      # 要害的是她的结拜姐妹：不自动同意，留给本人定
+    err, result, cost = conspire_accept(it, c)
+    if err: notify(c['id'], f"有人邀你合谋，本想自动应下，但没办成：{err}", 'info')
+    else: notify(c['id'], f"有人邀你合谋，已自动应下，你付了 {cost} 两。", 'good')
+
+
 @app.route('/intrigue/conspire/<int:iid>/<action>', methods=['POST'])
 @login_required
 def intrigue_conspire(iid, action):
@@ -5211,30 +5258,10 @@ def intrigue_conspire(iid, action):
     if action != 'accept':
         flash('请选择回话。', 'bad')
         return redirect(url_for('intrigue'))
-    err = None
-    if c['status'] != 'normal' or is_sick(c): err = '你眼下顾不上这件事。'
-    elif a['status'] != 'normal' or is_sick(a): err = f"{display_name(a)}眼下顾不上这件事。"
-    elif t['status'] in ('xiunv', 'cold', 'dead'): err = '这个人已经不能当目标了。'
-    elif intrigue_capped(a['id']): err = f"{display_name(a)}今天已经另有谋划了。"
-    elif a['energy'] < cfg['energy']: err = f"{display_name(a)}精力不够了。"
-    elif a['silver'] < conspire_cost(cfg): err = f"{display_name(a)}银子不够了。"
-    elif q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')", (t['id'], day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX:
-        err = '今天盯着她的人已经够多了，换个日子吧。'
-    elif it['method'] == 'expose' and t['secret_revealed']: err = '这件事已经没有可告发的了。'
-    elif it['method'] == 'steal' and (t['pregnant_since'] or is_sick(t)): err = '她今晚本就侍不了寝。'
-    elif it['method'] == 'punish': err = punish_block(a, t, day)
-    if not err: err = conspire_partner_block(a, c, cfg, t, day)
+    err, result, cost = conspire_accept(it, c)
     if err:
         flash(err, 'bad')
         return redirect(url_for('intrigue'))
-    cost = conspire_cost(cfg)
-    for x in (a, c):
-        run("UPDATE consorts SET energy=energy-?, silver=silver-? WHERE id=?", (cfg['energy'], cost, x['id']))
-        daily_inc(x['id'], 'intrigue')
-    if it['method'] == 'punish': run('UPDATE consorts SET punish_ready_day=? WHERE id=?', (day + PUNISH_COOLDOWN, a['id']))
-    run("UPDATE intrigues SET status='pending', day=?, silver_paid=?, partner_silver=?, created_ts=? WHERE id=?", (day, cost, cost, now_ts(), iid))
-    notify(a['id'], f"{display_name(c)}答应了合谋：对{display_name(t)}的「{cfg['name']}」已安排下去，你们各付了 {cost} 两。", 'good')
-    result = resolve_now(iid)
     if result:
         flash(f"应下了，你付了 {cost} 两。你们对{display_name(t)}的「{cfg['name']}」{RESULT_WORDS.get(result, '办完了')}。", RESULT_KIND.get(result, 'info'))
     else:
