@@ -42,7 +42,7 @@ class PrematureHeirTests(fixtures.unittest.TestCase):
 
     def sick(self, mother, key, caretaker=None, **cols):
         hid = self.heir(mother, cols.pop('premature', False))
-        game.run("UPDATE heirs SET caretaker_id=?, illness=?, ill_deadline_ts=?, ill_years=3 WHERE id=?",
+        game.run("UPDATE heirs SET caretaker_id=?, illness=?, ill_deadline_ts=?, ill_rolls=99 WHERE id=?",
                  (mother if caretaker is None else caretaker, key, 1.0, hid))
         for k, v in cols.items(): game.run(f"UPDATE heirs SET {k}=? WHERE id=?", (v, hid))
         return hid
@@ -54,19 +54,36 @@ class PrematureHeirTests(fixtures.unittest.TestCase):
         self.assertAlmostEqual(game.heir_ill_chance(dict(health=100, premature=1)), game.HEIR_ILL_BASE * game.HEIR_ILL_PREMATURE_MULT)
         self.assertLessEqual(game.heir_ill_chance(dict(health=1, premature=1)), game.HEIR_ILL_CAP)
 
-    def test_roll_each_year_until_adult_and_legacy_not_backfilled(self):
+    def test_roll_every_six_hours_until_adult_and_legacy_not_backfilled(self):
         mother = self.player('母', 4)
         new = self.heir(mother, False); old = self.heir(mother, False); grown = self.heir(mother, False)
         day = game.cur_day()
-        game.run("UPDATE heirs SET born_day=?, ill_years=-1 WHERE id=?", (day - 3, new))     # 6 岁，新生儿起算
-        game.run("UPDATE heirs SET born_day=?, ill_years=-2 WHERE id=?", (day - 3, old))     # 老档：只记岁数
-        game.run("UPDATE heirs SET born_day=?, ill_years=14 WHERE id=?", (day - 20, grown))  # 早已掷满 14 岁
+        game.run("UPDATE heirs SET born_day=?, ill_rolls=-1 WHERE id=?", (day - 3, new))     # 6 岁，新生儿起算
+        game.run("UPDATE heirs SET born_day=?, ill_rolls=-2 WHERE id=?", (day - 3, old))     # 老档：只记当前格
+        game.run("UPDATE heirs SET born_day=?, ill_rolls=29 WHERE id=?", (day - 20, grown))  # 早已掷满 14 岁
         with patch.object(game.random, 'random', lambda: 0.0):
             game.heir_illness_tick(day)
         self.assertNotEqual(game.get_heir(new)['illness'], '')
         self.assertEqual(game.get_heir(old)['illness'], '')
-        self.assertEqual(game.get_heir(old)['ill_years'], 6)
+        self.assertEqual(game.get_heir(old)['ill_rolls'], 12)      # 6 岁 = 第 12 格
         self.assertEqual(game.get_heir(grown)['illness'], '')
+
+    def test_six_hour_roll_chance_keeps_the_yearly_rate(self):
+        h = dict(health=60, premature=0)
+        yearly = game.heir_ill_chance(h)
+        per = game.heir_ill_roll_chance(h)
+        self.assertLess(per, yearly)
+        self.assertAlmostEqual(1 - (1 - per) ** game.HEIR_ILL_ROLLS_PER_YEAR, yearly)
+
+    def test_one_roll_per_six_hours_not_per_hour(self):
+        mother = self.player('母', 4)
+        hid = self.heir(mother, False)
+        game.run("UPDATE heirs SET born_ts=?, ill_rolls=-1 WHERE id=?", (game.now_ts() - 6 * 3600 * 4.5, hid))   # 4 个半 6 小时 = 第 4 格
+        calls = []
+        with patch.object(game.random, 'random', side_effect=lambda: calls.append(1) or 0.99):
+            game.heir_illness_tick(game.cur_day()); game.heir_illness_tick(game.cur_day())
+        self.assertEqual(len(calls), 1, '同一格内每小时的重复调用不再掷')
+        self.assertEqual(game.get_heir(hid)['ill_rolls'], 4)
 
     def test_treat_costs_silver_and_cures(self):
         mother = self.player('母', 4)

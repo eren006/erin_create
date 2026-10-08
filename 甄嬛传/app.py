@@ -1682,7 +1682,7 @@ def init_db():
                      'blessing': 'INTEGER NOT NULL DEFAULT 0',
                      'life_loss_months': 'INTEGER NOT NULL DEFAULT 0',
                      'longevity': 'INTEGER NOT NULL DEFAULT 0'},
-        'heirs': {'ill_years': 'INTEGER NOT NULL DEFAULT -2', 'illness': "TEXT NOT NULL DEFAULT ''", 'ill_deadline_ts': 'REAL NOT NULL DEFAULT 0', 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'nickname': "TEXT NOT NULL DEFAULT ''", 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
+        'heirs': {'ill_years': 'INTEGER NOT NULL DEFAULT -2', 'illness': "TEXT NOT NULL DEFAULT ''", 'ill_deadline_ts': 'REAL NOT NULL DEFAULT 0', 'health_max': 'INTEGER NOT NULL DEFAULT 100', 'premature': 'INTEGER NOT NULL DEFAULT 0', 'preterm_health_loss': 'INTEGER NOT NULL DEFAULT 0', 'adopt_bonus_to': 'INTEGER NOT NULL DEFAULT 0', 'unpaid_days': 'INTEGER NOT NULL DEFAULT 0', 'born_ts': 'REAL NOT NULL DEFAULT 0', 'appearance': 'INTEGER NOT NULL DEFAULT 0', 'temperament': "TEXT NOT NULL DEFAULT ''", 'temper_tier': 'INTEGER NOT NULL DEFAULT -1', 'name_choices': "TEXT NOT NULL DEFAULT ''", 'nickname': "TEXT NOT NULL DEFAULT ''", 'ill_rolls': 'INTEGER NOT NULL DEFAULT -2', 'gen_word': "TEXT NOT NULL DEFAULT ''", 'gift_study': 'INTEGER NOT NULL DEFAULT 100', 'gift_riding': 'INTEGER NOT NULL DEFAULT 100',
                   'gift_virtue': 'INTEGER NOT NULL DEFAULT 100',
                   'caretaker_id': 'INTEGER NOT NULL DEFAULT 0',
                   'attr_years': 'INTEGER NOT NULL DEFAULT 0',
@@ -6832,6 +6832,7 @@ HEIR_ILL_PER_LOW_HEALTH = 0.004     # 体质每比 100 低 1 点，患病率 +0.
 HEIR_ILL_PREMATURE_MULT = 1.5       # 早产儿更容易生病
 HEIR_ILL_CAP = 0.95
 HEIR_ILL_SEVERE_SHARE = 0.15        # 生了病里，重症占的比例
+HEIR_ILL_ROLLS_PER_YEAR = 2         # 孩子每长一岁（12 小时）掷两次患病，也就是每 6 小时一次（2026-10-08 起，原每岁一次）；每次的概率按「每岁患病率」均分，一岁内总概率不变
 HEIR_ILL_HOURS = 24                 # 病了这么久还没人治，就按「没治」结算
 HEIR_ILL_TREAT_SUCCESS = {False: 1.0, True: 0.9}     # 太医医治成功率：轻症一定好，重症九成
 # 没治的后果。有人抚养：轻症自己好，只落一点体质；重症拖成病弱，不会死。没人抚养（养育所）：重症可能夭折。
@@ -6848,6 +6849,11 @@ def heir_ill_chance(h):
     p = HEIR_ILL_BASE + max(0, 100 - h['health']) * HEIR_ILL_PER_LOW_HEALTH
     if h['premature']: p *= HEIR_ILL_PREMATURE_MULT
     return min(HEIR_ILL_CAP, p)
+
+
+def heir_ill_roll_chance(h):
+    """每 6 小时一掷的概率：让一岁内的总患病率仍是 heir_ill_chance"""
+    return 1 - (1 - heir_ill_chance(h)) ** (1 / HEIR_ILL_ROLLS_PER_YEAR)
 
 
 def heir_delete(hid):
@@ -6935,15 +6941,17 @@ def heir_die_of_illness(h, ill):
 
 
 def heir_illness_tick(day):
-    """每小时跑：新长大一岁的孩子掷患病；到期没人治的病落结果。ill_years：-2 老档（只记岁数不补掷），-1 新生儿，其余 = 已掷到几岁"""
+    """每小时跑：孩子每满 6 小时（每岁两次）掷一次患病；到期没人治的病落结果。
+    ill_rolls：-2 老档/刚迁移（只记当前是第几格、不补掷），-1 新生儿（第 0 格那一掷也要算），其余 = 已掷到第几格（一格 = 半岁 = 6 小时）"""
+    last_slot = HEIR_ILL_ADULT_YEARS * HEIR_ILL_ROLLS_PER_YEAR + HEIR_ILL_ROLLS_PER_YEAR - 1     # 14 岁那一岁的最后一格，之后不再掷
     for h in list(q("SELECT * FROM heirs WHERE adult_day=0 AND COALESCE(npc_key,'')=''")):
-        years = min(heir_age_years(h, day), HEIR_ILL_ADULT_YEARS)
-        done = h['ill_years']
+        slot = min(int(heir_age_days(h, day) * AGE_YEARS_PER_DAY * HEIR_ILL_ROLLS_PER_YEAR), last_slot)
+        done = h['ill_rolls']
         if done == -2:
-            run('UPDATE heirs SET ill_years=? WHERE id=?', (years, h['id'])); continue
-        if years > done:
-            run('UPDATE heirs SET ill_years=? WHERE id=?', (years, h['id']))
-            if not h['illness'] and years <= HEIR_ILL_ADULT_YEARS and random.random() < heir_ill_chance(h):
+            run('UPDATE heirs SET ill_rolls=? WHERE id=?', (slot, h['id'])); continue
+        if slot > done:
+            run('UPDATE heirs SET ill_rolls=? WHERE id=?', (slot, h['id']))
+            if not h['illness'] and random.random() < heir_ill_roll_chance(h):
                 heir_fall_ill(get_heir(h['id']), day)
                 continue
         if h['illness'] and h['ill_deadline_ts'] and now_ts() >= h['ill_deadline_ts']:
@@ -8971,7 +8979,7 @@ def resolve_births(day, include_legacy=True):
                  clamp(60 + c['health'] * 0.1, 0, 100),
                  gifts['study'], gifts['riding'], gifts['virtue']))
             hid = q("SELECT id FROM heirs WHERE mother_id=? ORDER BY id DESC", (c['id'],), one=True)['id']
-            run('UPDATE heirs SET ill_years=-1 WHERE id=?', (hid,))        # 新生儿：0 岁那一掷也要算
+            run('UPDATE heirs SET ill_rolls=-1 WHERE id=?', (hid,))        # 新生儿：第 0 格那一掷也要算
             if premature:
                 loss = random.randint(5, 10)
                 run('UPDATE heirs SET premature=1,preterm_health_loss=?,health_max=MAX(1,health_max-?),health=MAX(1,health-?) WHERE id=?', (loss, loss, loss, hid))
