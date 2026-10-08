@@ -67,6 +67,25 @@ class DemotionTests(unittest.TestCase):
         with patch.object(game, 'INTRIGUE_REALTIME', True), patch.object(game.random, 'random', return_value=roll):
             return self.client.post('/intrigue/submit', data={'method': 'divide', 'target_id': self.tgt})
 
+    def test_auto_retaliation_when_victim_can_see_the_culprit(self):
+        self.prep(atk_rank=4, tgt_rank=4)
+        game.run("UPDATE consorts SET silver=2000, influence=40, eyes_until_day=99999 WHERE id=?", (self.tgt,))
+        with patch.object(game, 'AUTO_SCHEME_CONSORTS', {self.tgt}), patch.object(game, 'INTRIGUE_REALTIME', True), \
+                patch.object(game.random, 'random', return_value=0.0):
+            self.client.post('/intrigue/submit', data={'method': 'rumor', 'target_id': self.tgt})
+        back = game.q("SELECT * FROM intrigues WHERE attacker_id=? AND target_id=?", (self.tgt, self.atk))
+        self.assertEqual(len(back), 1)
+        self.assertIn(back[0]['method'], ('divide', 'rumor'))
+        self.assertEqual(back[0]['status'], 'done')
+
+    def test_no_retaliation_without_eyes_or_for_other_players(self):
+        self.prep(atk_rank=4, tgt_rank=4)
+        game.run("UPDATE consorts SET eyes_until_day=0 WHERE id=?", (self.tgt,))
+        with patch.object(game, 'AUTO_SCHEME_CONSORTS', {self.tgt}), patch.object(game, 'INTRIGUE_REALTIME', True), \
+                patch.object(game.random, 'random', return_value=0.0):
+            self.client.post('/intrigue/submit', data={'method': 'rumor', 'target_id': self.tgt})
+        self.assertEqual(len(game.q("SELECT * FROM intrigues WHERE attacker_id=?", (self.tgt,))), 0)
+
     def test_divide_cuts_target_influence_and_can_push_it_below_the_line(self):
         self.prep(atk_rank=2, tgt_rank=5)
         game.run("UPDATE consorts SET influence=30 WHERE id=?", (self.tgt,))

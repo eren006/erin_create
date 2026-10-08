@@ -2122,6 +2122,28 @@ def auto_scheme_on_promotion(target_id):
         resolve_now(iid)
 
 
+def auto_retaliate(victim_id, attacker_id):
+    """怡嫔（AUTO_SCHEME_CONSORTS）看得出是谁害的她，就自动回敬一手：离间党羽削势力，或散布流言；同一天对同一个人只回敬一次"""
+    if victim_id not in AUTO_SCHEME_CONSORTS or victim_id == attacker_id: return
+    v, t = get_consort(victim_id), get_consort(attacker_id)
+    day = cur_day()
+    if not v or not t or v['status'] != 'normal' or is_sick(v) or intrigue_capped(victim_id): return
+    if t['status'] in ('xiunv', 'cold', 'dead') or (t['user_id'] and t['entered_day'] >= day) or bully_block(v, t): return
+    if daily_count(victim_id, f'retaliate:{attacker_id}'): return
+    if q("SELECT COUNT(*) n FROM intrigues WHERE target_id=? AND day=? AND status IN ('pending','done')", (attacker_id, day), one=True)['n'] >= INTRIGUE_TARGET_DAILY_MAX: return
+    methods = [m for m in ('divide', 'rumor') if v['silver'] >= INTRIGUES[m]['silver'] and v['rank'] >= INTRIGUES[m]['min_rank']
+               and (INTRIGUES[m]['npc_ok'] or not t['npc_key']) and (m != 'divide' or (t['user_id'] and t['influence'] > 0))]
+    if not methods: return
+    method = random.choice(methods)
+    cfg = INTRIGUES[method]
+    run("UPDATE consorts SET silver=silver-? WHERE id=?", (cfg['silver'], victim_id))
+    iid = run("INSERT INTO intrigues (day, attacker_id, target_id, method, silver_paid, item_used, created_ts) VALUES (?,?,?,?,?,?,?)",
+              (day, victim_id, attacker_id, method, cfg['silver'], '', now_ts())).lastrowid
+    daily_inc(victim_id, 'intrigue')
+    daily_inc(victim_id, f'retaliate:{attacker_id}')
+    resolve_now(iid)
+
+
 def set_rank(cid, new_rank, reason_day=None):
     new_rank = max(1, min(PLAYER_MAX_RANK, new_rank))
     old = get_consort(cid)['rank']
@@ -8028,7 +8050,11 @@ def resolve_intrigue(it, bed_id=None):
             gain_intrigue_influence(it, share=CONSPIRE_INFLUENCE_SHARE, actor_id=partner['id'])
         else:
             gain_intrigue_influence(it)
-        return done('success')
+        res = done('success')
+        if tell_name and tgt['user_id']:
+            try: auto_retaliate(tgt['id'], atk['id'])
+            except Exception: traceback.print_exc()      # 回敬是附带的，出错不能连累原来的结算
+        return res
 
     if caught:
         mood_extra = state()['emperor_mood'] == '震怒'
@@ -10642,6 +10668,8 @@ def open_drug_case(it, punished=0, force=False):
     if eyes_active(victim) and it['drug'] not in PREGNANCY_DRUGS:      # 红花、麝香：眼线也查不出是谁
         notify(victim['id'], f'眼线回报：这回下手的是{display_name(culprit)}。')
         run("UPDATE consorts SET culprit_id=? WHERE id=?", (culprit['id'], victim['id']))
+        try: auto_retaliate(victim['id'], culprit['id'])
+        except Exception: traceback.print_exc()
     return case_id
 
 
