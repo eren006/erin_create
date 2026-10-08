@@ -780,6 +780,7 @@ a { color: var(--link); text-decoration: none; }
 {% elif name == 'moments' %}<rect class="icon-wash" x="6" y="6" width="28" height="28" rx="5"/><circle cx="15" cy="15" r="3"/><path d="M7 28l9-8 6 5 5-7 7 10M27 3v6M24 6h6"/>
 {% elif name == 'bottle' %}<path class="icon-wash" d="M16 4h8v5l4 5v17a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4V14l4-5z"/><path d="M16 4h8v5l4 5v17a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4V14l4-5zM16 4h8M16 9h8M17 22h6M17 27h4"/>
 {% elif name == 'wish' %}<path class="icon-wash" d="M10 12h20v23H10z"/><path d="M10 12h20v23H10zM20 4v12M16 4h8M15 23h10M15 28h6"/><circle cx="20" cy="17" r="1"/>
+{% elif name == 'rel' %}<circle class="icon-wash" cx="14" cy="20" r="9"/><circle class="icon-wash" cx="26" cy="20" r="9"/><circle cx="14" cy="20" r="9"/><circle cx="26" cy="20" r="9"/><path d="M20 4v5M20 31v5"/>
 {% elif name == 'lovemail' %}<rect class="icon-wash" x="5" y="10" width="30" height="24" rx="4"/><path d="M5 14l15 10 15-10M6 32l9-9M34 32l-9-9M20 13s-7-4-7-8a4 4 0 0 1 7-2 4 4 0 0 1 7 2c0 4-7 8-7 8Z"/>
 {% elif name == 'song' %}<path class="icon-wash" d="M14 10l17-4v8l-17 4z"/><path d="M14 28V10l17-4v18M14 18l17-4"/><ellipse cx="9" cy="29" rx="5" ry="4"/><ellipse cx="26" cy="25" rx="5" ry="4"/>
 {% elif name == 'games' %}<path class="icon-wash" d="M12 12h16c4 0 6 4 7 10l1 7c1 5-4 7-7 3l-4-5H15l-4 5c-3 4-8 2-7-3l1-7c1-6 3-10 7-10Z"/><path d="M12 12h16c4 0 6 4 7 10l1 7c1 5-4 7-7 3l-4-5H15l-4 5c-3 4-8 2-7-3l1-7c1-6 3-10 7-10ZM9 20h8M13 16v8"/><circle cx="27" cy="18" r="1"/><circle cx="30" cy="22" r="1"/>
@@ -1138,6 +1139,7 @@ a { color: var(--link); text-decoration: none; }
       <a class="row" href="{{ url_for('player_song') }}">{{ admin_app_icon('song') }}<span class="name">点歌台</span>{% if disc.song %}<span class="detail">{{ disc.song }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>
       {% endif %}
       {% if wish_on and not phone_admin %}<a class="row wish-entry" href="{{ url_for('player_wishes') }}">{{ admin_app_icon('wish') }}<span class="name">心愿</span>{% if disc.wish %}<span class="detail">{{ disc.wish }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>{% endif %}
+      {% if rel_on and not phone_admin %}<a class="row" href="{{ url_for('player_rel') }}">{{ admin_app_icon('rel') }}<span class="name">关系线</span>{% if disc.rel %}<span class="detail">{{ disc.rel }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>{% endif %}
       {% if bottle_on %}<a class="row bottle-entry" href="{{ url_for('player_bottles') if not phone_admin else url_for('admin_phone_bottles') }}">{{ admin_app_icon('bottle') }}<span class="name">漂流瓶</span>{% if disc.bottle %}<span class="detail">{{ disc.bottle }}</span>{% endif %}<span class="chev" aria-hidden="true">›</span></a>{% endif %}
     </div>
     {% if not phone_admin or has_maps %}

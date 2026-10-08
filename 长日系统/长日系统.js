@@ -10525,6 +10525,19 @@ async function wishDrain(platform) {
     } catch (e) { console.error("[网页心愿] 排空队列出错：" + (e.message || e)); }
     _wishDraining = false;
 }
+// 网页关系线的操作：按 id 先后同步进本插件的副本并通知对方群（实现在社交卫星 globalThis.__changriRelWeb）；
+// 同一条重复收到（回报还没送达）靠 phone_rel_ops_done 里的 id 判断，不会重复通知。社交卫星没加载就不处理、不回报，等它加载后下一次同步补上。
+function phoneApplyRelOps(platform, ops) {
+    const api = globalThis.__changriRelWeb;
+    if (!api || !ops.length) return;
+    const done = kvGet("phone_rel_ops_done", []), seen = new Set(done);
+    for (const op of ops.slice().sort((a, b) => a.id - b.id)) {
+        if (seen.has(op.id)) continue;
+        try { api.applyOp(platform, op); } catch (e) { console.warn(`[网页关系线] 处理失败 #${op.id}：${e.message || e}`); }
+        done.push(op.id); seen.add(op.id);
+    }
+    kvSet("phone_rel_ops_done", done.slice(-300));
+}
 function phoneApplyWishOps(platform, ops) {
     if (!ops.length) return;
     const doneIds = new Set(kvGet("phone_wish_ops_done", []).map(d => d.id));
@@ -12781,7 +12794,7 @@ let _phoneReportsAt = 0;   // 报告每 2 分钟随同步上报一次
 let _phoneSyncBusySince = 0;
 async function phoneWebSync() {
     if (_phoneSyncBusy && Date.now() - _phoneSyncBusySince < 90 * 1000) return;
-    if (!isArchiveEnabled()) { if (kvGet("phone_web_send", {}).on) kvSet("phone_web_send", {}); if (kvGet("phone_bottle_web", {}).on) kvSet("phone_bottle_web", {}); if (kvGet("phone_wish_web", {}).on) kvSet("phone_wish_web", {}); return; }
+    if (!isArchiveEnabled()) { if (kvGet("phone_web_send", {}).on) kvSet("phone_web_send", {}); if (kvGet("phone_bottle_web", {}).on) kvSet("phone_bottle_web", {}); if (kvGet("phone_wish_web", {}).on) kvSet("phone_wish_web", {}); if (kvGet("phone_rel_web", {}).on) kvSet("phone_rel_web", {}); return; }
     const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
     const token = seal.ext.getStringConfig(ext, "RP存档Token") || "";
     if (!base) return;
@@ -12845,6 +12858,14 @@ async function phoneWebSyncCore(base, token) {
         bounty_enabled: cachedGet("wish_bounty_enabled") !== "false",
         max_concurrent: getStorageInt("wish_max_concurrent", 3),
         daily_post_limit: getStorageInt("wish_daily_post_limit", 0)
+    };
+    // 关系线：网页关系线照这里的开关和上限执行（上限是群里「拉线」同一批设置；最终插件按自己的数据再兜底）
+    rules.relationship = {
+        enabled: cachedGet("relationship_system_enabled") === "true",
+        max_rel: getStorageInt("max_relationships_per_user", 20),
+        max_detail_chars: getStorageInt("max_detail_chars", 500),
+        max_detail_count: getStorageInt("max_detail_count", 20),
+        max_rel_total_chars: getStorageInt("max_rel_total_chars", 3000)
     };
     // 心愿墙：当前还漂着的心愿（24 小时内）。from_role 只给网页判断「哪些是我的」，不展示给别人
     const wishNow = Date.now();
@@ -12922,6 +12943,11 @@ async function phoneWebSyncCore(base, token) {
     const adminOpsDone = kvGet("phone_admin_ops_done", []);
     const bottleOpsDone = kvGet("phone_bottle_ops_done", []);
     const wishOpsDone = kvGet("phone_wish_ops_done", []);
+    const relOpsDone = kvGet("phone_rel_ops_done", []);
+    // 关系线副本：网页关着时才上报（开着时以存档站为准）。指纹每次都带，存档站发现不一样（rel_need）才在下一次带上整份
+    const relApi = globalThis.__changriRelWeb;
+    let relSnap = null;
+    if (relApi && !kvGet("phone_rel_web", {}).on) { try { relSnap = relApi.snapshot(platform); } catch (e) { console.warn(`[网页手机同步] 关系线副本生成失败：${e.message || e}`); } }
     const groupAfter = parseInt(cachedGet("phone_group_cursor") || "0") || 0;
     const reports = Date.now() - _phoneReportsAt >= 120 * 1000 ? buildPhoneReports(platform) : null;
     if (reports) _phoneReportsAt = Date.now();
@@ -12930,11 +12956,13 @@ async function phoneWebSyncCore(base, token) {
         headers: { "Content-Type": "application/json", "X-Archive-Token": token },
         body: JSON.stringify({ after, shop_after: shopAfter, songs_done: songsDone,
             lovemail_done: lmDone, lovemail_revoke_done: lmRevokeDone, block_ops_done: blockOpsDone, admin_ops_done: adminOpsDone, bottle_ops_done: bottleOpsDone, wish_ops_done: wishOpsDone, group_after: groupAfter,
+            rel_ops_done: relOpsDone,
+            ...(relSnap ? { rel_hash: relSnap.hash, ...(kvGet("phone_rel_need", false) ? { rel_lines: relSnap.lines } : {}) } : {}),
             ...(reports ? { reports } : {}),
             // block_write：告诉存档站这个版本会处理网页上的实名拉黑，网页才显示拉黑按钮
             snapshot: { game_day: gameDay, roster, rules, feature_off: featureOff, blocks, block_write: true,
                         counts, last, catalogs, displays, shop, lovemail, wishes,
-                        plugin: { version: ext.version || "", wish_web: !!globalThis.__changriWishWeb, catalog: buildPhoneCatalog(), params: buildPhoneAdminParams() } } })
+                        plugin: { version: ext.version || "", wish_web: !!globalThis.__changriWishWeb, rel_web: !!globalThis.__changriRelWeb, catalog: buildPhoneCatalog(), params: buildPhoneAdminParams() } } })
     });
     if (!resp.ok) return;
     const data = await resp.json();
@@ -12964,10 +12992,14 @@ async function phoneWebSyncCore(base, token) {
         kvSet("phone_wish_ops_done", kvGet("phone_wish_ops_done", []).filter(d => !sentW.has(d.id)));
     }
     phoneApplyWishOps(platform, data.wish_ops || []);
+    if (relOpsDone.length) kvSet("phone_rel_ops_done", kvGet("phone_rel_ops_done", []).filter(id => !relOpsDone.includes(id)));
+    phoneApplyRelOps(platform, data.rel_ops || []);
+    kvSet("phone_rel_need", !!data.rel_need);
     phoneApplyGroupEvents(platform, data.group_events || [], gameDay, groupAfter);
     kvSet("phone_web_send", { on: !!data.web_send, url: `${base}/p`, at: Date.now() });
     kvSet("phone_bottle_web", { on: !!data.bottle_web, url: `${base}/p`, at: Date.now() });
     kvSet("phone_wish_web", { on: !!data.wish_web, url: `${base}/p`, at: Date.now() });
+    kvSet("phone_rel_web", { on: !!data.rel_web, url: `${base}/p`, at: Date.now() });
 
     const events = data.events || [];
     if (!events.length) return;

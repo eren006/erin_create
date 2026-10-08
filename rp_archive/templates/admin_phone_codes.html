@@ -70,8 +70,9 @@
     <div class="pc-pill"><small>网页发送</small><b class="{{ 'on' if web_send else 'off' }}">{{ '已打开' if web_send else '关闭' }}</b></div>
     <div class="pc-pill"><small>网页漂流瓶</small><b class="{{ 'on' if bottle_web else 'off' }}">{{ '已打开' if bottle_web else '关闭' }}</b></div>
     <div class="pc-pill"><small>网页心愿</small><b class="{{ 'on' if wish_web else 'off' }}">{{ '已打开' if wish_web else '关闭' }}</b></div>
+    <div class="pc-pill"><small>网页关系线</small><b class="{{ 'on' if rel_web else 'off' }}">{{ '已打开' if rel_web else '关闭' }}</b></div>
     <div class="pc-pill"><small>礼品店礼物</small><b class="{{ 'bad' if shop_site_n == 0 else ('warn' if (shop_bot_n is not none and shop_bot_n != shop_site_n) else 'on') }}">网页 {{ shop_site_n }} 件{% if shop_bot_n is not none %} · 机器人 {{ shop_bot_n }} 件{% endif %}</b></div>
-    <div class="pc-pill"><small>插件</small><b class="{{ 'on' if (can_bottle and can_wish) else 'warn' }}">{{ plugin_version or '未知' }}{% if not (can_bottle and can_wish) %} · 部分功能需升级{% endif %}</b></div>
+    <div class="pc-pill"><small>插件</small><b class="{{ 'on' if (can_bottle and can_wish and can_rel) else 'warn' }}">{{ plugin_version or '未知' }}{% if not (can_bottle and can_wish and can_rel) %} · 部分功能需升级{% endif %}</b></div>
   </div>
   <h3 class="pc-h">通讯与玩法开关</h3>
   {% call switch_card('临时暂停所有通讯', 'comm_pause', comm_paused, True, '暂停所有通讯', '恢复通讯', '已暂停', '正常', confirm_on='暂停后玩家不能发短信、礼物、群聊、点歌、朋友圈、心动信，确定吗？', bad_when_on=True) %}
@@ -95,6 +96,12 @@
   {% call switch_card('网页心愿（挂 / 悬赏 / 摘 / 撤 搬到小手机）', 'wish_web', wish_web, can_wish, '打开网页心愿', '关闭网页心愿', '已打开（群里除「看心愿」外已停用）', '已关闭（用群里的）') %}
       心愿池只有一个（在机器人里），群里和网页是<b>同一批心愿</b>。打开后玩家在小手机「发现 → 心愿」里看心愿墙、挂心愿（可带悬赏）、摘别人的心愿、撤自己的心愿。所有操作交给机器人<b>按先后顺序一个一个</b>处理（约半分钟内）：规则和群里一样（心愿开关、开放时间、时间冲突、数量上限、写信币都照旧），摘取会建专属小群；两个人同时摘同一个，先到的成功；建群失败心愿会放回。群里发「挂心愿 / 悬赏心愿 / 摘心愿 / 撤心愿」会提示去网页，只有「看心愿」还在群里。关掉就回群里用。
       需要插件 1.10.8 或更高、社交卫星已加载并同步过一次才能打开{% if not can_wish %}（<b style="color:var(--gold)">目前插件版本不够、社交卫星没加载或还没同步</b>）{% endif %}。
+  {% endcall %}
+  {% call switch_card('网页关系线（交流 / 补充内容 / 重要时间点，和群里的二选一）', 'rel_web', rel_web, can_rel, '打开网页关系线', '关闭网页关系线', '已打开（群里的拉线等已停用）', '已关闭（用群里的）') %}
+      关系线的数据<b>以存档站为准</b>。打开后玩家在小手机「发现 → 关系线」进入一个单独的页面：<b>交流</b>（像短信的短消息）、<b>补充内容</b>（原来拉线的细节，可以修改，修改会通知对方群）、<b>重要时间点</b>（时间自己填文字 + 内容）。
+      发起额度、单条字数、段数、总字数照机器人最后一次同步的规则；机器人会把网页上的补充内容同步进它自己那份副本（管理员的强制 / 删除 / 清空 / 统计指令继续用它），并按顺序往对方的私人群发通知（交流 10 分钟内只通知一次）。
+      打开期间群里的「拉线 / 撤回关系 / 确认关系线 / 查看关系线」会提示去网页。关掉就回群里用：这时群里改的内容会反过来同步进存档站（补充内容与线以机器人为准，交流和时间点原样保留），所以两种方式切换不会丢数据。
+      需要插件 1.10.9 或更高、社交卫星已加载并同步过一次才能打开{% if not can_rel %}（<b style="color:var(--gold)">目前插件版本不够、社交卫星没加载或还没同步</b>）{% endif %}。
   {% endcall %}
   <h3 class="pc-h">手机码</h3>
   <div class="pc-add">

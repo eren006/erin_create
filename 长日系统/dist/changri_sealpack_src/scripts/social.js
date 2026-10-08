@@ -571,6 +571,7 @@ const RelationshipUtils = {
 let cmd_add_rel_detail = seal.ext.newCmdItemInfo();
 cmd_add_rel_detail.name = "拉线";
 cmd_add_rel_detail.solve = (ctx, msg, cmdArgs) => {
+    { const _rw = relWebNotice("拉线"); if (_rw) return seal.replyToSender(ctx, msg, _rw); }
     if (!RelationshipUtils.isEnabled()) return seal.replyToSender(ctx, msg, "❌ 系统已关闭");
 
     const platform = msg.platform;
@@ -691,6 +692,7 @@ function sendNewDetailNotification(ctx, msg, toRoleName, content, fromRoleName, 
 let cmd_confirm_relationship = seal.ext.newCmdItemInfo();
 cmd_confirm_relationship.name = "确认关系线";
 cmd_confirm_relationship.solve = (ctx, msg, cmdArgs) => {
+    { const _rw = relWebNotice("确认关系线"); if (_rw) return seal.replyToSender(ctx, msg, _rw); }
     const platform = msg.platform;
     const sendName = RelationshipUtils.getRoleName(ctx, msg, platform);
     const toName = cmdArgs.getArgN(1);
@@ -794,6 +796,7 @@ let cmd_withdraw_relation = seal.ext.newCmdItemInfo();
 cmd_withdraw_relation.name = "撤回关系";
 cmd_withdraw_relation.help = "。撤回关系 对方角色名 要撤回的内容（精确匹配，仅撤回自己发送的细节）";
 cmd_withdraw_relation.solve = (ctx, msg, cmdArgs) => {
+    { const _rw = relWebNotice("修改 / 撤回关系细节"); if (_rw) return seal.replyToSender(ctx, msg, _rw); }
     const platform = msg.platform;
     const sendName = RelationshipUtils.getRoleName(ctx, msg, platform);
     const toName = cmdArgs.getArgN(1);
@@ -844,6 +847,7 @@ let cmd_view_relationship = seal.ext.newCmdItemInfo();
 cmd_view_relationship.name = "查看关系线";
 cmd_view_relationship.help = "。查看关系线 [对方名]\n(不加名字：看列表；加名字：发送合并转发细节)";
 cmd_view_relationship.solve = (ctx, msg, cmdArgs) => {
+    { const _rw = relWebNotice("查看关系线"); if (_rw) return seal.replyToSender(ctx, msg, _rw); }
     const platform = msg.platform;
     const sendName = RelationshipUtils.getRoleName(ctx, msg, platform);
     if (!sendName) return seal.replyToSender(ctx, msg, "请先绑定角色");
@@ -1383,6 +1387,85 @@ async function wishWebPick(platform, roleName, wishId) {
     return { ok: false, wishId: id, msg: (notes[0] || r.msg || "没有成功").replace(/\s+/g, " ") };
 }
 globalThis.__changriWishWeb = { post: wishWebPost, withdraw: wishWebWithdraw, pick: wishWebPick };
+
+// ==========================================
+// 网页手机的关系线（主插件 phoneApplyRelOps 通过 globalThis.__changriRelWeb 调用）
+// 数据以存档站为准。这里只做两件事：
+//  ① 把网页上发生的事同步进本插件自己那份副本（relationship_lines，管理员的强制 / 删除 / 清空 / 统计指令还读它）；
+//  ② 往对方的私人群发通知（新补充内容 / 修改 / 时间点 / 交流提醒 / 确认）。
+// 网页开着时群里的拉线 / 撤回关系 / 确认关系线 / 查看关系线改成提示去网页；超过 10 分钟没同步就当没开。
+// 网页关着时，主插件需要时会用 snapshot() 把整份副本交给存档站（补充内容与线以这份为准，交流和时间点存档站原样保留）。
+// ==========================================
+const REL_WEB_STALE_MS = 10 * 60 * 1000;
+function relWebNotice(label) {
+    const st = mainKvGet("phone_rel_web", {});
+    if (!st.on || Date.now() - (st.at || 0) > REL_WEB_STALE_MS) return null;
+    return `🔗 ${label}现在改在网页手机里：${st.url || "存档站 /p"}\n在「发现 → 关系线」里操作，用管理员私发给你的激活码登录。`;
+}
+function relWebNotify(platform, toName, text) {
+    const addr = getTargetAddr(platform, toName);
+    const ep = getSafeEndPoint(platform);
+    if (!addr || !ep) return;
+    const gid = String(addr[1]).replace(/[^\d]/g, "");
+    if (!gid) return;
+    const m = seal.newMessage(); m.messageType = "group"; m.groupId = `${platform}-Group:${gid}`;
+    seal.replyToSender(seal.createTempCtx(ep, m), m, `[CQ:at,qq=${addr[0]}]\n${text}`);
+}
+const REL_WEB_HINT = "（在网页手机「发现 → 关系线」里查看和回复）";
+function relWebApplyOp(platform, op) {
+    const p = op.p || {}, frm = p.frm, to = p.to;
+    if (!frm || !to) return;
+    if (op.kind === "detail_add" || op.kind === "detail_edit" || op.kind === "confirm") {
+        const fUid = getUidByRoleName(platform, frm), tUid = getUidByRoleName(platform, to);
+        if (fUid && tUid) {
+            const relData = RelationshipUtils.getData("relationship_lines") || {};
+            if (!relData[platform]) relData[platform] = {};
+            if (!relData[platform][fUid]) relData[platform][fUid] = {};
+            if (!relData[platform][tUid]) relData[platform][tUid] = {};
+            let rel = relData[platform][fUid][tUid] || relData[platform][tUid][fUid];
+            if (!rel && op.kind === "detail_add") rel = { initiator: frm, confirmed: false, details: [] };
+            if (rel) {
+                if (!rel.details) rel.details = [];
+                if (op.kind === "detail_add") rel.details.push({ text: p.text, from: frm });
+                else if (op.kind === "detail_edit") { const d = rel.details.find(x => x.from === frm && x.text === p.old); if (d) d.text = p.new; }
+                else rel.confirmed = true;
+                relData[platform][fUid][tUid] = rel;
+                relData[platform][tUid][fUid] = rel;
+                RelationshipUtils.setData("relationship_lines", relData);
+            }
+        }
+    }
+    const msgs = {
+        detail_add: `${p.is_new ? "✨ 「" + frm + "」向你发起了关系线\n" : ""}📝 来自「${frm}」的新关系细节：\n${p.text}\n\n${REL_WEB_HINT}`,
+        detail_edit: `✏️ 「${frm}」修改了一条发给你的关系细节：\n原：${p.old}\n改为：${p.new}\n\n${REL_WEB_HINT}`,
+        chat: `💬 「${frm}」在你们的关系线里给你留言了\n${REL_WEB_HINT}`,
+        time_add: `🕰️ 「${frm}」记下了一个重要时间点：\n${p.label}｜${p.text}\n\n${REL_WEB_HINT}`,
+        time_edit: `✏️ 「${frm}」修改了一个重要时间点：\n${p.label}｜${p.text}\n\n${REL_WEB_HINT}`,
+        time_del: `🗑️ 「${frm}」删除了一个重要时间点：\n${p.label}｜${p.text}`,
+        confirm: `🤝 「${frm}」已确认并完成了你们的关系线！`
+    };
+    if (msgs[op.kind]) relWebNotify(platform, to, msgs[op.kind]);
+}
+// 整份副本 + 指纹（名字排序后取 djb2）：存档站只在指纹变了才要整份
+function relWebSnapshot(platform) {
+    const relData = (RelationshipUtils.getData("relationship_lines") || {})[platform] || {};
+    const seen = new Set(), lines = [];
+    for (const [ua, m] of Object.entries(relData)) {
+        for (const [ub, rel] of Object.entries(m || {})) {
+            const key = ua < ub ? ua + "|" + ub : ub + "|" + ua;
+            if (seen.has(key) || !rel) continue;
+            seen.add(key);
+            lines.push({ a: resolveUidToName(platform, ua), b: resolveUidToName(platform, ub), initiator: rel.initiator || "", confirmed: !!rel.confirmed,
+                         details: (rel.details || []).map(d => ({ from: d.from, text: d.text })) });
+        }
+    }
+    lines.sort((x, y) => (x.a + "|" + x.b) < (y.a + "|" + y.b) ? -1 : 1);
+    const str = JSON.stringify(lines);
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return { hash: String(h >>> 0), lines };
+}
+globalThis.__changriRelWeb = { applyOp: relWebApplyOp, snapshot: relWebSnapshot };
 
 // ==========================================
 // 看心愿 & 摘心愿

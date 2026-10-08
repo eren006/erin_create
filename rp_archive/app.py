@@ -1767,6 +1767,54 @@ def _migrate(conn):
         )
     """)
 
+    # ── 32. 网页关系线：数据以存档站为准。一条线 = 两个角色（role_a<role_b 排序去重），发起人单独记；
+    #    条目三类：detail 补充内容（原来的「细节」）/ chat 交流 / time 重要时间点（label=玩家自填的时间文字）。
+    #    phone_rel_ops 是交给插件的队列：插件拿去同步它自己那份副本，并往对方的私人群发通知 ──
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rel_lines (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id    INTEGER NOT NULL,
+            role_a     TEXT    NOT NULL,
+            role_b     TEXT    NOT NULL,
+            initiator  TEXT    NOT NULL DEFAULT '',
+            system     INTEGER NOT NULL DEFAULT 0,
+            confirmed  INTEGER NOT NULL DEFAULT 0,
+            seen_bot   INTEGER NOT NULL DEFAULT 0,
+            last_chat_notify INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL,
+            UNIQUE (show_id, role_a, role_b)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rel_items (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            line_id    INTEGER NOT NULL,
+            show_id    INTEGER NOT NULL,
+            kind       TEXT    NOT NULL,
+            from_role  TEXT    NOT NULL,
+            label      TEXT    NOT NULL DEFAULT '',
+            text       TEXT    NOT NULL,
+            created_at INTEGER NOT NULL,
+            edited_at  INTEGER NOT NULL DEFAULT 0,
+            deleted    INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rel_items_line ON rel_items(line_id, kind, id)")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS phone_rel_ops (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            show_id    INTEGER NOT NULL,
+            kind       TEXT    NOT NULL,
+            payload    TEXT    NOT NULL DEFAULT '{}',
+            done       INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        )
+    """)
+    if "rel_web" not in _col_names(conn, "phone_settings"):
+        conn.execute("ALTER TABLE phone_settings ADD COLUMN rel_web INTEGER NOT NULL DEFAULT 0")  # 网页关系线（开着时群里的拉线/查看/撤回/确认停用）
+    if "rel_hash" not in _col_names(conn, "phone_settings"):
+        conn.execute("ALTER TABLE phone_settings ADD COLUMN rel_hash TEXT NOT NULL DEFAULT ''")   # 最近一次收下的插件关系线副本指纹
+
     # ── 27. 插件每 2 分钟随同步上报的每人报告（我的数量/弧长/时间线/待回），网页「时间线与统计」页只读 ──
     conn.execute("""
         CREATE TABLE IF NOT EXISTS phone_reports (
@@ -5364,6 +5412,12 @@ def _phone_feature_overview(db, sid):
         rows.append(("🌠 心愿", "网页（发现 → 心愿）：挂、悬赏、摘、撤都在这里；群里只剩「看心愿」"))
     else:
         rows.append(("🌠 心愿", "群里发「挂心愿 / 摘心愿 / 撤心愿」"))
+    if (rules.get("relationship") or {}).get("enabled", True) is False:
+        rows.append(("🔗 关系线", "本季暂未开放"))
+    elif _phone_rel_on(db, sid):
+        rows.append(("🔗 关系线", "网页（发现 → 关系线）：交流、补充内容、重要时间点都在这里，修改会通知对方；群里的「拉线 / 撤回关系 / 确认关系线 / 查看关系线」已停用"))
+    else:
+        rows.append(("🔗 关系线", "群里发「拉线 对方名 内容」"))
     rows.append(("📷 朋友圈 · 🎮 小游戏", "网页（发现）"))
     if GROUP_CHAT_ON:
         rows.append(("👥 群聊", "网页发送打开时，在「＋ 新信息」里发起"))
@@ -5449,6 +5503,8 @@ def _phone_feature_entries(db, sid, owner):
     ]
     if _phone_wish_on(db, sid):
         items.insert(3, ("心愿", "挂心愿 摘心愿 悬赏 许愿 心愿墙", "看心愿墙、挂、摘、撤", url_for("player_wishes")))
+    if _phone_rel_on(db, sid):
+        items.insert(3, ("关系线", "关系线 拉线 补充内容 交流 重要时间点 确认", "和某人的交流、补充内容、时间点", url_for("player_rel")))
     if _phone_bottle_on(db, sid):
         items.insert(3, ("漂流瓶", "扔瓶子 瓶子 匿名 纸条", "扔一个、回信", url_for("player_bottles")))
     if _phone_maps(db, sid, False):
@@ -5947,6 +6003,8 @@ def _phone_comm_pause_guard():
     path = request.path
     key = _PAUSE_FORMS.get(path) or ("phone_flash" if re.fullmatch(r"/p/me/g/\d+/send", path) or path == "/p/me/bottles/throw" or path == "/p/me/wishes/post" or re.fullmatch(r"/p/me/wishes/[A-Za-z0-9]+/(withdraw|pick)", path)
                                      or re.fullmatch(r"/p/me/bottles/\d+/reply", path) else None)
+    if not key and path.startswith("/p/me/rel/"):
+        key = "rel_flash"
     if not key or (path == "/p/me/lovemail" and request.form.get("action") == "revoke"):
         return None
     who = _phone_current()
@@ -6673,7 +6731,9 @@ def api_phone_sync():
                            (show["id"], role, blob, now))
         db.commit()
     lovemails, lm_revokes = _lm_for_bot(db, show["id"], data.get("lovemail_done"), data.get("lovemail_revoke_done"))
-    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "bottle_web": _phone_bottle_on(db, show["id"]), "wish_web": _phone_wish_on(db, show["id"]), "events": events, "shop_events": shop_events,
+    rel_ops, rel_need = _rel_sync(db, show["id"], data)
+    return jsonify({"ok": True, "web_send": _phone_web_send_on(db, show["id"]), "bottle_web": _phone_bottle_on(db, show["id"]), "wish_web": _phone_wish_on(db, show["id"]),
+                    "rel_web": _phone_rel_on(db, show["id"]), "rel_ops": rel_ops, "rel_need": rel_need, "events": events, "shop_events": shop_events,
                     "songs": _song_pending_for_bot(db, show["id"], data.get("songs_done")),
                     "lovemails": lovemails, "lovemail_revokes": lm_revokes,
                     "block_ops": _block_ops_for_bot(db, show["id"], data.get("block_ops_done")),
@@ -6831,7 +6891,7 @@ def player_discover():
         "SELECT role_name, content, created_at, (SELECT COUNT(*) FROM moment_images i WHERE i.moment_id=m.id) AS n "
         "FROM moments m WHERE show_id=? AND deleted=0 ORDER BY id DESC LIMIT 1", (sid,)).fetchone()
     return render_template("phone.html", mode="discover", owner=owner, sid=sid, csrf=_phone_csrf(),
-                           phone_admin=(owner == PHONE_ADMIN), moments_latest=latest, bottle_on=_phone_bottle_on(db, sid), wish_on=_phone_wish_on(db, sid),
+                           phone_admin=(owner == PHONE_ADMIN), moments_latest=latest, bottle_on=_phone_bottle_on(db, sid), wish_on=_phone_wish_on(db, sid), rel_on=_phone_rel_on(db, sid),
                            has_maps=bool(_phone_maps(db, sid, owner == PHONE_ADMIN)),
                            disc=_discover_details(db, sid, owner) if owner != PHONE_ADMIN else {})
 
@@ -6842,6 +6902,9 @@ def _discover_details(db, sid, owner):
         if _phone_wish_on(db, sid):
             n = len(_wish_wall(db, sid, owner))
             out["wish"] = f"{n} 个漂浮中" if n else "暂时没有"
+        if _phone_rel_on(db, sid):
+            pend = sum(1 for l in _rel_list(db, sid, owner) if l["pending"])
+            out["rel"] = f"{pend} 条待回" if pend else ""
         if _phone_bottle_on(db, sid):
             n = len([t for t in _bottle_threads(db, sid, owner) if not t["state"]])
             out["bottle"] = f"{n} 个瓶子" if n else ""
@@ -8361,6 +8424,449 @@ def player_wish_withdraw(wid):
     return redirect(url_for("player_wishes"))
 
 
+# ── 网页关系线 ─────────────────────────────────────────────────────────────────
+# 数据以存档站为准（rel_lines / rel_items）。一条线 = 两个角色，条目三类：
+#   detail 补充内容（原来的「细节」，可修改，修改会通知对方）/ chat 交流（短消息，像短信）/ time 重要时间点（时间文字玩家自填）。
+# 网页开着（rel_web）时群里的拉线 / 撤回关系 / 确认关系线 / 查看关系线停用，全部在 /p/me/rel 操作；操作结果排进 phone_rel_ops，
+# 插件拿去同步它自己那份副本（relationship_lines，管理员指令和统计还读它）并往对方的私人群发通知。
+# 网页关闭（用群里的）时反过来：插件需要时把整份副本交上来（rel_lines + rel_hash），存档站照着更新补充内容与线，交流 / 时间点原样保留。
+# 上限（发起额度 / 单条字数 / 段数 / 总字数）来自插件快照 rules.relationship，存档站不另存一套。
+_REL_CHAT_MAX = 200
+_REL_TIME_LABEL_MAX = 20
+_REL_TIME_TEXT_MAX = 200
+_REL_TIME_MAX = 30
+_REL_CHAT_NOTIFY_GAP = 10 * 60_000   # 交流通知对方群的最短间隔，免得一人一句刷屏
+_REL_PENDING_MAX = 30
+
+def _phone_rel_on(db, sid):
+    row = db.execute("SELECT rel_web FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
+    return bool(row and row["rel_web"])
+
+def _rel_rule(snap):
+    r = (snap.get("rules") or {}).get("relationship") or {}
+    return {"enabled": r.get("enabled", True) is not False,
+            "max_rel": int(r.get("max_rel") or 20), "max_chars": int(r.get("max_detail_chars") or 500),
+            "max_count": int(r.get("max_detail_count") or 20), "max_total": int(r.get("max_rel_total_chars") or 3000)}
+
+def _rel_state(db, sid, owner):
+    """(能不能用, 原因)"""
+    if not _phone_rel_on(db, sid):
+        return False, "网页关系线没有开启"
+    if _phone_comm_paused(db, sid):
+        return False, _PAUSE_MSG
+    sync = _phone_sync_row(db, sid)
+    if not sync or (not _phone_day(sync, int(time.time() * 1000))[2] and not sync["snap"].get("demo")):   # 演示季没有机器人，快照是脚本写死的
+        return False, "机器人暂时没有同步，关系线先歇一会儿"
+    show = db.execute("SELECT * FROM shows WHERE id=?", (sid,)).fetchone()
+    if _schedule_zone(dict(show)) != "main":
+        return False, "不在档期内，暂时不能用"
+    if not _rel_rule(sync["snap"])["enabled"]:
+        return False, "关系线功能已关闭"
+    return True, ""
+
+def _rel_line(db, sid, a, b):
+    x, y = sorted((a, b))
+    return db.execute("SELECT * FROM rel_lines WHERE show_id=? AND role_a=? AND role_b=?", (sid, x, y)).fetchone()
+
+def _rel_other(line, owner):
+    return line["role_b"] if line["role_a"] == owner else line["role_a"]
+
+def _rel_op(db, sid, kind, **payload):
+    db.execute("INSERT INTO phone_rel_ops (show_id, kind, payload, created_at) VALUES (?,?,?,?)",
+               (sid, kind, json.dumps(payload, ensure_ascii=False), int(time.time() * 1000)))
+
+def _rel_items(db, line_id, kind):
+    return [dict(r) for r in db.execute(
+        "SELECT * FROM rel_items WHERE line_id=? AND kind=? AND deleted=0 ORDER BY id", (line_id, kind))]
+
+def _rel_totals(db, line_id):
+    r = db.execute("SELECT COUNT(*) n, COALESCE(SUM(LENGTH(text)),0) s FROM rel_items WHERE line_id=? AND kind='detail' AND deleted=0",
+                   (line_id,)).fetchone()
+    return r["n"], r["s"]
+
+def _rel_list(db, sid, owner):
+    """我的关系线列表：对方、谁发起、是否确认、补充/交流/时间点数量、是否轮到我回"""
+    out = []
+    for ln in db.execute("SELECT * FROM rel_lines WHERE show_id=? AND (role_a=? OR role_b=?) ORDER BY id DESC", (sid, owner, owner)):
+        det = _rel_items(db, ln["id"], "detail")
+        chats = db.execute("SELECT COUNT(*) FROM rel_items WHERE line_id=? AND kind='chat' AND deleted=0", (ln["id"],)).fetchone()[0]
+        times = db.execute("SELECT COUNT(*) FROM rel_items WHERE line_id=? AND kind='time' AND deleted=0", (ln["id"],)).fetchone()[0]
+        last_chat = db.execute("SELECT from_role, text FROM rel_items WHERE line_id=? AND kind='chat' AND deleted=0 ORDER BY id DESC LIMIT 1",
+                               (ln["id"],)).fetchone()
+        pending = bool(det) and not ln["confirmed"] and not ln["system"] and det[-1]["from_role"] != owner
+        out.append({"other": _rel_other(ln, owner), "mine": ln["initiator"] == owner, "system": bool(ln["system"]),
+                    "confirmed": bool(ln["confirmed"]), "n_detail": len(det), "n_chat": chats, "n_time": times,
+                    "pending": pending, "last_chat": (last_chat["text"] if last_chat else ""),
+                    "last_chat_mine": bool(last_chat and last_chat["from_role"] == owner), "id": ln["id"]})
+    return out
+
+def _rel_names(db, sid):
+    nicks = _nick_map(db, sid)
+    return lambda r: (f"{nicks[r]}（{r}）" if nicks.get(r) else r)
+
+def _rel_guard(back="player_rel"):
+    who = _phone_current()
+    if not who:
+        return None, redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    if owner == PHONE_ADMIN:
+        return None, redirect(url_for("player_discover"))
+    if not hmac.compare_digest(request.form.get("csrf", ""), session.get("phone_csrf", "") or "-"):
+        session["rel_flash"] = "❌ 页面过期了，刷新后再试"
+        return None, redirect(url_for(back))
+    db = get_db()
+    can, why = _rel_state(db, sid, owner)
+    if not can:
+        session["rel_flash"] = "❌ " + why
+        return None, redirect(url_for(back))
+    if owner not in _phone_roster(_phone_sync_row(db, sid)):
+        session["rel_flash"] = "❌ " + _ROLE_GONE_MSG
+        return None, redirect(url_for(back))
+    if db.execute("SELECT COUNT(*) FROM phone_rel_ops WHERE show_id=? AND done=0", (sid,)).fetchone()[0] >= 300:
+        session["rel_flash"] = "⏳ 机器人那边积压了一些操作，稍等一下再试"
+        return None, redirect(url_for(back))
+    return (sid, owner, db), None
+
+def _rel_text_err(sid, owner, field, *texts, limit=None, label_texts=()):
+    """通用校验：非空 / 长度 / CQ 码 / 重复刷屏 / 违禁词，返回错误文案或 None"""
+    t = (texts[0] or "").strip()
+    if not t:
+        return "❌ 写点什么再发"
+    if limit and len(t) > limit:
+        return f"❌ 最多 {limit} 字（现在 {len(t)} 字）"
+    if _CQ_CODE.search("".join(texts) + "".join(label_texts)):
+        return "❌ 里面不能带 [CQ:…] 这样的代码"
+    if _too_repetitive(t):
+        return _REPEAT_MSG
+    if _blocked_hit(sid, owner, field, *texts, *label_texts):
+        return BLOCKED_MSG
+    return None
+
+@app.route("/p/me/rel")
+def player_rel():
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    if owner == PHONE_ADMIN or not _phone_rel_on(db, sid):
+        return redirect(url_for("player_discover"))
+    can, why = _rel_state(db, sid, owner)
+    sync = _phone_sync_row(db, sid)
+    rule = _rel_rule(sync["snap"]) if sync else _rel_rule({})
+    lines = _rel_list(db, sid, owner)
+    used = sum(1 for l in lines if l["mine"] and not l["system"])
+    have = {l["other"] for l in lines}
+    contacts = sorted(n for n in _phone_roster(sync) if n != owner and n not in have)
+    return render_template("relation.html", mode="list", owner=owner, csrf=_phone_csrf(), can=can, why=why, lines=lines,
+                           contacts=contacts, rule=rule, used=used, disp=_rel_names(db, sid), flash=session.pop("rel_flash", None))
+
+@app.route("/p/me/rel/<other>")
+def player_rel_line(other):
+    who = _phone_current()
+    if not who:
+        return redirect(url_for("phone_code_entry"))
+    sid, owner = who
+    db = get_db()
+    if owner == PHONE_ADMIN or not _phone_rel_on(db, sid):
+        return redirect(url_for("player_discover"))
+    ln = _rel_line(db, sid, owner, other)
+    if not ln:
+        session["rel_flash"] = "❌ 你们之间还没有关系线"
+        return redirect(url_for("player_rel"))
+    can, why = _rel_state(db, sid, owner)
+    sync = _phone_sync_row(db, sid)
+    rule = _rel_rule(sync["snap"]) if sync else _rel_rule({})
+    n_det, total = _rel_totals(db, ln["id"])
+    tab = request.args.get("tab") if request.args.get("tab") in ("chat", "detail", "time") else "chat"
+    return render_template("relation.html", mode="line", owner=owner, other=other, csrf=_phone_csrf(), can=can, why=why, tab=tab,
+                           line=dict(ln), details=_rel_items(db, ln["id"], "detail"), chats=_rel_items(db, ln["id"], "chat")[-200:],
+                           times=_rel_items(db, ln["id"], "time"), rule=rule, n_det=n_det, total=total,
+                           chat_max=_REL_CHAT_MAX, label_max=_REL_TIME_LABEL_MAX, time_max=_REL_TIME_TEXT_MAX,
+                           disp=_rel_names(db, sid), flash=session.pop("rel_flash", None), draft=session.pop("rel_draft", None))
+
+app.add_template_filter(lambda ts: ts_to_str(ts), "rel_time")
+
+def _rel_back(other, tab):
+    return redirect(url_for("player_rel_line", other=other, tab=tab))
+
+@app.route("/p/me/rel/new", methods=["POST"])
+def player_rel_new():
+    got, resp = _rel_guard()
+    if resp: return resp
+    sid, owner, db = got
+    to, text = (request.form.get("to") or "").strip(), (request.form.get("text") or "").strip()
+    sync = _phone_sync_row(db, sid)
+    rule = _rel_rule(sync["snap"])
+    err = None
+    if to not in _phone_roster(sync) or to == owner:
+        err = "❌ 请从名单里选一个别人"
+    elif _rel_line(db, sid, owner, to):
+        err = "❌ 你们之间已经有关系线了，进去添加补充内容"
+    elif db.execute("SELECT COUNT(*) FROM rel_lines WHERE show_id=? AND initiator=? AND system=0", (sid, owner)).fetchone()[0] >= rule["max_rel"]:
+        err = f"❌ 你的发起额度已达上限（{rule['max_rel']}）"
+    else:
+        err = _rel_text_err(sid, owner, "关系线", text, limit=rule["max_chars"])
+    if err:
+        session["rel_flash"] = err
+        return redirect(url_for("player_rel"))
+    text = _squash_repeats(text)
+    now = int(time.time() * 1000)
+    a, b = sorted((owner, to))
+    cur = db.execute("INSERT INTO rel_lines (show_id, role_a, role_b, initiator, created_at) VALUES (?,?,?,?,?)", (sid, a, b, owner, now))
+    db.execute("INSERT INTO rel_items (line_id, show_id, kind, from_role, text, created_at) VALUES (?,?,'detail',?,?,?)",
+               (cur.lastrowid, sid, owner, text, now))
+    _rel_op(db, sid, "detail_add", frm=owner, to=to, text=text, is_new=True)
+    db.commit()
+    session["rel_flash"] = f"✨ 关系线已建立，补充内容已通知「{to}」"
+    return _rel_back(to, "detail")
+
+@app.route("/p/me/rel/<other>/detail", methods=["POST"])
+def player_rel_detail_add(other):
+    got, resp = _rel_guard()
+    if resp: return resp
+    sid, owner, db = got
+    ln = _rel_line(db, sid, owner, other)
+    if not ln:
+        session["rel_flash"] = "❌ 你们之间还没有关系线"
+        return redirect(url_for("player_rel"))
+    text = (request.form.get("text") or "").strip()
+    rule = _rel_rule(_phone_sync_row(db, sid)["snap"])
+    n, total = _rel_totals(db, ln["id"])
+    err = _rel_text_err(sid, owner, "关系线", text, limit=rule["max_chars"])
+    if not err and n >= rule["max_count"]:
+        err = f"❌ 补充内容已达段数上限（{rule['max_count']} 段）"
+    elif not err and total + len(text) > rule["max_total"]:
+        err = f"❌ 加上这条会超过总字数上限（{rule['max_total']} 字，已有 {total} 字）"
+    if err:
+        session["rel_flash"] = err
+        return _rel_back(other, "detail")
+    text = _squash_repeats(text)
+    db.execute("INSERT INTO rel_items (line_id, show_id, kind, from_role, text, created_at) VALUES (?,?,'detail',?,?,?)",
+               (ln["id"], sid, owner, text, int(time.time() * 1000)))
+    _rel_op(db, sid, "detail_add", frm=owner, to=other, text=text, is_new=False)
+    db.commit()
+    session["rel_flash"] = f"✅ 已添加，并通知了「{other}」"
+    return _rel_back(other, "detail")
+
+@app.route("/p/me/rel/detail/<int:iid>/edit", methods=["POST"])
+def player_rel_detail_edit(iid):
+    got, resp = _rel_guard()
+    if resp: return resp
+    sid, owner, db = got
+    it = db.execute("SELECT * FROM rel_items WHERE id=? AND show_id=? AND kind='detail' AND deleted=0", (iid, sid)).fetchone()
+    ln = db.execute("SELECT * FROM rel_lines WHERE id=?", (it["line_id"],)).fetchone() if it else None
+    if not it or it["from_role"] != owner or not ln or owner not in (ln["role_a"], ln["role_b"]):
+        session["rel_flash"] = "❌ 只能修改自己写的补充内容"
+        return redirect(url_for("player_rel"))
+    other = _rel_other(ln, owner)
+    text = (request.form.get("text") or "").strip()
+    rule = _rel_rule(_phone_sync_row(db, sid)["snap"])
+    n, total = _rel_totals(db, ln["id"])
+    err = _rel_text_err(sid, owner, "关系线", text, limit=rule["max_chars"])
+    if not err and total - len(it["text"]) + len(text) > rule["max_total"]:
+        err = f"❌ 改完会超过总字数上限（{rule['max_total']} 字）"
+    if not err and text == it["text"]:
+        err = "没有改动"
+    if err:
+        session["rel_flash"] = err
+        return _rel_back(other, "detail")
+    text = _squash_repeats(text)
+    db.execute("UPDATE rel_items SET text=?, edited_at=? WHERE id=?", (text, int(time.time() * 1000), iid))
+    _rel_op(db, sid, "detail_edit", frm=owner, to=other, old=it["text"], new=text)
+    db.commit()
+    session["rel_flash"] = f"✏️ 已修改，并通知了「{other}」"
+    return _rel_back(other, "detail")
+
+@app.route("/p/me/rel/<other>/chat", methods=["POST"])
+def player_rel_chat(other):
+    got, resp = _rel_guard()
+    if resp: return resp
+    sid, owner, db = got
+    ln = _rel_line(db, sid, owner, other)
+    if not ln:
+        session["rel_flash"] = "❌ 你们之间还没有关系线"
+        return redirect(url_for("player_rel"))
+    text = (request.form.get("text") or "").strip()
+    err = _rel_text_err(sid, owner, "关系线交流", text, limit=_REL_CHAT_MAX)
+    if err:
+        session["rel_flash"] = err
+        session["rel_draft"] = text[:_REL_CHAT_MAX]
+        return _rel_back(other, "chat")
+    text = _squash_repeats(text)
+    now = int(time.time() * 1000)
+    db.execute("INSERT INTO rel_items (line_id, show_id, kind, from_role, text, created_at) VALUES (?,?,'chat',?,?,?)",
+               (ln["id"], sid, owner, text, now))
+    if now - ln["last_chat_notify"] >= _REL_CHAT_NOTIFY_GAP:   # 间隔内只通知一次，对方进网页自然能看到
+        db.execute("UPDATE rel_lines SET last_chat_notify=? WHERE id=?", (now, ln["id"]))
+        _rel_op(db, sid, "chat", frm=owner, to=other)
+    db.commit()
+    return _rel_back(other, "chat")
+
+@app.route("/p/me/rel/<other>/time", methods=["POST"])
+def player_rel_time_add(other):
+    got, resp = _rel_guard()
+    if resp: return resp
+    sid, owner, db = got
+    ln = _rel_line(db, sid, owner, other)
+    if not ln:
+        session["rel_flash"] = "❌ 你们之间还没有关系线"
+        return redirect(url_for("player_rel"))
+    label, text = (request.form.get("label") or "").strip(), (request.form.get("text") or "").strip()
+    err = None
+    if not label or len(label) > _REL_TIME_LABEL_MAX:
+        err = f"❌ 时间要填，最多 {_REL_TIME_LABEL_MAX} 字（想写什么写什么，比如「D3 夜里」）"
+    elif db.execute("SELECT COUNT(*) FROM rel_items WHERE line_id=? AND kind='time' AND deleted=0", (ln["id"],)).fetchone()[0] >= _REL_TIME_MAX:
+        err = f"❌ 重要时间点最多 {_REL_TIME_MAX} 个，删掉不用的再加"
+    else:
+        err = _rel_text_err(sid, owner, "关系线时间点", text, limit=_REL_TIME_TEXT_MAX, label_texts=(label,))
+    if err:
+        session["rel_flash"] = err
+        return _rel_back(other, "time")
+    text = _squash_repeats(text)
+    db.execute("INSERT INTO rel_items (line_id, show_id, kind, from_role, label, text, created_at) VALUES (?,?,'time',?,?,?,?)",
+               (ln["id"], sid, owner, label, text, int(time.time() * 1000)))
+    _rel_op(db, sid, "time_add", frm=owner, to=other, label=label, text=text)
+    db.commit()
+    session["rel_flash"] = f"🕰️ 已添加，并通知了「{other}」"
+    return _rel_back(other, "time")
+
+def _rel_time_item(db, sid, owner, iid):
+    it = db.execute("SELECT * FROM rel_items WHERE id=? AND show_id=? AND kind='time' AND deleted=0", (iid, sid)).fetchone()
+    ln = db.execute("SELECT * FROM rel_lines WHERE id=?", (it["line_id"],)).fetchone() if it else None
+    if not it or not ln or it["from_role"] != owner or owner not in (ln["role_a"], ln["role_b"]):   # 只能改 / 删自己记的
+        return None, None
+    return it, ln
+
+@app.route("/p/me/rel/time/<int:iid>/edit", methods=["POST"])
+def player_rel_time_edit(iid):
+    got, resp = _rel_guard()
+    if resp: return resp
+    sid, owner, db = got
+    it, ln = _rel_time_item(db, sid, owner, iid)
+    if not it:
+        session["rel_flash"] = "❌ 找不到这个时间点，或不是你记的"
+        return redirect(url_for("player_rel"))
+    other = _rel_other(ln, owner)
+    label, text = (request.form.get("label") or "").strip(), (request.form.get("text") or "").strip()
+    err = None
+    if not label or len(label) > _REL_TIME_LABEL_MAX:
+        err = f"❌ 时间要填，最多 {_REL_TIME_LABEL_MAX} 字"
+    else:
+        err = _rel_text_err(sid, owner, "关系线时间点", text, limit=_REL_TIME_TEXT_MAX, label_texts=(label,))
+    if not err and (label, text) == (it["label"], it["text"]):
+        err = "没有改动"
+    if err:
+        session["rel_flash"] = err
+        return _rel_back(other, "time")
+    text = _squash_repeats(text)
+    db.execute("UPDATE rel_items SET label=?, text=?, edited_at=? WHERE id=?", (label, text, int(time.time() * 1000), iid))
+    _rel_op(db, sid, "time_edit", frm=owner, to=other, label=label, text=text, old_label=it["label"])
+    db.commit()
+    session["rel_flash"] = f"✏️ 已修改，并通知了「{other}」"
+    return _rel_back(other, "time")
+
+@app.route("/p/me/rel/time/<int:iid>/delete", methods=["POST"])
+def player_rel_time_delete(iid):
+    got, resp = _rel_guard()
+    if resp: return resp
+    sid, owner, db = got
+    it, ln = _rel_time_item(db, sid, owner, iid)
+    if not it:
+        session["rel_flash"] = "❌ 找不到这个时间点，或不是你记的"
+        return redirect(url_for("player_rel"))
+    other = _rel_other(ln, owner)
+    db.execute("UPDATE rel_items SET deleted=1 WHERE id=?", (iid,))
+    _rel_op(db, sid, "time_del", frm=owner, to=other, label=it["label"], text=it["text"])
+    db.commit()
+    session["rel_flash"] = f"🗑️ 已删除，并通知了「{other}」"
+    return _rel_back(other, "time")
+
+@app.route("/p/me/rel/<other>/confirm", methods=["POST"])
+def player_rel_confirm(other):
+    got, resp = _rel_guard()
+    if resp: return resp
+    sid, owner, db = got
+    ln = _rel_line(db, sid, owner, other)
+    if not ln or ln["system"]:
+        session["rel_flash"] = "❌ 没有可以确认的关系线"
+        return redirect(url_for("player_rel"))
+    if not ln["confirmed"]:
+        db.execute("UPDATE rel_lines SET confirmed=1 WHERE id=?", (ln["id"],))
+        _rel_op(db, sid, "confirm", frm=owner, to=other)
+        db.commit()
+    session["rel_flash"] = f"🤝 已确认与「{other}」的关系线为完成状态"
+    return _rel_back(other, "detail")
+
+def _rel_ops_for_bot(db, sid, done):
+    """机器人回报已处理的 id 先落库，再给出还没处理的（每次最多 100 条，按先后）"""
+    ids = [int(i) for i in (done or []) if str(i).isdigit()][:300]
+    if ids:
+        db.execute(f"UPDATE phone_rel_ops SET done=1 WHERE show_id=? AND id IN ({','.join('?' * len(ids))})", [sid] + ids)
+        db.commit()
+    return [{"id": r["id"], "kind": r["kind"], "p": json.loads(r["payload"] or "{}")}
+            for r in db.execute("SELECT * FROM phone_rel_ops WHERE show_id=? AND done=0 ORDER BY id LIMIT 100", (sid,))]
+
+def _rel_import(db, sid, lines):
+    """网页关系线关着、用群里的指令时：插件交上来的整份副本照搬进存档站（补充内容与线本身以它为准；交流 / 时间点原样保留）。
+    还有没处理完的网页操作时不收，免得把刚在网页上写的盖掉。"""
+    if db.execute("SELECT 1 FROM phone_rel_ops WHERE show_id=? AND done=0 LIMIT 1", (sid,)).fetchone():
+        return False
+    now = int(time.time() * 1000)
+    seen = set()
+    for l in (lines or [])[:3000]:
+        if not isinstance(l, dict):
+            continue
+        a, b = str(l.get("a") or ""), str(l.get("b") or "")
+        if not a or not b or a == b:
+            continue
+        x, y = sorted((a, b))
+        init = str(l.get("initiator") or "")
+        system = 1 if init == "SYSTEM" else 0
+        ln = _rel_line(db, sid, x, y)
+        if not ln:
+            cur = db.execute("INSERT INTO rel_lines (show_id, role_a, role_b, initiator, system, confirmed, seen_bot, created_at) VALUES (?,?,?,?,?,?,1,?)",
+                             (sid, x, y, init, system, 1 if l.get("confirmed") else 0, now))
+            lid = cur.lastrowid
+        else:
+            lid = ln["id"]
+            db.execute("UPDATE rel_lines SET initiator=?, system=?, confirmed=?, seen_bot=1 WHERE id=?",
+                       (init, system, 1 if l.get("confirmed") else 0, lid))
+        seen.add(lid)
+        new = [(str(d.get("from") or ""), str(d.get("text") or "")) for d in (l.get("details") or [])[:200] if isinstance(d, dict)]
+        old = [dict(r) for r in db.execute("SELECT * FROM rel_items WHERE line_id=? AND kind='detail' AND deleted=0 ORDER BY id", (lid,))]
+        if [(o["from_role"], o["text"]) for o in old] != new:
+            keep = {}
+            for o in old:
+                keep.setdefault((o["from_role"], o["text"]), []).append((o["created_at"], o["edited_at"]))
+            db.execute("DELETE FROM rel_items WHERE line_id=? AND kind='detail'", (lid,))
+            for frm, text in new:
+                slot = keep.get((frm, text))
+                c_at, e_at = slot.pop(0) if slot else (now, 0)
+                db.execute("INSERT INTO rel_items (line_id, show_id, kind, from_role, text, created_at, edited_at) VALUES (?,?,'detail',?,?,?,?)",
+                           (lid, sid, frm, text, c_at, e_at))
+    # 插件那边已经没有的线（管理员删除 / 清空）：以前从插件那边收到过的才跟着删，网页刚建、还没同步过去的不动
+    for r in db.execute("SELECT id FROM rel_lines WHERE show_id=? AND seen_bot=1", (sid,)).fetchall():
+        if r["id"] not in seen:
+            db.execute("DELETE FROM rel_items WHERE line_id=?", (r["id"],))
+            db.execute("DELETE FROM rel_lines WHERE id=?", (r["id"],))
+    return True
+
+def _rel_sync(db, sid, data):
+    """同步用：返回 (rel_ops, rel_need)。rel_need = 网页关着、且插件副本指纹和上次收下的不一样，请它下次把整份副本带上来"""
+    ops = _rel_ops_for_bot(db, sid, data.get("rel_ops_done"))
+    on = _phone_rel_on(db, sid)
+    h = data.get("rel_hash")
+    row = db.execute("SELECT rel_hash FROM phone_settings WHERE show_id=?", (sid,)).fetchone()
+    stored = row["rel_hash"] if row else ""
+    if not on and isinstance(data.get("rel_lines"), list) and isinstance(h, str):
+        if _rel_import(db, sid, data["rel_lines"]):
+            db.execute("INSERT INTO phone_settings (show_id, rel_hash) VALUES (?, ?) ON CONFLICT(show_id) DO UPDATE SET rel_hash=excluded.rel_hash", (sid, h))
+            stored = h
+        db.commit()
+    need = (not on) and isinstance(h, str) and h != stored
+    return ops, need
+
 @app.route("/p/me/stats")
 def player_stats():
     who = _phone_current()
@@ -9146,6 +9652,7 @@ def _admin_ops_for_bot(db, sid, done):
 
 _PLUGIN_OFFICIAL_VERSION = (1, 10, 7)   # 网页发起官约 / 官电要这个版本以上的插件
 _PLUGIN_BOTTLE_VERSION = (1, 10, 8)   # 网页漂流瓶要这个版本以上的插件（它才认得「网页漂流瓶开着就停用群里的」）
+_PLUGIN_REL_VERSION = (1, 10, 9)   # 网页关系线要这个版本以上的插件（它才认得 rel_ops、会交上关系线副本）
 _PLUGIN_MIN_VERSION = (1, 10, 4)   # 网页快速设置 / 参数页 / 批量发放要这个版本以上的插件才会执行
 
 def _plugin_status(db, sid):
@@ -9163,6 +9670,7 @@ def _plugin_status(db, sid):
     can = vt >= _PLUGIN_MIN_VERSION
     can_official = vt >= _PLUGIN_OFFICIAL_VERSION
     can_bottle = vt >= _PLUGIN_BOTTLE_VERSION
+    can_rel = vt >= _PLUGIN_REL_VERSION and bool(plug.get("rel_web"))   # 社交卫星也要加载（它提供网页关系线的执行入口）
     can_wish = vt >= _PLUGIN_BOTTLE_VERSION and bool(plug.get("wish_web"))   # 社交卫星也要加载（它提供网页心愿的执行入口）
     ago_txt = "刚刚" if ago < 1 else (f"{ago} 分钟前" if ago < 120 else f"{ago // 60} 小时前")
     level, note = "ok", ""
@@ -9170,7 +9678,7 @@ def _plugin_status(db, sid):
         level, note = "warn", f"（{'插件版本太旧，' if ver else '插件还没带版本号，'}需要 ≥ {'.'.join(map(str, _PLUGIN_MIN_VERSION))} 才能在网页上设置）"
     elif not fresh:
         level, note = "bad", "（超过一段时间没同步，机器人可能掉线了）"
-    return {"known": True, "version": ver or "旧版（<1.10.4）", "ago": ago, "fresh": fresh, "can": can, "can_official": can_official, "can_bottle": can_bottle, "can_wish": can_wish, "level": level,
+    return {"known": True, "version": ver or "旧版（<1.10.4）", "ago": ago, "fresh": fresh, "can": can, "can_official": can_official, "can_bottle": can_bottle, "can_wish": can_wish, "can_rel": can_rel, "level": level,
             "text": f"插件 {ver or '旧版'} · 最后同步 {ago_txt}{note}", "params": plug.get("params") or [],
             "catalog": plug.get("catalog") if isinstance(plug.get("catalog"), list) else None}
 
@@ -9705,6 +10213,13 @@ def admin_phone_codes():
             db.execute("INSERT INTO phone_settings (show_id, wish_web) VALUES (?, ?) "
                        "ON CONFLICT(show_id) DO UPDATE SET wish_web=excluded.wish_web",
                        (sid, 1 if request.form.get("on") == "1" else 0))
+        elif action == "rel_web":
+            st = _plugin_status(db, sid)
+            if request.form.get("on") == "1" and not st.get("can_rel"):
+                return "插件要升级到 %s 或更高（社交卫星也要加载）并同步一次，才能打开网页关系线" % ".".join(map(str, _PLUGIN_REL_VERSION)), 409
+            db.execute("INSERT INTO phone_settings (show_id, rel_web) VALUES (?, ?) "
+                       "ON CONFLICT(show_id) DO UPDATE SET rel_web=excluded.rel_web",
+                       (sid, 1 if request.form.get("on") == "1" else 0))
         elif action == "bottle_web":
             st = _plugin_status(db, sid)
             if request.form.get("on") == "1" and not st.get("can_bottle"):
@@ -9775,7 +10290,7 @@ def admin_phone_codes():
     return render_template("admin_phone_codes.html", rows=rows, show=show, shop_site_n=shop_site_n, shop_bot_n=shop_bot_n,
                            theme_settings=phone_theme(sid), base_url=_phone_base_url(),
                            web_send=_phone_web_send_on(db, sid), bottle_web=_phone_bottle_on(db, sid), can_bottle=pst.get("can_bottle"),
-                           wish_web=_phone_wish_on(db, sid), can_wish=pst.get("can_wish"), plugin_version=(pst.get("version") if pst.get("known") else None),
+                           wish_web=_phone_wish_on(db, sid), can_wish=pst.get("can_wish"), rel_web=_phone_rel_on(db, sid), can_rel=pst.get("can_rel"), plugin_version=(pst.get("version") if pst.get("known") else None),
                            comm_paused=_phone_comm_paused(db, sid), sync_ago=sync_ago, has_sync=bool(sync),
                            song_daily=_song_daily_cap(db, sid), song_default=_SONG_DEFAULT_DAILY,
                            admin_code=(db.execute("SELECT code FROM phone_admin_codes WHERE show_id=?", (sid,)).fetchone() or {"code": None})["code"],

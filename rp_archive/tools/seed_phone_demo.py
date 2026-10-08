@@ -158,6 +158,35 @@ def _demo_lovemail(db, tid, sid):
                    (sid, tid, frm, to, content, json.dumps({"signature": sig, "isPublic": public}, ensure_ascii=False), now - mins * 60000, day))
     db.commit()
 
+def _demo_relation(db, sid):
+    """演示季的网页关系线：打开开关、快照补上上限规则，放两条线（有补充内容 / 交流 / 时间点）；已经有就不动"""
+    row = db.execute("SELECT snapshot FROM phone_sync WHERE show_id=?", (sid,)).fetchone()
+    if not row:
+        return
+    snap = json.loads(row["snapshot"] or "{}")
+    if "relationship" in (snap.get("rules") or {}):
+        return
+    now = int(time.time() * 1000)
+    snap["demo"] = True
+    snap.setdefault("rules", {})["relationship"] = {"enabled": True, "max_rel": 20, "max_detail_chars": 500, "max_detail_count": 20, "max_rel_total_chars": 3000}
+    db.execute("UPDATE phone_sync SET snapshot=? WHERE show_id=?", (json.dumps(snap, ensure_ascii=False), sid))
+    db.execute("INSERT INTO phone_settings (show_id, rel_web) VALUES (?, 1) ON CONFLICT(show_id) DO UPDATE SET rel_web=1", (sid,))
+    def line(a, b, init, details, chats, times, confirmed=0):
+        x, y = sorted((a, b))
+        cur = db.execute("INSERT INTO rel_lines (show_id, role_a, role_b, initiator, confirmed, created_at) VALUES (?,?,?,?,?,?)", (sid, x, y, init, confirmed, now - 600 * 60000))
+        for i, (frm, text) in enumerate(details):
+            db.execute("INSERT INTO rel_items (line_id, show_id, kind, from_role, text, created_at) VALUES (?,?,'detail',?,?,?)", (cur.lastrowid, sid, frm, text, now - (500 - i * 40) * 60000))
+        for i, (frm, text) in enumerate(chats):
+            db.execute("INSERT INTO rel_items (line_id, show_id, kind, from_role, text, created_at) VALUES (?,?,'chat',?,?,?)", (cur.lastrowid, sid, frm, text, now - (200 - i * 10) * 60000))
+        for i, (frm, label, text) in enumerate(times):
+            db.execute("INSERT INTO rel_items (line_id, show_id, kind, from_role, label, text, created_at) VALUES (?,?,'time',?,?,?,?)", (cur.lastrowid, sid, frm, label, text, now - (300 - i * 20) * 60000))
+    line("林晚", "体验者", "林晚",
+         [("林晚", "我们是同一个排练厅里最早到、最晚走的两个人，只是谁也没先开口。"), ("体验者", "其实我早就注意到你总在窗边练同一段。")],
+         [("林晚", "今晚还练吗？"), ("体验者", "练，我带热茶。"), ("林晚", "那我带谱子。")],
+         [("林晚", "D0 傍晚", "第一次在排练厅门口说上话"), ("体验者", "D1 凌晨", "一起看了日出")])
+    line("体验者", "周屿", "周屿", [("周屿", "你的名字我是在节目单上看到的，那天起我就想认识你。")], [], [])
+    db.commit()
+
 row = db.execute("SELECT id FROM tenants WHERE username='phone_demo'").fetchone()
 if row:
     tid = row["id"]
@@ -173,6 +202,7 @@ if row:
         acode = arow["code"]
     _demo_shop(db, tid, sid)
     _demo_lovemail(db, tid, sid)
+    _demo_relation(db, sid)
     _demo_block(db, sid)
     _demo_report(db, sid)
     _demo_explore(db, sid)
@@ -235,6 +265,7 @@ db.execute("""INSERT INTO song_requests (tenant_id, show_id, from_role, to_role,
 db.commit()
 _demo_shop(db, tid, sid)
 _demo_lovemail(db, tid, sid)
+_demo_relation(db, sid)
 _demo_block(db, sid)
 _demo_report(db, sid)
 _demo_explore(db, sid)
