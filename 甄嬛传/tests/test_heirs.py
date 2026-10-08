@@ -262,6 +262,24 @@ class HeirTests(unittest.TestCase):
         r = self.client.post(f'/heirs/raise/{hid}', data=dict(opt='study'))
         self.assertEqual(game.q('SELECT study FROM heirs WHERE id=?', (hid,), one=True)['study'], 20)
 
+    def test_child_taken_for_unpaid_fees_cannot_be_adopted_again_by_the_same_person(self):
+        hid = self.heir(self.atk)
+        game.run('UPDATE consorts SET silver=0, rank=? WHERE id=?', (game.RAISE_MIN_RANK_SON, self.atk))
+        for _ in range(game.HEIR_UNPAID_NIGHTS):
+            game.heir_upkeep(game.cur_day())
+        h = game.get_heir(hid)
+        self.assertEqual(h['caretaker_id'], 0, '连欠两晚抱去养育所')
+        self.assertTrue(game.adopt_banned(hid, self.atk))
+        self.assertFalse(game.adopt_banned(hid, self.tgt))
+        game.run('UPDATE consorts SET silver=5000, energy=5 WHERE id=?', (self.atk,))
+        self.client.post(f'/succession/claim/{hid}')
+        self.assertFalse(game.q('SELECT 1 FROM heir_claims WHERE consort_id=? AND heir_id=?', (self.atk, hid), one=True), '原抚养人不能再申请领养')
+        game.run('INSERT INTO heir_claims(consort_id,heir_id,day,ts) VALUES(?,?,?,?)', (self.atk, hid, game.cur_day(), 1))
+        game.run('UPDATE consorts SET rank=? WHERE id=?', (game.RAISE_MIN_RANK_SON, self.tgt))
+        game.run('INSERT INTO heir_claims(consort_id,heir_id,day,ts) VALUES(?,?,?,?)', (self.tgt, hid, game.cur_day(), 1))
+        game.resolve_heir_claims(game.get_heir(hid))
+        self.assertEqual(game.get_heir(hid)['caretaker_id'], self.tgt, '抽签也排除她，别人照常可以收养')
+
     def test_unpaid_upkeep_can_cost_influence_and_trust(self):
         self.heir(self.atk)
         game.run('UPDATE consorts SET silver=0, influence=50, trust=50 WHERE id=?', (self.atk,))

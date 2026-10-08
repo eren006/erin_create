@@ -779,6 +779,14 @@ CREATE TABLE IF NOT EXISTS family_offers (
  from_pool INTEGER NOT NULL DEFAULT 0
 );
 
+-- 欠乳母费/师傅束脩被抱去养育所的孩子，原抚养人不能再收养他
+CREATE TABLE IF NOT EXISTS heir_adopt_bans (
+ heir_id INTEGER NOT NULL,
+ consort_id INTEGER NOT NULL,
+ day INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(heir_id,consort_id)
+);
+
 -- 一次性赏赐活动（大捷之类）：到点给所有在世玩家发银子，只发一次；错过 expire_ts 就作废
 CREATE TABLE IF NOT EXISTS bonus_events (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -809,3 +817,22 @@ CREATE TABLE IF NOT EXISTS incense_progress (
  reward TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(event_id,consort_id)
 );
+
+-- 协理六宫：本届唯一职务与24小时辅助活动
+CREATE TABLE IF NOT EXISTS palace_office (reign_no INTEGER PRIMARY KEY, consort_id INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS palace_aid_events (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, reign_no INTEGER NOT NULL, steward_id INTEGER NOT NULL,
+ started_ts REAL NOT NULL, ends_ts REAL NOT NULL, status TEXT NOT NULL DEFAULT 'active', winner_id INTEGER NOT NULL DEFAULT 0);
+CREATE UNIQUE INDEX IF NOT EXISTS palace_aid_one_active ON palace_aid_events(status) WHERE status='active';
+CREATE TABLE IF NOT EXISTS palace_aid_progress (
+ event_id INTEGER NOT NULL, consort_id INTEGER NOT NULL, progress INTEGER NOT NULL DEFAULT 0,
+ times INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(event_id,consort_id));
+
+CREATE TABLE IF NOT EXISTS palace_aid_winners (
+ event_id INTEGER NOT NULL, consort_id INTEGER NOT NULL, position INTEGER NOT NULL,
+ PRIMARY KEY(event_id,consort_id));
+CREATE TABLE IF NOT EXISTS palace_aid_interference (
+ id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL, actor_id INTEGER NOT NULL,
+ target_id INTEGER NOT NULL, loss INTEGER NOT NULL, created_ts REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS palace_aid_interference_actor ON palace_aid_interference(event_id,actor_id);
+CREATE INDEX IF NOT EXISTS palace_aid_interference_target ON palace_aid_interference(event_id,target_id);

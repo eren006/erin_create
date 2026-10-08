@@ -2415,6 +2415,7 @@ def inject_globals():
     try:
         ctx['gs'] = state()
         ctx['incense_on'] = bool(active_incense())
+        ctx['palace_steward'] = palace_steward()
         ctx['next_settle'] = next_settle_text()
         me = getattr(g, 'me', None)
         ctx['open_cases_count'] = q("SELECT COUNT(DISTINCT c.id) FROM cases c LEFT JOIN case_suspects s ON s.case_id=c.id WHERE c.status='open' AND (c.victim_id=? OR s.consort_id=?)", (me['id'], me['id']), one=True)[0] if me else 0
@@ -6573,11 +6574,11 @@ def heirs():
                                can_shift=bool(other_adult_princes(h)))
         if maternal_kin(c, h) and h['caretaker_id'] != c['id'] and c['status'] != 'dead' and not h['adult_day']:
             a['visit'] = True
-            if c['rank'] >= raise_min_rank(h): a['reclaim'] = True
+            if c['rank'] >= raise_min_rank(h) and not adopt_banned(h['id'], c['id']): a['reclaim'] = True
             a['reclaim_wait'] = max(0, h['reclaim_after_day'] - day)
         if h['caretaker_id'] == c['id'] and h['mother_id'] != c['id'] and not h['adult_day']: a['can_ban'] = True
         if h['caretaker_id'] == 0 and not h['adult_day'] and heir_age_days(h, day) < HEIR_ADULT_AGE_DAYS and c['rank'] >= raise_min_rank(h) and c['status'] == 'normal':
-            a['adopt'] = not maternal_kin(c, h)
+            a['adopt'] = not maternal_kin(c, h) and not adopt_banned(h['id'], c['id'])
             a['adopt_pending'] = bool(q('SELECT 1 FROM heir_claims WHERE consort_id=? AND heir_id=?', (c['id'], h['id']), one=True))
         battle = q('SELECT * FROM custody_battles WHERE heir_id=?', (h['id'],), one=True)
         if battle and battle['status']=='active':
@@ -6585,7 +6586,7 @@ def heirs():
             a['battle'] = battle
             a['battle_participant'] = c['id'] in (battle['challenger_id'],battle['defender_id'])
         if a: acts[h['id']] = a
-    targets_for = {h['id']: entrust_candidates(c, raise_min_rank(h)) for h in rows if acts.get(h['id'], {}).get('entrust')}
+    targets_for = {h['id']: [t for t in entrust_candidates(c, raise_min_rank(h)) if not adopt_banned(h['id'], t['id'])] for h in rows if acts.get(h['id'], {}).get('entrust')}
     return render_template('heirs.html', graves=q('SELECT COUNT(*) n FROM birth_losses', one=True)['n'], losses=q('SELECT * FROM birth_losses WHERE mother_id=? ORDER BY id DESC', (c['id'],)), HEIR_RAISE=HEIR_RAISE, HEIR_GROOM_BEAUTY_LINE=HEIR_GROOM_BEAUTY_LINE, c=c, rows=rows, get_consort=get_consort, acts=acts, targets_for=targets_for, raise_rank_name=raise_rank_name, name_choice_view=name_choice_view, cur_gen={g_: gen_word_for(state()['reign_no'], g_) for g_ in NAME_GENERATIONS},
                            ERRAND_APPROACHES=ERRAND_APPROACHES, MONGOL_LETTER_INTERVAL=MONGOL_LETTER_INTERVAL, CUSTODY_ACTIONS=CUSTODY_ACTIONS)
 
@@ -6826,6 +6827,11 @@ app.jinja_env.globals['heir_upkeep_cost'] = heir_upkeep_cost
 app.jinja_env.globals['HEIR_ADOPT_EXTRA_FEE'] = HEIR_ADOPT_EXTRA_FEE
 
 
+def adopt_banned(hid, cid):
+    """这个人是不是因为欠乳母费被抱走过这个孩子，从此不能再收养他"""
+    return bool(q("SELECT 1 FROM heir_adopt_bans WHERE heir_id=? AND consort_id=?", (hid, cid), one=True))
+
+
 def heir_upkeep(day):
     """每晚：玩家抚养人给没成年的孩子付乳母月钱（6 岁前）/ 师傅束脩（6 岁起）。冷宫里管不了；银子不够就欠着，孩子情分 -2。养育所和 NPC 抚养人不算。"""
     for c in q("SELECT * FROM consorts WHERE user_id IS NOT NULL AND status NOT IN ('xiunv','dead','cold')"):
@@ -6852,6 +6858,7 @@ def heir_upkeep(day):
             n = h['unpaid_days'] + 1
             if n >= HEIR_UNPAID_NIGHTS:
                 run('UPDATE heirs SET caretaker_id=0, caretaker_affinity=50, visit_banned=0, concealed=0, unpaid_days=0 WHERE id=?', (h['id'],))
+                run('INSERT OR IGNORE INTO heir_adopt_bans(heir_id,consort_id,day) VALUES(?,?,?)', (h['id'], c['id'], day))      # 欠费被抱走：这个人从此不能再收养他
                 adopt_bonus_revoke(h['id'])
                 taken.append(h)
                 gazette(f"{display_name(c)}连欠乳母月钱、师傅束脩，{heir_label(h)}被抱去皇嗣养育所，由乳母与师傅照料，{raise_rank_name(h)}位以上可申请领养。", 'decree')
@@ -6862,9 +6869,9 @@ def heir_upkeep(day):
                 run('UPDATE heirs SET unpaid_days=? WHERE id=?', (n, h['id']))
                 warned.append(h)
         if taken:
-            notify(c['id'], f"{'、'.join(heir_label(h) for h in taken)}连着 {HEIR_UNPAID_NIGHTS} 晚没付上乳母月钱/师傅束脩，被抱去皇嗣养育所了。" + (f"其余已付 {total} 两。" if total else ''), 'bad')
+            notify(c['id'], f"{'、'.join(heir_label(h) for h in taken)}连着 {HEIR_UNPAID_NIGHTS} 晚没付上乳母月钱/师傅束脩，被抱去皇嗣养育所了，你往后不能再收养{'他们' if len(taken) > 1 else '他'}。" + (f"其余已付 {total} 两。" if total else ''), 'bad')
         if warned:
-            notify(c['id'], f"银子不够，{'、'.join(heir_label(h) for h in warned)}的乳母月钱/师傅束脩发不出来，孩子对你的情分 {HEIR_UNPAID_AFFINITY}。再欠一晚，孩子就要被抱去皇嗣养育所。" + (f"其余已付 {total} 两。" if total else ''), 'bad')
+            notify(c['id'], f"银子不够，{'、'.join(heir_label(h) for h in warned)}的乳母月钱/师傅束脩发不出来，孩子对你的情分 {HEIR_UNPAID_AFFINITY}。再欠一晚，孩子就要被抱去皇嗣养育所，往后你也不能再收养他。" + (f"其余已付 {total} 两。" if total else ''), 'bad')
         elif total and not taken:
             notify(c['id'], f"今晚付了乳母月钱、师傅束脩共 {total} 两。", 'info')
 
@@ -7163,6 +7170,7 @@ def heir_delete(hid):
         run(f"DELETE FROM {t} WHERE heir_id=?", (hid,))
     run('DELETE FROM heir_bonds WHERE a_id=? OR b_id=?', (hid, hid))
     ally_release(hid)
+    run('DELETE FROM heir_adopt_bans WHERE heir_id=?', (hid,))
     run('DELETE FROM heirs WHERE id=?', (hid,))
 
 
@@ -7442,6 +7450,7 @@ def heir_entrust(hid):
     elif h['zhuazhou'] or heir_age_days(h) >= zhuazhou_age_days(h): err = '孩子已经周岁，祖制已定，托付不及了。'
     elif c['rank'] >= raise_min_rank(h): err = f'你已是{raise_rank_name(h)}位，本就可以亲自抚养，不必托付。'
     elif c['status'] != 'normal': err = '眼下这个境况，托付不了人。'
+    elif t and adopt_banned(hid, t['id']): err = '她之前欠着这孩子的乳母月钱、师傅束脩，孩子被抱走过，不能再收养他。'
     elif not t or t['id'] not in {x['id'] for x in entrust_candidates(c, raise_min_rank(h))}:
         err = f'要托付给{raise_rank_name(h)}位以上、且与你好感不低于 {HEIR_ENTRUST_MIN_AFFINITY} 的姐妹。'
     if err:
@@ -7538,6 +7547,7 @@ def heir_reclaim(hid):
     elif h['adult_day'] or heir_age_days(h) >= HEIR_ADULT_AGE_DAYS: err = '孩子已经成年，不能再变更抚养。'
     elif c['rank'] < raise_min_rank(h): err = f'{raise_rank_name(h)}位以上才能求皇上把孩子还回来。'
     elif c['status'] != 'normal': err = '你现在去不了养心殿。'
+    elif adopt_banned(hid, c['id']): err = '你之前欠着乳母月钱、师傅束脩，孩子被抱走了，不能再收养他。'
     elif cur_day() < h['reclaim_after_day']: err = f"皇上刚驳回过，{h['reclaim_after_day'] - cur_day()} 天后才能再求。"
     elif c['energy'] < HEIR_RECLAIM_ENERGY: err = '精力不够了。'
     if err:
@@ -8478,7 +8488,7 @@ HEIR_CLAIM_WAIT_HOURS = 1      # 2026-10-08 起：求领养的申请，从最早
 
 def resolve_heir_claims(h):
     """养育所孩子的领养申请抽签。有人中签返回 True，没有符合条件的申请返回 False"""
-    claims = q("SELECT c.* FROM heir_claims hc JOIN consorts c ON c.id=hc.consort_id WHERE hc.heir_id=? AND c.status='normal' AND c.user_id IS NOT NULL AND c.rank>=? ORDER BY hc.day,c.id", (h['id'], raise_min_rank(h)))
+    claims = q("SELECT c.* FROM heir_claims hc JOIN consorts c ON c.id=hc.consort_id WHERE hc.heir_id=? AND NOT EXISTS(SELECT 1 FROM heir_adopt_bans b WHERE b.heir_id=hc.heir_id AND b.consort_id=c.id) AND c.status='normal' AND c.user_id IS NOT NULL AND c.rank>=? ORDER BY hc.day,c.id", (h['id'], raise_min_rank(h)))
     if claims:
         win = pick_weighted(claims, [max(1, c['trust'] + c['rank'] * 5) for c in claims])
         run('UPDATE heirs SET caretaker_id=?,caretaker_affinity=50,visit_banned=0,concealed=0 WHERE id=?', (win['id'], h['id']))
@@ -8746,6 +8756,7 @@ def succession_claim(hid):
     if not h or h['caretaker_id'] != 0 or h['adult_day'] or heir_age_days(h) >= HEIR_ADULT_AGE_DAYS: err = '这个孩子已经有人照管了。'
     elif c['rank'] < raise_min_rank(h): err = f'{raise_rank_name(h)}位以上才能领养这位{h["gender"]}。'
     elif c['status'] != 'normal': err = '你现在去不了养心殿。'
+    elif adopt_banned(hid, c['id']): err = '你之前欠着乳母月钱、师傅束脩，孩子被抱走了，不能再收养他。'
     elif q("SELECT 1 FROM heir_claims WHERE consort_id=? AND heir_id=?", (c['id'], hid), one=True): err = '你已经求过了，等皇上定夺。'
     elif c['energy'] < 1: err = '精力不够了。'
     if err:
@@ -9700,7 +9711,7 @@ def end_reign(day):
     run("DELETE FROM consorts WHERE npc_key IS NOT NULL")
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims', 'custody_battles',
-              'birth_losses', 'tribute_items', 'tribute_turns', 'tribute_events', 'princess_suitors', 'princess_courtships', 'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
+              'palace_aid_interference', 'palace_aid_winners', 'palace_aid_progress', 'palace_aid_events', 'palace_office', 'birth_losses', 'tribute_items', 'tribute_turns', 'tribute_events', 'princess_suitors', 'princess_courtships', 'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
               'garden_plots', 'garden_stock', 'banquet_entries', 'banquet_invites', 'banquet_gear', 'achievements'):
         run(f"DELETE FROM {t}")
     run('UPDATE users SET lethal_ready_day=0, nameless_ready_day=0, forge_used=0')
@@ -10637,7 +10648,9 @@ def run_settle_cycle():
     """后台线程每分钟调用一次：该结算就结算；出错、太慢、拖延都报警。活动没开始计时、或者在维护中，整个跳过，不结算也不报警"""
     with app.app_context():
         st = state()
-        if not st['event_started'] or st['maintenance']: return
+        if st['maintenance']: return
+        palace_aid_tick()
+        if not st['event_started']: return
         start = time.time()
         try:
             maybe_settle()
@@ -11097,7 +11110,7 @@ def admin_reset():
         return redirect(url_for('admin'))
     for t in ('intrigues', 'messages', 'gazette', 'relations', 'known_secrets', 'inventory', 'heirs', 'letters', 'letter_stars', 'reports', 'maids',
               'bribes', 'afflictions', 'cases', 'case_suspects', 'case_actions', 'stances', 'heir_claims', 'custody_battles',
-              'birth_losses', 'tribute_items', 'tribute_turns', 'tribute_events', 'princess_suitors', 'princess_courtships', 'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
+              'palace_aid_interference', 'palace_aid_winners', 'palace_aid_progress', 'palace_aid_events', 'palace_office', 'birth_losses', 'tribute_items', 'tribute_turns', 'tribute_events', 'princess_suitors', 'princess_courtships', 'hobby_projects', 'hobby_items', 'displays', 'daily_counters', 'memories', 'gatherings', 'knife_debts',
               'garden_plots', 'garden_stock', 'banquet_entries', 'banquet_invites', 'banquet_gear', 'achievements', 'consorts', 'game_state'):
         run(f"DELETE FROM {t}")
     if request.form.get('keep_users') != '1':
@@ -14581,6 +14594,164 @@ def tribute_undisplay():
     except ValueError: iid = 0
     run("UPDATE tribute_items SET display_slot='' WHERE id=? AND holder_id=?", (iid, g.me['id']))
     return redirect(url_for('room'))
+
+
+
+# ── 协理六宫与辅助宫务 ──────────────────────────────────────────────────────
+PALACE_AID_STORIES = [
+    ('核对份例', '你带着账册逐宫核对米面与炭火，查出几笔错记，替姐妹们补齐了该领的份例。'),
+    ('安排宫宴', '你将席次、菜品与乐工入场逐一排妥，连临时缺席的席面也照顾周全，宴前的忙乱渐渐平息。'),
+    ('调度宫人', '两处宫院为人手争执，你听过双方难处，重排差事，各处终于都有人照应。'),
+    ('清点库房', '你陪掌库嬷嬷点过绸缎瓷器，将破损与缺数另册登记，积压多日的库务终于理清。'),
+    ('照看病中宫人', '你替病中的宫人安排轮值与汤药，又叮嘱管事莫误了饭食，宫中差事与养病两头都安稳了。'),
+    ('筹备节令', '你选定节令花样，分派各宫灯烛与鲜花，反复检查仪程，六宫渐渐有了过节的气象。'),
+]
+
+
+def palace_steward():
+    return q("SELECT c.* FROM palace_office o JOIN consorts c ON c.id=o.consort_id WHERE o.reign_no=? AND c.rank>=? AND c.status='normal' AND c.user_id IS NOT NULL", (state()['reign_no'], RANK_GUIFEI), one=True)
+
+
+def palace_aid_latest():
+    return q('SELECT * FROM palace_aid_events WHERE reign_no=? ORDER BY id DESC LIMIT 1', (state()['reign_no'],), one=True)
+
+
+def palace_aid_chances(event, row):
+    unlocked = min(10, 1 + max(0, int((now_ts() - event['started_ts']) // 3600)))
+    return max(0, unlocked - (row['times'] if row else 0))
+
+
+@atomic
+def palace_aid_tick():
+    for event in q("SELECT * FROM palace_aid_events WHERE status='active' AND (ends_ts<=? OR reign_no!=?)", (now_ts(), state()['reign_no'])):
+        candidates = q("SELECT p.* FROM palace_aid_progress p JOIN consorts c ON c.id=p.consort_id WHERE p.event_id=? AND p.times>0 AND p.consort_id!=? AND c.user_id IS NOT NULL AND c.status NOT IN ('dead','xiunv') ORDER BY p.progress DESC", (event['id'], event['steward_id'])) if event['reign_no'] == state()['reign_no'] else []
+        # 先随机打散，再按进度稳定排序，只随机处理同分的席位。
+        candidates=list(candidates)
+        random.shuffle(candidates)
+        winners=sorted(candidates,key=lambda r:r['progress'],reverse=True)[:2]
+        run("UPDATE palace_aid_events SET status='done',winner_id=? WHERE id=?", (winners[0]['consort_id'] if winners else 0, event['id']))
+        for position,winner in enumerate(winners,1):
+            cid=winner['consort_id']
+            run('INSERT INTO palace_aid_winners(event_id,consort_id,position) VALUES(?,?,?)',(event['id'],cid,position))
+            run('UPDATE consorts SET influence=influence+20,virtue=virtue+5 WHERE id=?', (cid,))
+            add_silver(cid, 300)
+            notify(cid, '辅助协理六宫评议已定，你获选为辅助宫务人选，获势力 +20、德行 +5、赏银 300 两。', 'good')
+        if winners:
+            names='、'.join(display_name(get_consort(r['consort_id'])) for r in winners)
+            gazette(f'辅助协理六宫评议已定：{names}获选辅助宫务，各获势力 +20、德行 +5、赏银 300 两。', 'news')
+        else:
+            gazette('辅助协理六宫活动已截止，本轮无人获赏。', 'news')
+
+
+@app.route('/palace_aid')
+@login_required
+def palace_aid():
+    palace_aid_tick()
+    event = palace_aid_latest()
+    row = q('SELECT * FROM palace_aid_progress WHERE event_id=? AND consort_id=?', (event['id'], g.me['id']), one=True) if event else None
+    board = q('SELECT c.*,p.progress,p.times,(SELECT COUNT(*) FROM palace_aid_interference i WHERE i.event_id=p.event_id AND i.target_id=p.consort_id) AS hit_count FROM palace_aid_progress p JOIN consorts c ON c.id=p.consort_id WHERE p.event_id=? AND p.times>0 ORDER BY p.progress DESC,p.consort_id', (event['id'],)) if event else []
+    used = q('SELECT COUNT(*) n FROM palace_aid_interference WHERE event_id=? AND actor_id=?',(event['id'],g.me['id']),one=True)['n'] if event else 0
+    winners=q('SELECT consort_id FROM palace_aid_winners WHERE event_id=? ORDER BY position',(event['id'],)) if event else []
+    if event and not winners and event['winner_id']: winners=[{'consort_id':event['winner_id']}]
+    available = palace_aid_chances(event, row) if event and event['status']=='active' else 0
+    return render_template('palace_aid.html', event=event, row=row, board=board, available=available, interference_left=max(0,3-used), winners=winners, steward=palace_steward(), get_consort=get_consort,
+        ends=datetime.fromtimestamp(event['ends_ts'], TZ).strftime('%m月%d日 %H:%M') if event else '')
+
+
+@app.route('/palace_aid/apply', methods=['POST'])
+@login_required
+@atomic
+def palace_aid_apply():
+    try:
+        c=get_consort(g.me['id'])
+        if c['status']!='normal' or c['rank']<RANK_GUIFEI: raise Reject('须在宫且位至贵妃以上，才能申请协理六宫。')
+        if palace_steward(): raise Reject('已有一位姐妹协理六宫，暂不能再申请。')
+        event=palace_aid_latest()
+        if event and event['status']=='active': raise Reject('本轮辅助宫务尚未结束，待评议后再申请。')
+        run('INSERT INTO palace_office(reign_no,consort_id) VALUES(?,?) ON CONFLICT(reign_no) DO UPDATE SET consort_id=excluded.consort_id', (state()['reign_no'], c['id']))
+        gazette(f"{display_name(c)}领命协理六宫，今后襄助料理宫务。", 'decree')
+        flash('申请获准，你已领命协理六宫。', 'good')
+    except Reject as exc: flash(str(exc), 'bad')
+    return redirect(url_for('palace_aid'))
+
+
+@app.route('/admin/palace_aid', methods=['POST'])
+@admin_required
+@atomic
+def admin_palace_aid():
+    palace_aid_tick()
+    try:
+        steward=palace_steward()
+        if not steward: raise Reject('须先有贵妃以上的玩家协理六宫，才能开启活动。')
+        if q("SELECT 1 FROM palace_aid_events WHERE status='active'", one=True): raise Reject('已有辅助协理活动正在进行。')
+        run('INSERT INTO palace_aid_events(reign_no,steward_id,started_ts,ends_ts) VALUES(?,?,?,?)', (state()['reign_no'], steward['id'], now_ts(), now_ts()+86400))
+        gazette(f"{display_name(steward)}请姐妹们辅助料理宫务。24小时后评议，前两名获选辅助宫务，各获势力 +20、德行 +5、赏银300两。", 'news')
+        for player in q("SELECT id FROM consorts WHERE user_id IS NOT NULL AND status='normal' AND id!=?", (steward['id'],)):
+            notify(player['id'], '辅助协理六宫已开启，去「协理六宫」接手宫务；机会每小时恢复一次，共10次，24小时后评议有赏。', 'info')
+        flash('辅助协理六宫活动已开启，24小时后截止。', 'good')
+    except Reject as exc: flash(str(exc), 'bad')
+    return redirect(url_for('admin'))
+
+
+@app.route('/palace_aid/work', methods=['POST'])
+@login_required
+@atomic
+def palace_aid_work():
+    palace_aid_tick()
+    try:
+        event=palace_aid_latest()
+        c=get_consort(g.me['id'])
+        if not event or event['status']!='active' or now_ts()>=event['ends_ts']: raise Reject('眼下没有进行中的辅助协理活动。')
+        if int(request.form.get('event_id',0))!=event['id']: raise Reject('活动轮次已变化，请刷新页面。')
+        steward=palace_steward()
+        if c['id']==event['steward_id'] or (steward and c['id']==steward['id']): raise Reject('协理六宫的人不参与本轮竞争。')
+        if c['status']!='normal': raise Reject('眼下无法出宫料理宫务。')
+        row=q('SELECT * FROM palace_aid_progress WHERE event_id=? AND consort_id=?',(event['id'],c['id']),one=True)
+        if palace_aid_chances(event,row)<=0: raise Reject('暂时没有可用机会；每小时恢复一次，每轮总共10次。')
+        task=int(request.form.get('task',0))
+        if task<0 or task>=len(PALACE_AID_STORIES): raise Reject('请选一件宫务。')
+        gain=random.randint(6,12)
+        run('INSERT INTO palace_aid_progress(event_id,consort_id,progress,times) VALUES(?,?,?,1) ON CONFLICT(event_id,consort_id) DO UPDATE SET progress=progress+excluded.progress,times=times+1', (event['id'],c['id'],gain))
+        title,story=PALACE_AID_STORIES[task]
+        msg=f'{story}掌事嬷嬷记下了这份功劳。（宫务进度 +{gain}）'
+        feed(c['id'],f'辅助协理 · {title}：{msg}')
+        flash(msg,'good')
+    except (Reject,ValueError) as exc: flash(str(exc),'bad')
+    return redirect(url_for('palace_aid'))
+
+
+@app.route('/palace_aid/interfere', methods=['POST'])
+@login_required
+@atomic
+def palace_aid_interfere():
+    palace_aid_tick()
+    try:
+        event=palace_aid_latest()
+        c=get_consort(g.me['id'])
+        if not event or event['status']!='active' or now_ts()>=event['ends_ts']: raise Reject('本轮宫务已经截止，不能再干扰。')
+        if int(request.form.get('event_id',0))!=event['id']: raise Reject('活动轮次已变化，请刷新页面。')
+        steward=palace_steward()
+        if c['id']==event['steward_id'] or (steward and c['id']==steward['id']): raise Reject('协理者不参与竞争，也不能干扰。')
+        if c['status']!='normal': raise Reject('眼下无法出宫干扰宫务。')
+        tid=int(request.form.get('target_id',0))
+        target=get_consort(tid)
+        if not target or tid==c['id'] or tid==event['steward_id'] or (steward and tid==steward['id']): raise Reject('不能干扰自己或协理者。')
+        row=q('SELECT * FROM palace_aid_progress WHERE event_id=? AND consort_id=?',(event['id'],tid),one=True)
+        if not row or not row['times'] or target['status']!='normal' or not target['user_id']: raise Reject('只能干扰正在竞争的在宫姐妹。')
+        if q('SELECT COUNT(*) n FROM palace_aid_interference WHERE event_id=? AND actor_id=?',(event['id'],c['id']),one=True)['n']>=3: raise Reject('本轮的3次干扰机会已经用完。')
+        if q('SELECT COUNT(*) n FROM palace_aid_interference WHERE event_id=? AND target_id=?',(event['id'],tid),one=True)['n']>=6: raise Reject('她本轮已被干扰6次，不能再干扰。')
+        if row['progress']<=0: raise Reject('她眼下已无宫务进度可干扰，这次不消耗机会。')
+        loss=min(row['progress'],random.randint(3,7))
+        run('UPDATE palace_aid_progress SET progress=progress-? WHERE event_id=? AND consort_id=?',(loss,event['id'],tid))
+        run('INSERT INTO palace_aid_interference(event_id,actor_id,target_id,loss,created_ts) VALUES(?,?,?,?,?)',(event['id'],c['id'],tid,loss,now_ts()))
+        story=random.choice(['你借口账目有误，让她已核过的份例又重查了一遍。', '你临时改动了差事交接，她只得四处找人补齐安排。', '你挑出仪程里的疏漏，让她备好的宫务重新返工。'])
+        feed(c['id'],f"干扰{display_name(target)}的宫务：{story}对方进度 -{loss}。")
+        notify(tid,f"{display_name(c)}从中干扰，你的宫务不得不返工，进度 -{loss}。",'bad')
+        flash(f'{story}（对方宫务进度 -{loss}）','good')
+    except (Reject,ValueError) as exc: flash(str(exc),'bad')
+    return redirect(url_for('palace_aid'))
+
+app.jinja_env.globals['PALACE_AID_STORIES'] = PALACE_AID_STORIES
 
 
 if __name__ == '__main__':
