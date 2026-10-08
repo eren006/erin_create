@@ -26,8 +26,8 @@ class TributeTests(unittest.TestCase):
     def test_catalog_has_seventy_six_unique_items_and_five_grades(self):
         eid = self.start()
         items = self.available(eid)
-        self.assertEqual(len(items), 76)
-        self.assertEqual(len({i['name'] for i in items}), 76)
+        self.assertEqual(len(items), game.TRIBUTE_TOTAL)
+        self.assertEqual(len({i['name'] for i in items}), game.TRIBUTE_TOTAL)
         self.assertEqual({i['grade'] for i in items}, set(range(1, 6)))
         self.assertEqual(game.active_tribute()['timeout_hours'], 8)
 
@@ -46,10 +46,10 @@ class TributeTests(unittest.TestCase):
         ids = [i['id'] for i in self.available(eid)[:4]]
         self.login(self.tgt)
         self.choose(eid, ids[:1])
-        self.assertEqual(len(self.available(eid)), 76)
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL)
         self.login(self.atk)
         self.choose(eid, ids)
-        self.assertEqual(len(self.available(eid)), 76)
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL)
         self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], self.atk)
 
     def test_confirm_claims_transfers_and_announces_once(self):
@@ -57,7 +57,7 @@ class TributeTests(unittest.TestCase):
         ids = [i['id'] for i in self.available(eid)[:3]]
         silver, energy = game.get_consort(self.atk)['silver'], game.get_consort(self.atk)['energy']
         page = self.choose(eid, ids).get_data(as_text=True)
-        self.assertEqual(len(self.available(eid)), 73)
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL - 3)
         self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], self.tgt)
         self.assertEqual((game.get_consort(self.atk)['silver'], game.get_consort(self.atk)['energy']), (silver, energy))
         self.choose(eid, ids)
@@ -72,21 +72,21 @@ class TributeTests(unittest.TestCase):
         self.login(self.tgt)
         ids = [i['id'] for i in self.available(eid)[:2]]
         self.choose(eid, ids)
-        self.assertEqual(len(self.available(eid)), 76)
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL)
         self.choose(eid, ids[:1])
         self.assertIsNone(game.active_tribute())
-        self.assertEqual(len(self.available(eid)), 75)
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL - 1)
 
     def test_duplicate_foreign_or_claimed_items_do_not_partially_claim(self):
         eid = self.start()
         ids = [i['id'] for i in self.available(eid)[:2]]
         for bad in ([ids[0], ids[0]], [ids[0], 999999]):
             self.choose(eid, bad)
-            self.assertEqual(len(self.available(eid)), 76)
+            self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL)
         self.choose(eid, ids[:1])
         self.login(self.tgt)
         self.choose(eid, ids[:1])
-        self.assertEqual(len(self.available(eid)), 75)
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL - 1)
 
     def test_eight_hour_timeout_carries_to_next_batch_and_restarts_timer(self):
         with patch.object(game, 'now_ts', return_value=100000): eid = self.start()
@@ -128,7 +128,7 @@ class TributeTests(unittest.TestCase):
         game.run("UPDATE tribute_events SET status='closed' WHERE id=?", (eid,))
         new = game.start_tribute()
         self.choose(eid, [self.available(new)[0]['id']])
-        self.assertEqual(len(self.available(new)), 76)
+        self.assertEqual(len(self.available(new)), game.TRIBUTE_TOTAL)
 
     def test_guiren_can_choose_two_but_not_three(self):
         eid = self.start()
@@ -136,9 +136,9 @@ class TributeTests(unittest.TestCase):
         self.login(self.tgt)
         ids = [i['id'] for i in self.available(eid)[:3]]
         self.choose(eid, ids)
-        self.assertEqual(len(self.available(eid)), 76)
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL)
         self.choose(eid, ids[:2])
-        self.assertEqual(len(self.available(eid)), 74)
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL - 2)
 
     def test_grades_hidden_until_confirmation_then_revealed_in_feed(self):
         eid = self.start()
@@ -188,10 +188,10 @@ class TributeTests(unittest.TestCase):
         page = self.choose(eid, [ids[0], ids[1]]).get_data(as_text=True)
         self.assertIn('先选走', page)
         self.assertIn('请重新选择', page)
-        self.assertEqual(len(self.available(eid)), 75)                                          # 一件都没领，整单作废
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL - 1)                                          # 一件都没领，整单作废
         self.assertEqual(game.q('SELECT status FROM tribute_turns WHERE consort_id=?', (third,), one=True)['status'], 'waiting')
         self.choose(eid, [ids[1]])
-        self.assertEqual(len(self.available(eid)), 74)
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL - 2)
         self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], self.tgt)      # 两人都选完才轮到下一批
         self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '轮到你选贡品了%'", (self.tgt,), one=True))
 
@@ -261,7 +261,7 @@ class TributeTests(unittest.TestCase):
         ids = [i['id'] for i in self.available(eid)[:2]]
         with patch.object(game, 'now_ts', return_value=100000 + 4*3600 + 60):
             self.choose(eid, ids)
-        self.assertEqual(len(self.available(eid)), 74)
+        self.assertEqual(len(self.available(eid)), game.TRIBUTE_TOTAL - 2)
 
     def test_guiren_batch_with_no_next_batch_is_skipped_after_four_hours(self):
         with patch.object(game, 'now_ts', return_value=100000):

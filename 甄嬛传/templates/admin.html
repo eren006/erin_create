@@ -22,7 +22,7 @@
 {% endif %}
 
 <h3>临时活动 · 选贡品</h3>
-<p class="muted">开启一轮76件贡品，按开启时玩家位分、圣宠排序。嫔及以上最多3件、贵人2件、贵人以下1件，确认后揭晓品级。每位确认后记入日常；结束或关闭后已领物品保留。</p>
+<p class="muted">开启一轮{{ TRIBUTE_TOTAL }}件贡品，按开启时玩家位分、圣宠排序。嫔及以上最多3件、贵人2件、贵人以下1件，确认后揭晓品级。每位确认后记入日常；结束或关闭后已领物品保留。</p>
 <form method="post" action="{{ url_for('admin_tribute') }}" class="row"><input type="hidden" name="action" value="start">
 <input type="hidden" name="low_quota" value="1">
 <label>每人时限<select name="timeout_hours"><option value="8">8小时</option><option value="12">12小时</option><option value="24">24小时</option><option value="0">不自动跳过</option></select></label><button>开启本轮选贡品</button></form>
