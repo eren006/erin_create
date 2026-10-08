@@ -1,4 +1,4 @@
-"""网页关系线（交流 / 补充内容 / 重要时间点）：开关（需插件 1.10.9+ 且社交卫星加载）/ 同步下发 rel_web 与 rel_ops / 发起与额度 / 补充内容添加与修改（只能改自己的）/
+"""网页关系线（交流 / 补充内容 / 重要时间点）：开关（需插件 1.11.0+ 且社交卫星加载）/ 同步下发 rel_web 与 rel_ops / 发起与额度 / 补充内容添加与修改（只能改自己的）/
 交流通知节流 / 时间点增改删 / 确认 / 暂停通讯 / 回报 done / 网页关闭时插件整份副本的导入（保留交流和时间点、网页刚建的线不被删、有未处理操作时不收）。
 用法（仓库根目录）：rp_archive/venv/bin/python3 rp_archive/tests/phone_rel_test.py ；全部通过时最后一行打印 ALL OK。
 """
@@ -21,7 +21,7 @@ bot = app.test_client()
 ROSTER = [{"name": "林晚", "npc": False}, {"name": "周屿", "npc": False}, {"name": "沈知意", "npc": False}]
 def ok(cond, msg):
     if not cond: raise AssertionError(msg)
-def sync(version="1.10.9", rel_web=True, done=None, rule=None, extra=None):
+def sync(version="1.11.0", rel_web=True, done=None, rule=None, extra=None):
     body = {"after": 0, "rel_ops_done": done or [], "snapshot": {
         "game_day": "D2", "roster": ROSTER, "rules": {"relationship": rule if rule is not None else {"enabled": True, "max_rel": 2, "max_detail_chars": 30, "max_detail_count": 3, "max_rel_total_chars": 60}},
         "feature_off": {}, "blocks": [], "block_write": True, "plugin": {"version": version, "rel_web": rel_web, "params": []}}}
