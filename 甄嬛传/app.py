@@ -6841,10 +6841,20 @@ def heir_fall_ill(h, day):
     run('UPDATE heirs SET illness=?, ill_deadline_ts=? WHERE id=?', (key, now_ts() + HEIR_ILL_HOURS * 3600, h['id']))
     label = heir_label(h)
     ct = get_consort(h['caretaker_id']) if h['caretaker_id'] else None
+    mother = get_consort(h['mother_id']) if h['mother_id'] else None
     if ct and ct['user_id']:
-        heir_notify_kin(h, f"{label}病了：{ill['name']}。{ill['text']}去子嗣页请太医医治（{ill['cost']} 两），{HEIR_ILL_HOURS} 小时内不治，{'一定拖成病弱' if ill['severe'] else '有五成要落下病弱'}。", 'bad')
+        txt = f"{label}病了：{ill['name']}。{ill['text']}去子嗣页请太医医治（{ill['cost']} 两），{HEIR_ILL_HOURS} 小时内不治，{'一定拖成病弱' if ill['severe'] else '有五成要落下病弱'}。"
+        if mother and mother['id'] == ct['id']:
+            notify(ct['id'], txt, 'bad')
+        else:      # 抚养人（托付、领养）管请太医；孩子的生母另写一条可怜的话，让她知道、能去求人
+            notify(ct['id'], txt, 'bad')
+            if mother and mother['user_id']:
+                notify(mother['id'], f"{label}病了：{ill['name']}。{ill['text']}孩子如今在{display_name(ct)}宫里，不在你身边，小小的人烧得迷迷糊糊，嘴里还含混地喊着额娘。你只能干着急，赶紧托{display_name(ct)}请太医吧，{HEIR_ILL_HOURS} 小时内不治，{'一定拖成病弱' if ill['severe'] else '有五成要落下病弱'}。", 'bad')
     elif not ct:
-        heir_notify_kin(h, f"{label}在皇嗣养育所里病了：{ill['name']}。{'没人守着，恐怕凶多吉少。' if ill['severe'] else '乳母看顾着。'}", 'bad')
+        if mother and mother['user_id']:
+            notify(mother['id'], f"{label}在皇嗣养育所里病了：{ill['name']}。{ill['text']}孩子身边只有乳母，没有额娘守着，缩在被子里一声不吭，眼巴巴地望着门口。{'没人守着，恐怕凶多吉少。' if ill['severe'] else '乳母看顾着，只是夜里怕是要哭着找额娘。'}", 'bad')
+    elif mother and mother['user_id']:      # 抚养人不是玩家（系统托管之类）：也告诉生母
+        notify(mother['id'], f"{label}病了：{ill['name']}。{ill['text']}孩子不在你身边，病中还惦记着额娘。你帮不上忙，只能盼着{display_name(ct)}那边照看得周到些。", 'bad')
 
 
 def heir_ill_resolve(h, cured_by_doctor=False):
