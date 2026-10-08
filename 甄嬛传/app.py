@@ -13216,7 +13216,7 @@ def tribute_group(event):
     return list(q("SELECT * FROM tribute_turns WHERE event_id=? AND status='waiting' AND rank=? ORDER BY position", (event['id'], first['rank'])))
 
 
-TRIBUTE_MERGE_RANK, TRIBUTE_MERGE_HOURS = 4, 4      # 贵人这一批只等 4 小时，没选的人自动并入下一批，不算跳过
+TRIBUTE_MERGE_RANK, TRIBUTE_MERGE_HOURS = 4, 4      # 贵人这一批只等 4 小时，其余批次等活动设的小时数（默认 8）；2026-10-08 起所有批次超时没选的人都自动并入下一批，不算跳过（原来只有贵人这批并入，其余超时直接作废）
 
 
 def tribute_group_hours(event, group):
@@ -13225,13 +13225,13 @@ def tribute_group_hours(event, group):
 
 
 def tribute_merge_next(event, group):
-    """贵人这批超时：没选的人并入紧随其后的那一批（位分记成下一批的位分，配额不变），整批重新计时。没有下一批就返回 False"""
+    """这批超时：没选的人并入紧随其后的那一批（位分记成下一批的位分，配额不变），整批重新计时。没有下一批就返回 False"""
     nxt = q("SELECT rank FROM tribute_turns WHERE event_id=? AND status='waiting' AND rank!=? AND rank>0 ORDER BY position LIMIT 1", (event['id'], group[0]['rank']), one=True)
     if not nxt: return False
     for turn in group:
         run("UPDATE tribute_turns SET rank=? WHERE event_id=? AND consort_id=?", (nxt['rank'], event['id'], turn['consort_id']))
         if get_consort(turn['consort_id']):
-            notify(turn['consort_id'], f"贵人这一批等了{TRIBUTE_MERGE_HOURS}小时还没选，已自动并入下一批，和他们一起挑。", 'info')
+            notify(turn['consort_id'], f"这一批等了{tribute_group_hours(event, group)}小时还没选，已自动并入下一批，和他们一起挑。", 'info')
     tribute_advance(event)
     return True
 
@@ -13272,7 +13272,7 @@ def tribute_tick():
     hours = tribute_group_hours(event, group)
     expired = hours > 0 and now_ts() >= event['turn_started_ts'] + hours * 3600
     changed = False
-    if expired and group[0]['rank'] == TRIBUTE_MERGE_RANK:
+    if expired and group[0]['rank']:      # 旧活动（rank=0）一人一批，没有「并入下一批」
         alive = [t for t in group if (lambda p: p and p['status'] not in ('dead', 'cold', 'xiunv'))(get_consort(t['consort_id']))]
         for turn in group:
             if turn not in alive: tribute_skip(event, turn, '已无法参与，本次选贡品顺位交给下一位。')

@@ -88,7 +88,7 @@ class TributeTests(unittest.TestCase):
         self.choose(eid, ids[:1])
         self.assertEqual(len(self.available(eid)), 75)
 
-    def test_eight_hour_timeout_skips_and_new_turn_gets_full_time(self):
+    def test_eight_hour_timeout_carries_to_next_batch_and_restarts_timer(self):
         with patch.object(game, 'now_ts', return_value=100000): eid = self.start()
         with patch.object(game, 'now_ts', return_value=100000 + 8*3600 - 1): game.tribute_tick()
         self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], self.atk)
@@ -96,7 +96,7 @@ class TributeTests(unittest.TestCase):
             game.tribute_tick()
             game.tribute_tick()
         event = game.active_tribute()
-        self.assertEqual(game.tribute_current(event)['consort_id'], self.tgt)
+        self.assertEqual({t['consort_id'] for t in game.tribute_group(event)}, {self.atk, self.tgt})      # 没选的并入下一批，一起挑
         self.assertEqual(event['turn_started_ts'], 100000 + 8*3600)
 
     def test_dead_current_skipped_and_repeat_start_rejected(self):
@@ -168,9 +168,9 @@ class TributeTests(unittest.TestCase):
     def test_home_reminder_expires_and_moves_to_next_person(self):
         with patch.object(game, 'now_ts', return_value=100000): self.start()
         with patch.object(game, 'now_ts', return_value=100000 + 8*3600):
-            self.assertIsNone(game.tribute_home_reminder(game.get_consort(self.atk)))
-            reminder = game.tribute_home_reminder(game.get_consort(self.tgt))
-            self.assertEqual((reminder['hours'], reminder['minutes']), (4, 0))      # 贵人这批只有 4 小时
+            for who in (self.atk, self.tgt):      # 嫔这批超时，并入贵人这批，两人一起挑，按贵人批的 4 小时重新计时
+                reminder = game.tribute_home_reminder(game.get_consort(who))
+                self.assertEqual((reminder['hours'], reminder['minutes']), (4, 0))
 
     def test_same_rank_choose_together_first_confirm_wins_and_conflict_asks_to_reselect(self):
         third = self.player('第三位', rank=5)
@@ -195,14 +195,14 @@ class TributeTests(unittest.TestCase):
         self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], self.tgt)      # 两人都选完才轮到下一批
         self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '轮到你选贡品了%'", (self.tgt,), one=True))
 
-    def test_same_rank_timeout_skips_the_whole_group(self):
+    def test_same_rank_timeout_carries_the_whole_group_to_the_next(self):
         third = self.player('第三位', rank=5)
         with patch.object(game, 'now_ts', return_value=100000): eid = self.start()
         with patch.object(game, 'now_ts', return_value=100000 + 8*3600):
             game.tribute_tick()
         statuses = {r['consort_id']: r['status'] for r in game.q('SELECT * FROM tribute_turns WHERE event_id=?', (eid,))}
-        self.assertEqual((statuses[self.atk], statuses[third]), ('skipped', 'skipped'))
-        self.assertEqual(game.tribute_current(game.active_tribute())['consort_id'], self.tgt)
+        self.assertEqual((statuses[self.atk], statuses[third]), ('waiting', 'waiting'))      # 没选的不作废，顺延到下一批
+        self.assertEqual({t['consort_id'] for t in game.tribute_group(game.active_tribute())}, {self.atk, third, self.tgt})
 
     def test_pass_in_a_group_waits_for_the_others(self):
         third = self.player('第三位', rank=5)
@@ -222,6 +222,20 @@ class TributeTests(unittest.TestCase):
         game.backfill_tribute_ranks(db); db.commit()
         group = {t['consort_id'] for t in game.tribute_group(game.active_tribute())}
         self.assertEqual(group, {self.atk, third})
+
+    def test_every_batch_carries_unpicked_players_to_the_next_after_timeout(self):
+        high = self.player('嫔乙', rank=5)
+        low = self.player('常在乙', rank=3)
+        with patch.object(game, 'now_ts', return_value=100000):
+            eid = self.start(low_rank=3)
+        first = {t['consort_id'] for t in game.tribute_group(game.active_tribute())}
+        self.assertIn(high, first)
+        rank_first = game.q('SELECT rank FROM tribute_turns WHERE event_id=? AND consort_id=?', (eid, high), one=True)['rank']
+        self.assertNotEqual(rank_first, game.TRIBUTE_MERGE_RANK)
+        with patch.object(game, 'now_ts', return_value=100000 + 8 * 3600): game.tribute_tick()
+        statuses = {r['consort_id']: r['status'] for r in game.q('SELECT * FROM tribute_turns WHERE event_id=?', (eid,))}
+        self.assertEqual(statuses[high], 'waiting', '超时没选的不再作废，而是顺延到下一批')
+        self.assertIn(high, {t['consort_id'] for t in game.tribute_group(game.active_tribute())})
 
     def test_guiren_batch_merges_into_next_batch_after_four_hours(self):
         a = self.player('贵人甲', rank=4)

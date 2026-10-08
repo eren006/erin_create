@@ -10,7 +10,7 @@
 <p class="muted">内务府进呈76件贡品，分雅品、精品、珍品、御品、瑰宝五等。按活动开启时的位分从高到低，同位分的人同时挑、先确认的先得（被别人先选走的会提示重新选）；嫔及以上最多3件，贵人最多2件，贵人以下最多1件。免费领取，不耗精力。挑选时隐藏品级，确认并传给下一位后揭晓；确认后不可重选。</p>
 {% if event %}
 {% if turn %}<div class="sheet"><b>当前轮到：{% for gt in group %}{{ dn(get_consort(gt.consort_id)) }}{{ '、' if not loop.last }}{% endfor %}</b> · 最多{{ turn.quota }}件{% if group|length > 1 %}<br><span class="muted">同位分的人同时挑，先确认的先得；你选的贡品要是被别人先选走了，这次不会领取，需要重新选。</span>{% endif %}
-<p>{% if group_hours %}这一批有{{ group_hours }}小时；{% if turn.rank == merge_rank %}超时没选的人自动并入下一批，和他们一起挑。{% else %}超时自动让给下一批。{% endif %}{% else %}本轮不自动跳过。{% endif %}可以少选，也可以主动让过。</p>
+<p>{% if group_hours %}这一批有{{ group_hours }}小时；超时没选的人自动并入下一批，和他们一起挑（已经是最后一批就算作废）。{% else %}本轮不自动跳过。{% endif %}可以少选，也可以主动让过。</p>
 {% if is_turn %}<p style="color:var(--good)">现在轮到你了！请在下面挑选后确认。</p>{% else %}<p class="muted">还没轮到你，可先看看剩余贡品。</p>{% endif %}</div>{% endif %}
 <details><summary>查看本轮顺位</summary><ol>{% for r in queue %}<li>{{ dn(get_consort(r.consort_id)) }} · 最多{{ r.quota }}件 · {{ '已选完' if r.status=='done' else '已跳过' if r.status=='skipped' else '正在挑选' if group and r.status=='waiting' and r.consort_id in (group|map(attribute='consort_id')|list) else '等待' }}</li>{% endfor %}</ol></details>
 <form method="post" action="{{ url_for('tribute_choose') }}">
