@@ -51,11 +51,12 @@ details.edit summary { display: inline-block; padding: 8px 0; font-size: 13.5px;
 .tabs a { padding: 10px 4px; }
 .row { padding: 14px 0; }
 @media (max-width: 480px) {
-  .wrap { padding-left: 12px; padding-right: 12px; }
+  .wrap { padding-left: 12px; padding-right: 12px; min-height: 100dvh; display: flex; flex-direction: column; }
+  .wrap > .chat { margin-bottom: 12px; }
   .top { position: sticky; top: 0; z-index: 3; background: var(--bg); padding: calc(env(safe-area-inset-top) + 8px) 0 8px; margin-top: calc(-1 * (env(safe-area-inset-top) + 14px)); }
   .b { max-width: 88%; font-size: 16px; }
   .card { padding: 12px 14px; }
-  form.card.compose { position: sticky; bottom: 0; z-index: 3; margin: 0 -12px; border-radius: 14px 14px 0 0; padding-bottom: calc(env(safe-area-inset-bottom) + 12px); box-shadow: 0 -4px 14px rgba(0,0,0,.08); }
+  form.card.compose { margin-top: auto; position: sticky; bottom: 0; z-index: 3; margin-left: -12px; margin-right: -12px; margin-bottom: 0; border-radius: 14px 14px 0 0; padding-bottom: calc(env(safe-area-inset-bottom) + 12px); box-shadow: 0 -4px 14px rgba(0,0,0,.08); }
 }
 button:disabled { opacity: .5; cursor: default; }
 .tabs { display: flex; gap: 6px; background: var(--theirs); border-radius: 12px; padding: 4px; margin-bottom: 14px; }
