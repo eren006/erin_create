@@ -37,6 +37,30 @@ INTENTIONALLY_PERSISTENT = {
     "stakeout_allow_solo", "ts_slot_mode",
     # 目前代码里只有读没有写，大概率是尚未接完的功能，暂按持续配置对待
     "ts_reality_slot_size",
+    # 网页手机同步的记账数据，全部以存档站为准、不属于某一季：
+    #  · *_ops_done / *_ops_started / *_done / *_seen：已处理的网页操作 id（防回报丢了重复执行），清了反而会重放
+    #  · *_cursor：存档站表自增 id 的游标，只往前走，清了会把旧消息重新计一遍
+    #  · *_web / phone_web_send / phone_rel_need：网页后台功能开关，每次同步整体重写
+    "phone_admin_ops_done",
+    "phone_admin_ops_started",
+    "phone_block_ops_done",
+    "phone_bottle_ops_done",
+    "phone_rel_ops_done",
+    "phone_wish_ops_done",
+    "phone_wish_ops_started",
+    "phone_lovemail_done",
+    "phone_lovemail_revoke_done",
+    "phone_lovemail_seen",
+    "phone_songs_done",
+    "phone_songs_seen",
+    "phone_group_cursor",
+    "phone_shop_cursor",
+    "phone_web_cursor",
+    "phone_bottle_web",
+    "phone_rel_web",
+    "phone_web_send",
+    "phone_wish_web",
+    "phone_rel_need",
     # 长日晚餐.js 是独立的 dinner_system 扩展，跟 changri 不是同一个存储命名空间，
     # 这两个 key 由 cmd_reset_season_data 里单独的 dinnerExt.storageSet(...) 循环清空，
     # 不归 changri 自己的 CLEAR_KEYS 管

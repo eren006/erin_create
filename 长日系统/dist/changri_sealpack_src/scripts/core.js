@@ -1257,7 +1257,7 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
     const profile = getCharProfile(platform, name);
     seal.replyToSender(ctx, msg,
         `✅ 角色「${name}」创建成功！\n` +
-        `\n欢迎加入长日！以下是你的初始档案：\n` +
+        `\n欢迎来到长日系统！以下是你的初始档案：\n` +
         `👤 性别：${profile.gender}　年龄：${profile.age}\n` +
         `🌸 皮相：${profile.look}\n` +
         `\n💡 可发送以下消息定制角色：\n` +
@@ -2802,7 +2802,7 @@ function parseAndValidateTime(rawTime, allowedRanges, minDuration, subtype) {
         });
         if (!ok) {
             const rangesText = allowedRanges.map(r => `· ${r}`).join('\n');
-            return { valid: false, errorMsg: `⚠️ 时间 ${time} 不在允许的范围内\n\n📋 当前允许的时间段：\n${rangesText}\n\n请选择上述时间段内的预约时间~` };
+            return { valid: false, errorMsg: `时间 ${time} 不在允许的范围内\n\n当前允许的时间段：\n${rangesText}\n\n请选择上述时间段内的预约时间~` };
         }
     }
 
@@ -4417,7 +4417,7 @@ cmd_set_allowed_times.solve = (ctx, msg, cmdArgs) => {
     const allowedDurs    = kvGet("ts_allowed_durations", []);
     const currentDay     = cachedGet("global_days") || "";
 
-    const lines = ["📋 邀约时间限制"];
+    const lines = ["【邀约时间限制】"];
 
     // 1. 功能时间窗口（allowed_appointment_times）
     lines.push("\n【可约时间段】");
@@ -5275,7 +5275,7 @@ cmd_batch_notify.solve = (ctx, msg, cmdArgs) => {
                 groupMsg.messageType = "group";
                 groupMsg.groupId = `${msg.platform}-Group:${gid}`;
                 const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-                const reminderMsg = `⏰ 温馨提示：\n本群已开启超过 ${hours} 小时啦～\n\n📋 群号：${gid}\n• 时间：${info.day || ""} ${info.time || ""}\n• 地点：${info.place || ""}\n\n如果互动已结束，请使用「结束私约」/「结束复盘」`;
+                const reminderMsg = `【长日系统 · 温馨提示】\n本群已开启超过 ${hours} 小时啦～\n\n群号：${gid}\n• 时间：${info.day || ""} ${info.time || ""}\n• 地点：${info.place || ""}\n\n如果互动已结束，请使用「结束私约」/「结束复盘」`;
                 seal.replyToSender(groupCtx, groupMsg, reminderMsg);
                 successCount++;
             } catch (e) {
@@ -5906,8 +5906,9 @@ cmd_season_wrapup.solve = async (ctx, msg, cmdArgs) => {
         return ret;
     }
     // 清空不可恢复：季度还开着时不收尾，免得把正在进行的季度清掉
-    // 兜底：本地没有「已封存」标记（旧版本封存的，或标记丢了）时，问存档站这个季度是不是已经封存
-    if (hasActiveSeason() && !isSeasonEnded()) {
+    // 以存档站为准核对一次：本地没有「已封存」标记（旧版本封存的）时补上；
+    // 本地有标记、但存档站上这个季度又被切回进行中（如网页「历史季度管理」切换）时撤掉标记，免得清掉正在进行的季度
+    if (hasActiveSeason()) {
         try {
             const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
             if (base) {
@@ -5917,7 +5918,9 @@ cmd_season_wrapup.solve = async (ctx, msg, cmdArgs) => {
                     body: JSON.stringify({})
                 });
                 const d = await r.json();
-                if (d.ok && d.is_current === false && d.name === getSeasonShowName()) {
+                if (d.ok && d.name === getSeasonShowName() && d.is_current === true) {
+                    cachedSet("season_ended", "");
+                } else if (d.ok && d.name === getSeasonShowName() && d.is_current === false) {
                     cachedSet("season_ended", "1");
                 } else if (r.status === 404 || (d && d.error === "no show found")) {
                     cachedSet("season_ended", "1");
@@ -6155,7 +6158,7 @@ cmd_view_expired_groups.solve = (ctx, msg, cmdArgs) => {
                     groupMsg.groupId = `${platform}-Group:${group.indexKey}`;
                     
                     const groupCtx = seal.createTempCtx(ctx.endPoint, groupMsg);
-                    const reminderMsg = `⏰ 温馨提示：\n本群互动时间已经超时了哦～\n\n📋 记录号：${group.indexKey}\n• 时间：${group.day} ${group.time}\n• 地点：${group.place}\n\n如果互动已结束，请使用「结束私约」/「结束复盘」`;
+                    const reminderMsg = `【长日系统 · 温馨提示】\n本群互动时间已经超时了。\n\n记录号：${group.indexKey}\n• 时间：${group.day} ${group.time}\n• 地点：${group.place}\n\n如果互动已结束，请使用「结束私约」/「结束复盘」`;
                     
                     seal.replyToSender(groupCtx, groupMsg, reminderMsg);
                     successCount++;
@@ -6305,10 +6308,10 @@ ext.cmdMap["维护工具说明"] = cmd_maintenance_tools;
 // ========================
 let cmd_menu = seal.ext.newCmdItemInfo();
 cmd_menu.name = "长日菜单";
-cmd_menu.help = "。长日菜单 —— 查看长日将尽系统的分类总览，不知道有什么功能时从这里开始";
+cmd_menu.help = "。长日菜单 —— 查看长日系统的分类总览，不知道有什么功能时从这里开始";
 cmd_menu.solve = (ctx, msg) => {
     const text = [
-        "🎮 【长日将尽 · 系统菜单】",
+        "【长日系统 · 系统菜单】",
         "本系统含 9 个子模块，下面按类别列出高频入口，完整指令表请找管理员要《长日系统指令手册》，或用「。help 扩展名」查看某个子系统的全部指令。",
         "",
         "👤 角色与社交　（扩展名：长日将尽 / 长日社交）",
@@ -6363,7 +6366,7 @@ cmd_web_links.solve = (ctx, msg) => {
     }
     const docs = `${base}/static/docs`;
     const text = [
-        "🌐 【长日将尽 · 系统网址】",
+        "【长日系统 · 系统网址】",
         `📖 系统主页（更新日志 + 指令手册）：\n${docs}/changri_hub.html`,
         `🌟 许愿墙（提交想法/查看采纳进度）：\n${docs}/changri_wishes.html`,
         `🧭 玩家指南（新手向导）：\n${docs}/player_guide.html`,
@@ -6765,7 +6768,7 @@ cmd_time_lock.solve = function(ctx, msg, argv) {
     let resultMsg = "";
     
     if (successList.length > 0) {
-        resultMsg += `📋 ${operation}操作成功（${successList.length}个）：\n`;
+        resultMsg += `${operation}操作成功（${successList.length}个）：\n`;
         resultMsg += successList.join("\n") + "\n\n";
     }
     
@@ -6923,7 +6926,7 @@ cmd_list_admins.solve = (ctx, msg) => {
   }
 
   const a_adminList = kvGet("a_adminList", {});
-  let rep = "📋 当前所有平台的管理员清单：\n";
+  let rep = "【长日系统 · 管理员清单】\n";
 
   const platforms = Object.keys(a_adminList);
   if (platforms.length === 0) {
@@ -7002,7 +7005,7 @@ cmd_view_locks.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
   }
 
-  let rep = `📋 ${name} 的锁定时间段如下：\n`;
+  let rep = `【${name} 的锁定时间段】\n`;
   const days = Object.keys(a_lockedSlots[key]).sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
   for (let day of days) {
     rep += `\n【${day}】\n`;
@@ -7118,11 +7121,11 @@ cmd_view_blocklist.solve = (ctx, msg) => {
     const mine = bl[platform]?.[blockerUid] || {};
     const entries = Object.values(mine);
     if (!entries.length) {
-        seal.replyToSender(ctx, msg, "📋 你当前没有拉黑任何人");
+        seal.replyToSender(ctx, msg, "你当前没有拉黑任何人");
         return seal.ext.newCmdExecuteResult(true);
     }
     const lines = entries.map(e => `- ${e.blockedName}（${e.silent ? "静默" : "不静默"}）`).join("\n");
-    seal.replyToSender(ctx, msg, `📋 你拉黑的人：\n${lines}`);
+    seal.replyToSender(ctx, msg, `【你拉黑的人】\n${lines}`);
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["拉黑列表"] = cmd_view_blocklist;
@@ -8343,10 +8346,10 @@ cmd_plan_official.solve = (ctx, msg, cmdArgs) => {
   kvSet("a_quick_official_plan", plan);
 
   // 展示方案
-  let resp = `📋 官约方案已生成${wantTag ? `（${tagArg} 交替模式）` : ""}：\n`;
-  resp += `📅 ${day} ${time}\n━━━━━━━━━━━━━━\n`;
+  let resp = `【官约方案已生成${wantTag ? `（${tagArg} 交替模式）` : ""}】\n`;
+  resp += `${day} ${time}\n━━━━━━━━━━━━━━\n`;
   planGroups.forEach((g, i) => {
-    resp += `第 ${i + 1} 组 📍${g.place}：${g.participants.join("、")}\n`;
+    resp += `第 ${i + 1} 组 ${g.place}：${g.participants.join("、")}\n`;
   });
   resp += `━━━━━━━━━━━━━━\n✅ 方案已保存，使用「。执行官约」一键发起所有官约`;
   seal.replyToSender(ctx, msg, resp);
@@ -10970,7 +10973,7 @@ async function handleInfoViewCollection(ctx, msg, raw, isAdmin) {
     // 1. 如果只输入"查看收集"，列出所有可选项目（私密项目对非管理员隐藏）
     if (!t) {
         const visibleList = isAdmin ? projectsList : projectsList.filter(p => !privateProjects.includes(p));
-        return seal.replyToSender(ctx, msg, `📋 可查看的收集项目：\n${visibleList.length ? visibleList.join('\n') : "暂无项目"}`);
+        return seal.replyToSender(ctx, msg, `【可查看的收集项目】\n${visibleList.length ? visibleList.join('\n') : "暂无项目"}`);
     }
 
     // 2. 私密项目仅管理员可查看内容
@@ -11006,7 +11009,7 @@ async function handleInfoViewCollection(ctx, msg, raw, isAdmin) {
             }
             const gid = parseInt(msg.groupId.replace(/[^\d]/g, ""), 10);
             const nodes = [
-                { type: "node", data: { name: "长日将尽", uin: "10001", content: `📖 「${t}」共 ${records.length} 条记录` } },
+                { type: "node", data: { name: "长日系统", uin: "10001", content: `「${t}」共 ${records.length} 条记录` } },
                 ...records.map((item, idx) => ({
                     type: "node",
                     data: {
