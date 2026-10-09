@@ -39,11 +39,24 @@ a { color: var(--accent); text-decoration: none; }
 .tag.red { background: var(--warn); color: #fff; }
 .tag.ok { color: var(--ok); }
 label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
-input[type=text], select, textarea { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; }
+input[type=text], select, textarea { width: 100%; font: inherit; font-size: 16px; /* iOS 小于 16px 会在聚焦时自动放大页面 */ color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; }
 textarea { min-height: 84px; resize: vertical; }
 button { font: inherit; border: 0; border-radius: 10px; padding: 9px 16px; background: var(--accent); color: var(--accent-text); cursor: pointer; }
 button.ghost { background: var(--theirs); color: var(--text); }
-button.sm { padding: 3px 10px; font-size: 12.5px; }
+button.sm { padding: 6px 14px; font-size: 13.5px; }
+button, .tabs a, .row, details.edit summary { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+button { min-height: 44px; }
+button.sm { min-height: 36px; }
+details.edit summary { display: inline-block; padding: 8px 0; font-size: 13.5px; }
+.tabs a { padding: 10px 4px; }
+.row { padding: 14px 0; }
+@media (max-width: 480px) {
+  .wrap { padding-left: 12px; padding-right: 12px; }
+  .top { position: sticky; top: 0; z-index: 3; background: var(--bg); padding: calc(env(safe-area-inset-top) + 8px) 0 8px; margin-top: calc(-1 * (env(safe-area-inset-top) + 14px)); }
+  .b { max-width: 88%; font-size: 16px; }
+  .card { padding: 12px 14px; }
+  form.card.compose { position: sticky; bottom: 0; z-index: 3; margin: 0 -12px; border-radius: 14px 14px 0 0; padding-bottom: calc(env(safe-area-inset-bottom) + 12px); box-shadow: 0 -4px 14px rgba(0,0,0,.08); }
+}
 button:disabled { opacity: .5; cursor: default; }
 .tabs { display: flex; gap: 6px; background: var(--theirs); border-radius: 12px; padding: 4px; margin-bottom: 14px; }
 .tabs a { flex: 1; text-align: center; padding: 7px 4px; border-radius: 9px; color: var(--muted); font-size: 14px; }
@@ -122,7 +135,7 @@ details.edit summary { cursor: pointer; font-size: 12.5px; color: var(--accent);
       {% else %}<div class="empty">还没有聊过，说点什么吧。</div>{% endfor %}
     </div>
     {% if can %}
-    <form class="card" method="post" action="{{ url_for('player_rel_chat', other=other) }}">
+    <form class="card compose" method="post" action="{{ url_for('player_rel_chat', other=other) }}">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <textarea name="text" maxlength="{{ chat_max }}" style="min-height:60px" placeholder="像发短信一样，最多 {{ chat_max }} 字" required>{{ draft or '' }}</textarea>
       <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center"><span class="hint">对方进来就能看到；间隔内只会在她的群里提醒一次</span><button type="submit">发送</button></div>
