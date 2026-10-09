@@ -15,9 +15,17 @@ class PrincessTitlesTests(fixtures.ComingOfAgeTests):
         self.assertTrue(h['title'].startswith('和硕'))
         self.assertTrue(h['princess_epithet'])
         self.assertEqual(game.get_consort(self.atk)['energy'], before - 1)
-        self.client.post(f'/heirs/{hid}/emperor-visit')
-        self.assertEqual(game.get_heir(hid)['emperor_affinity'], 40)
-        self.assertEqual(game.get_consort(self.atk)['energy'], before - 1)
+        self.assertEqual(game.daily_count(self.atk, f'empvisit:{hid}'), 1)
+
+    def test_up_to_four_visits_a_day_each_costing_one_energy(self):
+        hid = self.kid(self.atk, gender='公主', age=5)
+        game.run('UPDATE consorts SET energy=9 WHERE id=?', (self.atk,))
+        game.run('UPDATE heirs SET emperor_affinity=0 WHERE id=?', (hid,))
+        for _ in range(game.PRINCESS_VISIT_DAILY + 2):
+            self.client.post(f'/heirs/{hid}/emperor-visit')
+        self.assertEqual(game.daily_count(self.atk, f'empvisit:{hid}'), game.PRINCESS_VISIT_DAILY)
+        self.assertEqual(game.get_consort(self.atk)['energy'], 9 - game.PRINCESS_VISIT_DAILY, '第 5、6 次被拒，不扣精力')
+        self.assertIn(f'{game.PRINCESS_VISIT_DAILY}/{game.PRINCESS_VISIT_DAILY}', self.client.get('/heirs').get_data(as_text=True))
 
     def test_promotion_keeps_epithet_and_marriage_does_not_confer(self):
         hid = self.kid(self.atk, gender='公主', emperor_affinity=40)

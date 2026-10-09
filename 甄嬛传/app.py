@@ -2309,6 +2309,7 @@ def release_confinements():
         run("UPDATE consorts SET status='normal', status_until_day=0, confine_until_ts=0 WHERE id=?", (c['id'],))
         if c['user_id']: notify(c['id'], '禁足期满，你又能出门了。', 'good')
 
+@atomic
 def send_to_cold(cid):
     c = get_consort(cid)
     if c['status'] == 'dead': return
@@ -2317,8 +2318,37 @@ def send_to_cold(cid):
     run("""UPDATE consorts SET four_word='', nine_word='', status='cold', status_until_day=?, rank_before_cold=?,
            favor=0, pregnant_since=0, seek_bonus=0, hall='', housing_waiting='', title=? WHERE id=?""",
         (cur_day() + COLD_DAYS, c['rank'], c['title'] if c['npc_key'] else '', cid))
+    cold_children_release(cid)
     housing_sync(fill_main=not settling())
     guide_tip(cid, 'cold', '「冷宫的日子不好熬，但没到头呢。多闭门自省，未必没有转机。」')
+
+@atomic
+def cold_children_release(cid):
+    """冷宫不能抚养未成年子嗣；保留亲生关系，撤销抚养及待办申请。"""
+    c=get_consort(cid)
+    if not c or c['status']!='cold': return 0
+    children=list(q('SELECT * FROM heirs WHERE caretaker_id=? AND adult_day=0',(cid,)))
+    for h in children:
+        adopt_bonus_revoke(h['id'])
+        run('UPDATE heirs SET caretaker_id=0,caretaker_affinity=50,visit_banned=0,concealed=0,foster_request_to=0 WHERE id=?',(h['id'],))
+        run("UPDATE custody_battles SET status='void' WHERE heir_id=? AND status='active'",(h['id'],))
+        text=f"{heir_label(h)}因原抚养人入冷宫，已送往皇嗣养育所照料。"
+        for kin in {cid,h['mother_id']}:
+            parent=get_consort(kin)
+            if parent and parent['user_id']: notify(kin,text,'info')
+    run('DELETE FROM heir_claims WHERE consort_id=?',(cid,))
+    run("UPDATE custody_battles SET status='void' WHERE (challenger_id=? OR defender_id=?) AND status='active'",(cid,cid))
+    run('UPDATE heirs SET foster_request_to=0 WHERE foster_request_to=? OR mother_id=?',(cid,cid))
+    return len(children)
+
+
+@atomic
+def reconcile_cold_children():
+    total=0
+    for c in q("SELECT DISTINCT c.id FROM consorts c LEFT JOIN heirs h ON h.caretaker_id=c.id OR h.foster_request_to=c.id LEFT JOIN heir_claims hc ON hc.consort_id=c.id WHERE c.status='cold' AND (h.id IS NOT NULL OR hc.heir_id IS NOT NULL)"):
+        total+=cold_children_release(c['id'])
+    return total
+
 
 def release_from_cold(cid, reason):
     c = get_consort(cid)
@@ -6527,6 +6557,7 @@ def graveyard():
 @app.route('/heirs', methods=['GET', 'POST'])
 @login_required
 def heirs():
+    reconcile_cold_children()
     c = g.me
     if request.method == 'POST':
         try: hid = int(request.form.get('heir_id', 0))
@@ -7515,7 +7546,7 @@ def heir_entrust_reply(hid):
     if request.form.get('reply') != 'yes':
         if mother['user_id']: notify(mother['id'], f"{display_name(c)}婉拒了你托付{label}的请求。", 'bad')
         flash('已回绝。', 'good'); return redirect(url_for('heirs'))
-    if c['rank'] < raise_min_rank(h) or c['status'] != 'normal' or h['zhuazhou'] or h['caretaker_id'] not in (0, h['mother_id']) or mother['status'] == 'dead':
+    if c['rank'] < raise_min_rank(h) or c['status'] != 'normal' or h['zhuazhou'] or h['caretaker_id'] not in (0, h['mother_id']) or mother['status'] in ('dead','cold'):
         flash('这桩托付已经办不成了。', 'bad'); return redirect(url_for('heirs'))
     adopt_bonus_revoke(hid)
     run('UPDATE heirs SET caretaker_id=?, caretaker_affinity=50 WHERE id=?', (c['id'], hid))
@@ -7805,6 +7836,10 @@ def confer_princess(h):
     for par in heir_parents(h): notify(par['id'], f"{heir_label(h)}获封{title}。", 'good')
 
 
+PRINCESS_VISIT_DAILY = 4      # 公主向皇上请安：每位公主每天最多 4 次（2026-10-09 起，原来每天 1 次），每次 1 精力
+app.jinja_env.globals['PRINCESS_VISIT_DAILY'] = PRINCESS_VISIT_DAILY
+
+
 @app.route('/heirs/<int:hid>/emperor-visit', methods=['POST'])
 @login_required
 @atomic
@@ -7818,8 +7853,8 @@ def princess_emperor_visit(hid):
         err = '眼下不便带公主请安。'
     elif heir_age_years(h) < 2:
         err = '公主满两岁才能向皇上请安。'
-    elif h['emperor_visit_day'] == cur_day():
-        err = '这位公主今天已向皇上请安。'
+    elif daily_count(c['id'], f'empvisit:{hid}') >= PRINCESS_VISIT_DAILY:
+        err = f'这位公主今天已经向皇上请安 {PRINCESS_VISIT_DAILY} 次了。'
     elif c['energy'] < 1:
         err = '需要一点精力。'
     if err:
@@ -7828,6 +7863,7 @@ def princess_emperor_visit(hid):
     gain = min(random.randint(3, 6), 100 - h['emperor_affinity'])
     run('UPDATE consorts SET energy=energy-1 WHERE id=?', (c['id'],))
     run('UPDATE heirs SET emperor_affinity=emperor_affinity+?,emperor_visit_day=? WHERE id=?', (gain, cur_day(), hid))
+    daily_inc(c['id'], f'empvisit:{hid}')
     confer_princess(get_heir(hid))
     feed(c['id'], f"带{heir_label(h)}向皇上请安，皇帝好感 +{gain}。")
     flash(f'请安完毕，皇帝好感 +{gain}，精力 -1。', 'good')
@@ -10694,6 +10730,7 @@ def run_settle_cycle():
     with app.app_context():
         st = state()
         if st['maintenance']: return
+        reconcile_cold_children()
         palace_aid_tick()
         if not st['event_started']: return
         start = time.time()
@@ -11099,6 +11136,7 @@ def admin_edit(cid):
     if rank >= 5 and not c['title']: assign_title(cid)
     housing_sync()
     flash(f"已修改 {full_name(c)}。", 'good')
+    if get_consort(cid)['status']=='cold': cold_children_release(cid)
     return redirect(url_for('admin'))
 
 @app.route('/admin/decree', methods=['POST'])
