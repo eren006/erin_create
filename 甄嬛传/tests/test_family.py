@@ -1013,7 +1013,8 @@ class FamilyTests(unittest.TestCase):
         uid_a, uid_b = self.fam(self.atk, prestige=10), self.fam(self.tgt, prestige=10)
         hid = self.prince(self.atk, caretaker=self.tgt, favor=90, mother_affinity=20, caretaker_affinity=80, name='承稷')
         princess = self.heir(self.atk, gender='公主', born=1, title='固伦公主', adult_day=1, marriage='mongol')
-        prince2 = self.prince(self.atk, age_years=17, adult_day=1, title='亲王', favor=1)
+        prince2 = self.prince(self.atk, age_years=17, adult_day=1, title='郡王', favor=1)
+        game.run('INSERT INTO heir_allies(ally_id,leader_id,since_day) VALUES(?,?,1)', (prince2, hid))      # 站在赢家阵营才封得了亲王
         game.end_reign(game.cur_day())
         b = game.q('SELECT * FROM family_pool WHERE last_user_id=?', (uid_b,), one=True)      # 新帝登基，家族退回家族池，名望留在家族身上
         self.assertEqual(b['prestige'], 10 + game.PRESTIGE_DOWAGER + game.BACKING_WIN_PRESTIGE, '养母成太后，家里又押对了')
@@ -1023,7 +1024,22 @@ class FamilyTests(unittest.TestCase):
         self.assertTrue(any('太妃' in t for t in honors_a))
         self.assertTrue(any('太后' in t for t in honors_b))
         self.assertTrue(any('固伦公主' in t for t in honors_a), honors_a)
-        self.assertTrue(any('亲王' in t for t in honors_a), honors_a)
+        self.assertTrue(any('郡王' in t or '亲王' in t for t in honors_a), honors_a)
+
+    def test_final_prince_title_caps_non_winner_camp(self):
+        row = lambda i: game.q('SELECT * FROM heirs WHERE id=?', (i,), one=True)
+        winner = row(self.prince(self.tgt, favor=90))
+        fid = self.prince(self.atk, age_years=17, adult_day=1, favor=1)
+        self.assertEqual(game.final_prince_title(row(fid), winner, 90), '郡王', '没站队的不到非常高的圣眷最多郡王')
+        self.assertEqual(game.final_prince_title(row(fid), winner, game.FINAL_QINWANG_STANDING), '亲王')
+        game.run('INSERT INTO heir_allies(ally_id,leader_id,since_day) VALUES(?,?,1)', (fid, 999999))
+        self.assertEqual(game.final_prince_title(row(fid), winner, 200), '贝子', '站错阵营只是普通贝子')
+
+    def test_consort_without_titled_child_is_martyred_or_stays(self):
+        self.fam(self.atk)
+        game.end_reign(game.cur_day())
+        fates = {f['cid']: f['fate'] for f in json.loads(game.q('SELECT fates FROM reigns', one=True)['fates'])}
+        self.assertTrue(fates[self.atk].startswith(('殉葬', '守在寿康宫', '太妃', '圣母')) or '太妃' in fates[self.atk], fates[self.atk])
 
     def test_end_reign_marks_survivors_and_writes_kids(self):
         self.fam(self.atk)

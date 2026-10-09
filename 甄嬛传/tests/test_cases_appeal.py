@@ -223,3 +223,38 @@ class FramePrinceTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ConvictPenaltyTests(AppealTests):
+    def test_deadly_drug_demotes_resets_to_floor_and_confines_a_day(self):
+        game.run('UPDATE consorts SET influence=500, favor=900 WHERE id=?', (self.atk,))
+        r0 = game.get_consort(self.atk)['rank']
+        game.convict_extra_penalty(self.atk, 'honghua')
+        c = game.get_consort(self.atk)
+        self.assertEqual((c['rank'], c['status']), (r0 - 1, 'confined'))
+        self.assertLessEqual(c['influence'], game.PROMOTE_INFLUENCE.get(r0 - 1, 0))
+        self.assertLessEqual(c['favor'], game.PROMOTE_FAVOR.get(r0 - 1, 0))
+        self.assertGreater(c['confine_until_ts'] - game.now_ts(), 23 * 3600)
+
+    def test_minor_drug_confines_and_costs_ten_virtue(self):
+        game.run('UPDATE consorts SET virtue=50 WHERE id=?', (self.tgt,))
+        game.convict_extra_penalty(self.tgt, 'yanzhi')
+        t = game.get_consort(self.tgt)
+        self.assertEqual((t['status'], t['virtue']), ('confined', 40))
+        game.run("UPDATE consorts SET virtue=50, status='normal' WHERE id=?", (self.atk,))
+        game.convict_extra_penalty(self.atk, 'qingsi')
+        self.assertEqual(game.get_consort(self.atk)['virtue'], 40)
+
+    def test_lowest_rank_pays_fine_instead(self):
+        game.run('UPDATE consorts SET rank=1, silver=500 WHERE id=?', (self.atk,))
+        game.convict_extra_penalty(self.atk, 'musk')
+        self.assertEqual(game.get_consort(self.atk)['silver'], 500 - game.CASE_FINE)
+
+    def test_caught_failed_drugging_costs_favor_and_virtue(self):
+        game.run('UPDATE consorts SET favor=100, virtue=50 WHERE id=?', (self.atk,))
+        game.drug_fail_penalty(game.get_consort(self.atk), 'hanshui')
+        c = game.get_consort(self.atk)
+        self.assertEqual((c['favor'], c['virtue']), (100 - game.DRUG_FAIL_FAVOR, 50 - game.DRUG_FAIL_VIRTUE))
+        game.drug_fail_penalty(game.get_consort(self.atk), 'musk')
+        c = game.get_consort(self.atk)
+        self.assertEqual(c['virtue'], 50 - game.DRUG_FAIL_VIRTUE - game.DRUG_FAIL_VIRTUE_PREG)

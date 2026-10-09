@@ -2294,12 +2294,13 @@ def demote_rank(cid):
             gazette(f"{RANK_NAMES[rank]}名额已满，{old_name}圣宠最低，降为{now_name}。", 'decree')
         rank -= 1
 
-def confine(cid, days=None):
+def confine(cid, days=None, hours=None):
     """禁足统一半天（CONFINE_HOURS 小时），days 只是沿用的旧参数，不再决定时长；到点由 release_confinements 每分钟检查放人"""
     c = get_consort(cid)
     if c['status'] in ('cold', 'dead'): return
-    until = max(c['status_until_day'] if c['status'] == 'confined' else 0, cur_day() + 1)    # 按天结算的兜底
-    ts = max(c['confine_until_ts'] if c['status'] == 'confined' else 0, now_ts() + CONFINE_HOURS * 3600)
+    hrs = hours or CONFINE_HOURS      # hours 只给定罪这类重罚用，其余仍是统一时长
+    until = max(c['status_until_day'] if c['status'] == 'confined' else 0, cur_day() + (1 if not hours else -(-hours // 24) + 1))    # 按天结算的兜底
+    ts = max(c['confine_until_ts'] if c['status'] == 'confined' else 0, now_ts() + hrs * 3600)
     run("UPDATE consorts SET status='confined', status_until_day=?, confine_until_ts=? WHERE id=?", (until, ts, cid))
 
 @atomic
@@ -8013,10 +8014,11 @@ app.jinja_env.globals.update(CAREERS=CAREERS, CAREER_MIN_AGE=CAREER_MIN_AGE, CAR
 
 # ── 皇子公主之间交好（2026-10-08）：抚养人带孩子去找别的孩子玩，交情涨到「玩伴」「至交」 ──
 HEIR_PLAY_MIN_AGE = 3
-HEIR_PLAY_ENERGY = 1
-HEIR_PLAY_DAILY = 2           # 每个孩子每天最多出去玩这么多回，同一个玩伴一天一回
+HEIR_PLAY_ENERGY = 0           # 带孩子出去玩不耗精力
+HEIR_PLAY_DAILY = 3           # 每个孩子每天最多出去玩这么多回，同一个玩伴一天一回
 HEIR_BOND_PLAY = 6            # 一回玩耍交情 +6（同母兄妹 +2、同走一条志向 +2、聪敏 +1、两位抚养人好感 ≥50 再 +1）
 HEIR_BOND_FRIEND, HEIR_BOND_CLOSE = 30, 60
+HEIR_BOND_ALLY = 45             # 投靠夺嫡阵营要的交情（比「至交」低一档）
 HEIR_BOND_DECAY_DAYS = 5      # 这么多天没一起玩，交情每晚 -1
 HEIR_BOND_SPARRING_CHANCE = 0.25   # 玩伴每晚有这么大概率「切磋」，落后的那项属性 +1
 
@@ -8116,10 +8118,10 @@ def heir_bond_tick(day):
 
 
 app.jinja_env.globals.update(heir_bonds_of=heir_bonds_of, HEIR_PLAY_MIN_AGE=HEIR_PLAY_MIN_AGE, HEIR_PLAY_ENERGY=HEIR_PLAY_ENERGY, HEIR_PLAY_DAILY=HEIR_PLAY_DAILY,
-                             HEIR_BOND_FRIEND=HEIR_BOND_FRIEND, HEIR_BOND_CLOSE=HEIR_BOND_CLOSE, HEIR_BOND_DECAY_DAYS=HEIR_BOND_DECAY_DAYS)
+                             HEIR_BOND_FRIEND=HEIR_BOND_FRIEND, HEIR_BOND_CLOSE=HEIR_BOND_CLOSE, HEIR_BOND_ALLY=HEIR_BOND_ALLY, HEIR_BOND_DECAY_DAYS=HEIR_BOND_DECAY_DAYS)
 
 
-# ── 阵营助力（2026-10-08）：交情到「至交」的皇子，可以投靠另一位皇子的夺嫡阵营，一个阵营最多收 3 位 ──
+# ── 阵营助力（2026-10-08）：交情到 HEIR_BOND_ALLY 的皇子，可以投靠另一位皇子的夺嫡阵营，一个阵营最多收 3 位 ──
 ALLY_MAX = 3
 ALLY_STANDING_RATIO, ALLY_STANDING_CAP = 0.12, 6      # 每位助力者给阵营主人的圣眷：自己圣眷 ×0.12，最多 +6
 ALLY_COOLDOWN_DAYS = 3          # 退出阵营后这么多天内不能再投靠别处
@@ -8156,14 +8158,42 @@ def ally_block(ally, leader, day=None):
     if allies_of(ally['id']): return '他自己已经带着助力者，不能再去投靠别人。'
     if ally_leader_id(leader['id']): return '对方本身是别人阵营里的助力者。'
     if len(allies_of(leader['id'])) >= ALLY_MAX: return f'对方的阵营已经满了（最多 {ALLY_MAX} 位）。'
-    if heir_bond_value(ally['id'], leader['id']) < HEIR_BOND_CLOSE: return f'交情要到「至交」（{HEIR_BOND_CLOSE}）才能投靠。'
+    if heir_bond_value(ally['id'], leader['id']) < HEIR_BOND_ALLY: return f'交情要到 {HEIR_BOND_ALLY} 才能投靠。'
     if day < ally['ally_ready_day']: return f"刚退出过阵营，第 {ally['ally_ready_day']} 天以后才能再投靠。"
     return None
+
+
+def ally_form_alliance(ally, leader, by_consort_id=None):
+    """结盟生效：写入阵营、发邸报、通知双方的抚养人"""
+    run("DELETE FROM heir_ally_invites WHERE ally_id=?", (ally['id'],))
+    run("INSERT INTO heir_allies(ally_id,leader_id,since_day) VALUES(?,?,?)", (ally['id'], leader['id'], cur_day()))
+    a_label, l_label = heir_label(ally), heir_label(leader)
+    gazette(f"{a_label}与{l_label}情同手足，投到了{l_label}的阵营里相助。", 'news')
+    for hh in (ally, leader):
+        pc = get_consort(hh['caretaker_id']) if hh['caretaker_id'] else None
+        if pc and pc['id'] != by_consort_id and pc['user_id']:
+            notify(pc['id'], f"{a_label}投到了{l_label}的阵营里助力（阵营 {len(allies_of(leader['id']))}/{ALLY_MAX}）。不合意的话，可以在子嗣页把他请出去。", 'good')
+
+
+def ally_invites_for(consort_id):
+    """发给这位抚养人所养皇子的、仍然有效的投靠邀请"""
+    out = []
+    for r in q("SELECT i.* FROM heir_ally_invites i JOIN heirs l ON l.id=i.leader_id WHERE l.caretaker_id=?", (consort_id,)):
+        a, l = get_heir(r['ally_id']), get_heir(r['leader_id'])
+        if a and l and ally_block(a, l) is None: out.append(dict(ally=a, leader=l))
+    return out
+
+
+def ally_invite_out(ally_id):
+    """这个孩子已经发出、还在等回应的邀请（没有则 None）"""
+    r = q("SELECT * FROM heir_ally_invites WHERE ally_id=?", (ally_id,), one=True)
+    return get_heir(r['leader_id']) if r else None
 
 
 @app.route('/heirs/<int:hid>/ally', methods=['POST'])
 @login_required
 def heir_ally_join(hid):
+    """发出投靠邀请：阵营主人的抚养人同意了才结盟；主人归自己养、或没有玩家养（系统皇子）则直接生效"""
     c = get_consort(g.me['id'])
     ally = get_heir(hid)
     try: lid = int(request.form.get('leader_id', 0))
@@ -8175,13 +8205,47 @@ def heir_ally_join(hid):
     else: err = ally_block(ally, leader)
     if err:
         flash(err, 'bad'); return redirect(url_for('heirs'))
-    run("INSERT INTO heir_allies(ally_id,leader_id,since_day) VALUES(?,?,?)", (hid, lid, cur_day()))
     a_label, l_label = heir_label(ally), heir_label(leader)
-    gazette(f"{a_label}与{l_label}情同手足，投到了{l_label}的阵营里相助。", 'news')
     lc = get_consort(leader['caretaker_id']) if leader['caretaker_id'] else None
-    if lc and lc['id'] != c['id'] and lc['user_id']:
-        notify(lc['id'], f"{a_label}与{l_label}交情深厚，愿投到{l_label}的阵营里助力（阵营 {len(allies_of(lid))}/{ALLY_MAX}）。不合意的话，可以在子嗣页把他请出去。", 'good')
-    flash(f"{a_label}投到了{l_label}的阵营，往后他不再争储位，{l_label}的圣眷和党羽都涨了。", 'good')
+    if not lc or lc['id'] == c['id'] or not lc['user_id'] or lc['status'] == 'dead':
+        ally_form_alliance(ally, leader, c['id'])
+        flash(f"{a_label}投到了{l_label}的阵营，往后他不再争储位，{l_label}的圣眷和党羽都涨了。", 'good')
+        return redirect(url_for('heirs'))
+    run("INSERT OR REPLACE INTO heir_ally_invites(ally_id,leader_id,day) VALUES(?,?,?)", (hid, lid, cur_day()))
+    notify(lc['id'], f"{full_name(c)}替{a_label}递来帖子，想投到{l_label}的阵营里助力（阵营 {len(allies_of(lid))}/{ALLY_MAX}）。到子嗣页点同意或婉拒。", 'info')
+    flash(f"已替{a_label}向{full_name(lc)}递了帖子，对方在子嗣页点了同意才算结盟。", 'good')
+    return redirect(url_for('heirs'))
+
+
+@app.route('/heirs/<int:hid>/ally/answer', methods=['POST'])
+@login_required
+def heir_ally_answer(hid):
+    """阵营主人的抚养人回应邀请（hid 是发出邀请的助力者）；也可由助力者的抚养人撤回"""
+    c = get_consort(g.me['id'])
+    ally = get_heir(hid)
+    inv = q("SELECT * FROM heir_ally_invites WHERE ally_id=?", (hid,), one=True)
+    leader = get_heir(inv['leader_id']) if inv else None
+    if not ally or not leader:
+        flash('这封帖子已经不在了。', 'bad'); return redirect(url_for('heirs'))
+    verdict = request.form.get('verdict')
+    a_label, l_label = heir_label(ally), heir_label(leader)
+    if verdict == 'withdraw' and ally['caretaker_id'] == c['id']:
+        run("DELETE FROM heir_ally_invites WHERE ally_id=?", (hid,))
+        flash(f"撤回了{a_label}的帖子。", 'info'); return redirect(url_for('heirs'))
+    if leader['caretaker_id'] != c['id']:
+        flash('这封帖子不是递给你的。', 'bad'); return redirect(url_for('heirs'))
+    ac = get_consort(ally['caretaker_id']) if ally['caretaker_id'] else None
+    if verdict == 'accept':
+        err = ally_block(ally, leader)
+        if err:
+            run("DELETE FROM heir_ally_invites WHERE ally_id=?", (hid,))
+            flash(err, 'bad'); return redirect(url_for('heirs'))
+        ally_form_alliance(ally, leader, c['id'])
+        flash(f"{a_label}投到了{l_label}的阵营，{l_label}的圣眷和党羽都涨了。", 'good')
+    else:
+        run("DELETE FROM heir_ally_invites WHERE ally_id=?", (hid,))
+        if ac and ac['user_id']: notify(ac['id'], f"{full_name(c)}婉拒了{a_label}投靠{l_label}阵营的帖子。", 'info')
+        flash(f"婉拒了{a_label}的帖子。", 'info')
     return redirect(url_for('heirs'))
 
 
@@ -8210,6 +8274,7 @@ def heir_ally_leave(hid):
 def ally_release(hid):
     """这孩子不再是阵营的一员（被废、改走别的路、夭折）：作为助力者退出，作为主人则整个阵营散了"""
     run("DELETE FROM heir_allies WHERE ally_id=? OR leader_id=?", (hid, hid))
+    run("DELETE FROM heir_ally_invites WHERE ally_id=? OR leader_id=?", (hid, hid))
 
 
 def heir_ally_tick(day):
@@ -8223,7 +8288,7 @@ def heir_ally_tick(day):
             for par in heir_parents(a): notify(par['id'], f"{heir_label(a)}和{heir_label(l)}交情淡了，退出了他的阵营。", 'info')
 
 
-app.jinja_env.globals.update(get_heir=get_heir, allies_of=allies_of, ally_leader_id=ally_leader_id, ally_block=ally_block, ALLY_MAX=ALLY_MAX)
+app.jinja_env.globals.update(get_heir=get_heir, allies_of=allies_of, ally_leader_id=ally_leader_id, ally_block=ally_block, ALLY_MAX=ALLY_MAX, ally_invites_for=ally_invites_for, ally_invite_out=ally_invite_out)
 
 
 # ── 孩子的长相（2026-10-09）：成年（12 岁）时随机得到一个「长相参照」，男孩从男名单、女孩从女名单里抽，不和任何妃嫔的皮相、别的孩子的长相重复 ──
@@ -9636,9 +9701,24 @@ def heir_ending(h, winner, day, imprisoned_ids):
     if camp == 'winner':
         return f"早年助力新帝，新帝念着兄弟情分，晋封亲王，位高权重，赏赐不断，成了有钱有势的王爷", 'rich'
     if camp == 'loser':
-        return '助力的是落败的一方，新帝削了他的爵位，降为闲散宗人', 'commoner'
+        return '助力的是落败的一方，新帝削了他的爵位，降为普通贝子', 'commoner'
     if h['title']: return f"安分守己，仍以{h['title']}奉养", 'prince'
     return '做了个闲散宗人', 'commoner'
+
+
+FINAL_QINWANG_STANDING = 100      # 开匾时圣眷到这条线（非常高），不站赢家阵营也能封亲王
+MARTYR_CHANCE = 0.30               # 没有子女出宫的后宫妃嫔，开匾后有这么大概率殉葬，其余守在宫里一辈子（新帝的太后、太妃除外）
+
+
+def final_prince_title(h, winner, standing):
+    """开匾时皇子的最终爵位：站对阵营（新帝的助力者）或圣眷非常高的才能封亲王；其余最多郡王，站错阵营的只是普通贝子；选了志向的只有站对阵营才封亲王，否则无爵"""
+    camp = heir_camp(h, winner)
+    if h['career'] in CAREERS: return '亲王' if camp == 'winner' else ''
+    if camp == 'winner': return '亲王'
+    base = prince_title_for(standing)
+    if camp == 'loser': return '贝子'
+    if base == '亲王' and standing < FINAL_QINWANG_STANDING: base = '郡王'
+    return base
 
 
 def heir_history_eligible(h, winner=None):
@@ -9685,6 +9765,10 @@ def end_reign(day):
     for h in imprisoned:
         for par in heir_parents(h): titles.setdefault(par['id'], '所抚养的阿哥被圈禁，失势')
     imprisoned_ids = {x['id'] for x in imprisoned}
+    for h in q("SELECT * FROM heirs WHERE gender='皇子' AND adult_day>0 AND COALESCE(npc_key,'')=''"):      # 最终爵位：站对阵营或圣眷非常高才是亲王，其余最多郡王
+        if winner and h['id'] == winner['id']: continue
+        new_title = '贝子' if h['id'] in imprisoned_ids else final_prince_title(h, winner, heir_standing(h))
+        if new_title != h['title']: run("UPDATE heirs SET title=? WHERE id=?", (new_title, h['id']))
     endings = {}
     for h in q("SELECT * FROM heirs WHERE COALESCE(npc_key,'')='' ORDER BY id"):
         endings[h['id']] = heir_ending(h, winner, day, imprisoned_ids)
@@ -9695,6 +9779,21 @@ def end_reign(day):
                 add_prestige_uid(uid_, PRESTIGE_RICH_PRINCE, f"{heir_full_title(h)}成了有钱有势的王爷")
     if dowager: titles[dowager['id']] = '圣母皇太后'
     if concubine: titles[concubine['id']] = '太妃'
+    exits = []      # 后宫的去处：子女出息的跟着出宫封太妃，其余的有的殉葬、有的守在宫里一辈子
+    for c in players:
+        if c['status'] == 'dead' or c['id'] in titles: continue
+        kids = list(q("SELECT * FROM heirs WHERE (mother_id=? OR caretaker_id=?) AND COALESCE(npc_key,'')=''", (c['id'], c['id'])))
+        keeper = next((k for k in kids if not (winner and k['id'] == winner['id']) and
+                       ((k['gender'] == '皇子' and k['title'] in ('亲王', '郡王')) or (k['gender'] == '公主' and k['title'] and '公主' in k['title']))), None)
+        if keeper:
+            titles[c['id']] = f"随{heir_full_title(keeper)}出宫，封太妃，奉养终老"
+            exits.append(f"{full_name(c)}随{heir_full_title(keeper)}出宫，封太妃。")
+            if not c['npc_key']: family_log_add(consort_uid(c), f"{full_name(c)}随{heir_full_title(keeper)}出宫，封太妃", 1)
+        elif random.random() < MARTYR_CHANCE:
+            titles[c['id']] = '殉葬，随先帝而去'
+            exits.append(f"{full_name(c)}殉葬，随先帝而去。")
+        else:
+            titles[c['id']] = '守在寿康宫，了此一生'
     settle_family_backing(winner, day)
 
     fates = []
@@ -9711,6 +9810,7 @@ def end_reign(day):
         edict.append('生母、养母皆已不在，追尊而已，此届不设太后。')
     if concubine:
         edict.append(f"{full_name(concubine)}封太妃。")
+    edict += exits
     for sn in stances:
         c = get_consort(sn['consort_id'])
         if winner and sn['heir_id'] == winner['id'] and sn['kind'] == 'open' and c and c['status'] != 'dead' and c['id'] not in (dowager and dowager['id'], concubine and concubine['id']):
@@ -12247,6 +12347,7 @@ def resolve_drug(it):
             inv_add(t['id'],'yinzhen',-1)
             notify(t['id'],'银针挡下了异样，折了一根。')
         caught = not m or bool(m['counter']) or random.random()<0.5
+        if caught: drug_fail_penalty(c, it['drug'])
         if caught and it['drug'] not in PREGNANCY_DRUGS: open_drug_case(it)      # 红花、麝香没得手不开案子，只有得手才开
         if caught and it['drug'] in PREGNANCY_DRUGS and t['user_id']:      # 只告知受害者有人想动手脚，不写是谁、不查案
             notify(t['id'],f"有人想在你的饮食里下{DRUGS[it['drug']]['name']}，被察觉了，没有得逞。不知道是谁，也不会开案子，只是提个醒。",'bad')
@@ -12260,6 +12361,7 @@ def resolve_drug(it):
                 gazette(f"{display_name(t)}的宫人{m['name']}试毒身亡，忠心可鉴。")
             else: run('UPDATE maids SET sick_until_day=? WHERE id=?', (day+3,m['id']))
             notify(t['id'],f"{m['name']}尝出了异样，替你挡下一劫。",'bad')
+            drug_fail_penalty(c, it['drug'])
             if it['drug'] not in PREGNANCY_DRUGS: open_drug_case(it)
             elif t['user_id']: notify(t['id'],f"有人想在你的饮食里下{DRUGS[it['drug']]['name']}，被{m['name']}尝出来了，没有得逞。不知道是谁，也不会开案子，只是提个醒。",'bad')
             return done('fizzle')
@@ -12426,6 +12528,46 @@ def case_action(case_id):
     return redirect(url_for('drug_cases'))
 
 
+DRUG_FAIL_FAVOR, DRUG_FAIL_FAVOR_PREG = 3, 3      # 下药没得手、被察觉：圣宠损失（2026-10-09 调轻）
+DRUG_FAIL_VIRTUE, DRUG_FAIL_VIRTUE_PREG = 2, 2
+
+
+def drug_fail_penalty(c, drug):
+    """下药失败被察觉（含被试毒的宫人尝出来）：下手的人圣宠、德行受损；没被察觉的悄悄失败不罚"""
+    preg = drug in PREGNANCY_DRUGS
+    f, v = (DRUG_FAIL_FAVOR_PREG, DRUG_FAIL_VIRTUE_PREG) if preg else (DRUG_FAIL_FAVOR, DRUG_FAIL_VIRTUE)
+    cut_favor(c['id'], f)
+    add_stat(c['id'], 'virtue', -v)
+    if c['user_id']: notify(c['id'], f"下药没有得手，还被察觉了：圣宠 -{f}，德行 -{v}。", 'bad')
+
+
+CASE_DEADLY_DRUGS = ('honghua','musk','wuming')              # 害命、伤孕的药：定罪降一级位分（势力、圣宠落到新位分的下限）并禁足一天
+CASE_MINOR_DRUGS = ('yanzhi','jingmeng','yachan','qingsi')   # 毁容、禁言、慢毒一类：禁足一天、德行 -10
+CASE_CONFINE_HOURS = 24
+CASE_MINOR_VIRTUE = 10
+CASE_CHILD_INFLUENCE = 5                                     # 红花、麝香害了孩子的，再扣势力
+CASE_FINE = 100                                              # 位分已到最低、没级可降时改罚银子
+
+
+def convict_extra_penalty(cid, drug):
+    """定罪的附加处罚（离魂草、寒水散另有专罚）；不分真凶还是冤枉，一视同仁"""
+    c = get_consort(cid)
+    if not c or c['status'] == 'dead': return
+    if drug in CASE_DEADLY_DRUGS:
+        if c['rank'] > 1:
+            demote_rank(cid)
+            r = get_consort(cid)['rank']      # 被挤下去的也一并按最终位分落到下限
+            run("UPDATE consorts SET influence=MIN(influence,?), favor=MIN(favor,?) WHERE id=?", (PROMOTE_INFLUENCE.get(r, 0), PROMOTE_FAVOR.get(r, 0), cid))
+        else:
+            add_silver(cid, -min(c['silver'], CASE_FINE))
+        confine(cid, hours=CASE_CONFINE_HOURS)
+        if drug in ('honghua','musk'): run("UPDATE consorts SET influence=MAX(0,influence-?) WHERE id=?", (CASE_CHILD_INFLUENCE, cid))
+        notify(cid, '所下之药害命伤孕，慎刑司从重处罚：降一级位分，势力和圣宠落到新位分的下限，禁足一天。', 'bad')
+    elif drug in CASE_MINOR_DRUGS:
+        confine(cid, hours=CASE_CONFINE_HOURS)
+        add_stat(cid, 'virtue', -CASE_MINOR_VIRTUE)
+
+
 def resolve_drug_cases(day):
     for case in q("SELECT * FROM cases WHERE status='open' AND day<=?",(day,)):
         for s in q('SELECT * FROM case_suspects WHERE case_id=?',(case['id'],)):
@@ -12441,7 +12583,8 @@ def resolve_drug_cases(day):
                 elif case['drug']=='hanshui':
                     if c['rank']>1: demote_rank(convicted)
                     confine(convicted,3)
-                else: cut_favor(convicted,FAVOR_LOSS['convicted'])      # 2026-10-08 起不再禁足
+                else: cut_favor(convicted,FAVOR_LOSS['convicted'])
+                convict_extra_penalty(convicted,case['drug'])
                 add_trust(convicted,-15)
             gazette(f"慎刑司定案：{display_name(c)}获罪。")
             notify(convicted,'慎刑司将你定罪，信任 -15，并按案情受罚。','bad')

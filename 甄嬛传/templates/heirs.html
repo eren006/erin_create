@@ -5,6 +5,10 @@
 <p class="muted" style="margin:-6px 0 12px"><a href="{{ url_for('graveyard') }}">墓地 · 夭折的孩子{% if graves %}（{{ graves }}）{% endif %}</a></p>
 <p class="muted">本届字辈：皇子「{{ cur_gen['皇子'] }}」、公主「{{ cur_gen['公主'] }}」。孩子出生时皇上随机点三个字，母亲三选一，名字就是字辈加这个字；同一届名字和用字不重复，上一届用过的可以复用，须避皇帝名讳。</p>
 <p class="muted">侍寝后有机会怀上龙胎，诊出喜脉后满{{ PREGNANCY_HOURS }}小时自动临盆，孕中可查看进度、安胎和胎教。诞下皇子的母亲在有名额时晋一级位分。孕中要当心，宫里不是人人都盼着你平安生产。</p>
+{% set inv_in = ally_invites_for(c.id) %}
+{% if inv_in %}<div class="card" style="padding:12px 16px;margin-bottom:12px"><b>收到的投靠帖子</b>
+  {% for iv in inv_in %}<form method="post" action="{{ url_for('heir_ally_answer', hid=iv.ally.id) }}" class="row" style="gap:6px;margin:6px 0;flex-wrap:wrap"><span>{{ heir_label(iv.ally) }}想投到{{ heir_label(iv.leader) }}的阵营（现有 {{ allies_of(iv.leader.id)|length }}/{{ ALLY_MAX }} 位助力）</span>
+    <button class="plain" name="verdict" value="accept">同意</button><button class="plain" name="verdict" value="decline">婉拒</button></form>{% endfor %}</div>{% endif %}
 {% if rows %}
 <style>
 .heirs{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr))}
@@ -81,14 +85,16 @@
     {% endif %}
     {% if h.caretaker_id == c.id and h.gender == '皇子' and not ally_leader_id(h.id) and not allies_of(h.id) %}{% set cands = rows|selectattr('id', 'ne', h.id)|list %}
       {% set opts = [] %}{% for o in cands if ally_block(h, o) is none %}{% set _ = opts.append(o) %}{% endfor %}
-      {% if opts %}<form method="post" action="{{ url_for('heir_ally_join', hid=h.id) }}" class="row" style="gap:6px;margin:4px 0">
+      {% set pending = ally_invite_out(h.id) %}
+      {% if pending %}<form method="post" action="{{ url_for('heir_ally_answer', hid=h.id) }}" class="row" style="gap:6px;margin:4px 0"><span class="muted" style="font-size:13px">已向{{ heir_label(pending) }}递了投靠帖子，等对方同意。</span><button class="plain" name="verdict" value="withdraw">撤回</button></form>
+      {% elif opts %}<form method="post" action="{{ url_for('heir_ally_join', hid=h.id) }}" class="row" style="gap:6px;margin:4px 0">
         <select name="leader_id" aria-label="助力谁">{% for o in opts %}<option value="{{ o.id }}">{{ heir_label(o) }}（现有 {{ allies_of(o.id)|length }}/{{ ALLY_MAX }} 位助力）</option>{% endfor %}</select>
-        <button class="plain" title="交情到「至交」的皇子，可以投靠对方的夺嫡阵营：对方圣眷和党羽上涨，你的孩子从此不再争储位；一个阵营最多 {{ ALLY_MAX }} 位助力者；退出后 3 天内不能再投靠别处">投靠阵营</button></form>{% endif %}
+        <button class="plain" title="交情到 {{ HEIR_BOND_ALLY }} 的皇子，可以递帖子投靠对方的夺嫡阵营，对方的抚养人同意了才结盟：对方圣眷和党羽上涨，你的孩子从此不再争储位；一个阵营最多 {{ ALLY_MAX }} 位助力者；退出后 3 天内不能再投靠别处">递帖子投靠</button></form>{% endif %}
     {% endif %}
     {% if h.caretaker_id == c.id and not h.adult_day and heir_age_years(h) >= HEIR_PLAY_MIN_AGE %}
       <form method="post" action="{{ url_for('heir_play', hid=h.id) }}" class="row" style="gap:6px;margin:4px 0">
         <select name="target_id" aria-label="找谁玩">{% for o in rows if o.id != h.id and not o.adult_day and heir_age_years(o) >= HEIR_PLAY_MIN_AGE %}<option value="{{ o.id }}">{{ heir_label(o) }}</option>{% endfor %}</select>
-        <button class="plain" {{ 'disabled' if c.energy < HEIR_PLAY_ENERGY }} title="带他去找别的皇子公主玩，交情涨到「玩伴」（{{ HEIR_BOND_FRIEND }}）「至交」（{{ HEIR_BOND_CLOSE }}）；{{ HEIR_PLAY_ENERGY }} 精力，每天最多 {{ HEIR_PLAY_DAILY }} 回；{{ HEIR_BOND_DECAY_DAYS }} 天不玩交情会淡；玩伴会切磋长本事，至交还互相助考校">去找玩伴</button></form>
+        <button class="plain" title="带他去找别的皇子公主玩，交情涨到「玩伴」（{{ HEIR_BOND_FRIEND }}）「至交」（{{ HEIR_BOND_CLOSE }}）；不耗精力，每天最多 {{ HEIR_PLAY_DAILY }} 回；{{ HEIR_BOND_DECAY_DAYS }} 天不玩交情会淡；玩伴会切磋长本事，至交还互相助考校">去找玩伴</button></form>
     {% endif %}
     {% if h.caretaker_id == c.id %}<form method="post" action="{{ url_for('heir_nickname', hid=h.id) }}" class="row" style="gap:6px"><input name="nickname" value="{{ h.nickname }}" maxlength="{{ NICKNAME_MAX_LEN }}" placeholder="乳名（最多 {{ NICKNAME_MAX_LEN }} 字）" aria-label="乳名" style="width:9em"><button class="plain" title="养在自己宫里的孩子可以起乳名，会显示在名字后的括号里；留空清掉">{{ '改乳名' if h.nickname else '起乳名' }}</button></form>{% endif %}
     {% if h.mother_id == c.id and not h.name %}{% set gen = h.gen_word or cur_gen[h.gender] %}

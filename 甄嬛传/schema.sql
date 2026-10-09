@@ -753,6 +753,13 @@ CREATE TABLE IF NOT EXISTS heir_allies (
  since_day INTEGER NOT NULL DEFAULT 0
 );
 
+-- 投靠阵营的邀请：助力者的抚养人发出，阵营主人的抚养人同意了才生效（每个助力者同时只挂一封）
+CREATE TABLE IF NOT EXISTS heir_ally_invites (
+ ally_id INTEGER PRIMARY KEY,
+ leader_id INTEGER NOT NULL,
+ day INTEGER NOT NULL DEFAULT 0
+);
+
 -- 登基后重开选家族：往届留下来的家族（名望、家底都留给这个家族），以及每个玩家这一届摆出来的 3 个候选
 CREATE TABLE IF NOT EXISTS family_pool (
  surname TEXT PRIMARY KEY,

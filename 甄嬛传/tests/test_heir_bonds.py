@@ -29,19 +29,20 @@ class HeirBondTests(fixtures.unittest.TestCase):
         mine, theirs = self.kid(self.atk), self.kid(self.tgt, gender='公主')
         e = game.get_consort(self.atk)['energy']
         self.play(mine, theirs)
-        self.assertEqual(game.get_consort(self.atk)['energy'], e - game.HEIR_PLAY_ENERGY)
+        self.assertEqual(game.get_consort(self.atk)['energy'], e, '玩耍不耗精力')
         self.assertGreaterEqual(game.heir_bond_value(mine, theirs), game.HEIR_BOND_PLAY)
         self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%玩得投缘%'", (self.tgt,), one=True))
         rel = game.relation(self.atk, self.tgt)
         self.assertTrue(rel and rel['affinity'] >= 1, '两位抚养人好感也近了')
 
-    def test_same_pair_once_a_day_and_two_plays_per_child(self):
-        mine, a, b, c3 = self.kid(self.atk), self.kid(self.tgt), self.kid(self.tgt), self.kid(self.tgt)
+    def test_same_pair_once_a_day_and_three_plays_per_child(self):
+        mine, a, b, c3, c4 = self.kid(self.atk), self.kid(self.tgt), self.kid(self.tgt), self.kid(self.tgt), self.kid(self.tgt)
         self.play(mine, a); v = game.heir_bond_value(mine, a)
         self.play(mine, a)
         self.assertEqual(game.heir_bond_value(mine, a), v, '同一个玩伴一天一回')
-        self.play(mine, b); self.play(mine, c3)
-        self.assertEqual(game.heir_bond_value(mine, c3), 0, '一个孩子一天最多两回')
+        self.play(mine, b); self.play(mine, c3); self.play(mine, c4)
+        self.assertGreater(game.heir_bond_value(mine, c3), 0)
+        self.assertEqual(game.heir_bond_value(mine, c4), 0, '一个孩子一天最多三回')
 
     def test_rejects_other_peoples_child_too_young_and_adult(self):
         other, mine, baby, grown = self.kid(self.tgt), self.kid(self.atk), self.kid(self.tgt, age_years=1), self.kid(self.tgt, adult_day=1)
@@ -97,8 +98,44 @@ class AllyTests(HeirBondTests):
         x, y = game.pair(a, b)
         game.run("INSERT OR REPLACE INTO heir_bonds(a_id,b_id,bond,last_play_day) VALUES(?,?,?,?)", (x, y, bond or game.HEIR_BOND_CLOSE, game.cur_day()))
 
-    def join(self, ally, leader):
+    def request_join(self, ally, leader):
         return self.client.post(f'/heirs/{ally}/ally', data={'leader_id': leader})
+
+    def answer(self, ally, verdict, by):
+        self.login(by)
+        r = self.client.post(f'/heirs/{ally}/ally/answer', data={'verdict': verdict})
+        self.login(self.atk)
+        return r
+
+    def join(self, ally, leader):
+        """发帖子并由主人的抚养人点同意"""
+        self.request_join(ally, leader)
+        if game.q('SELECT 1 FROM heir_ally_invites WHERE ally_id=?', (ally,), one=True):
+            self.answer(ally, 'accept', self.tgt)
+
+    def test_invite_needs_leaders_caretaker_to_accept(self):
+        me, boss = self.prince(self.atk), self.prince(self.tgt)
+        self.close(me, boss)
+        self.request_join(me, boss)
+        self.assertEqual(game.ally_leader_id(me), 0, '主人没同意前不结盟')
+        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%递来帖子%'", (self.tgt,), one=True))
+        self.assertEqual(len(game.ally_invites_for(self.tgt)), 1)
+        self.answer(me, 'accept', self.atk)
+        self.assertEqual(game.ally_leader_id(me), 0, '助力者自己的抚养人不能替对方点同意')
+        self.answer(me, 'decline', self.tgt)
+        self.assertEqual(game.ally_leader_id(me), 0)
+        self.assertIsNone(game.q('SELECT 1 FROM heir_ally_invites WHERE ally_id=?', (me,), one=True))
+        self.request_join(me, boss); self.answer(me, 'accept', self.tgt)
+        self.assertEqual(game.ally_leader_id(me), boss)
+
+    def test_invite_can_be_withdrawn_and_own_leader_is_instant(self):
+        me, boss, mine = self.prince(self.atk), self.prince(self.tgt), self.prince(self.atk)
+        self.close(me, boss); self.close(me, mine)
+        self.request_join(me, boss)
+        self.client.post(f'/heirs/{me}/ally/answer', data={'verdict': 'withdraw'})
+        self.assertIsNone(game.q('SELECT 1 FROM heir_ally_invites WHERE ally_id=?', (me,), one=True))
+        self.request_join(me, mine)
+        self.assertEqual(game.ally_leader_id(me), mine, '主人也是自己养的就直接生效')
 
     def test_needs_close_bond_and_adds_support_and_faction(self):
         me, boss = self.prince(self.atk), self.prince(self.tgt)
@@ -111,7 +148,7 @@ class AllyTests(HeirBondTests):
         self.assertGreater(game.heir_standing(game.get_heir(boss)), s0 - 1)
         self.assertEqual(game.heir_faction_count(game.get_heir(boss)), f0 + 1)
         self.assertNotIn(me, [h['id'] for h in game.rival_princes()], '助力者不上夺嫡榜')
-        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%愿投到%'", (self.tgt,), one=True))
+        self.assertTrue(game.q("SELECT 1 FROM messages WHERE consort_id=? AND text LIKE '%递来帖子%'", (self.tgt,), one=True))
 
     def test_faction_holds_at_most_three_and_no_chains(self):
         boss = self.prince(self.tgt)
@@ -155,7 +192,7 @@ class AllyTests(HeirBondTests):
     def test_page_renders_ally_forms(self):
         me, boss = self.prince(self.atk), self.prince(self.tgt)
         self.close(me, boss)
-        self.assertIn('投靠阵营', self.client.get('/heirs').get_data(as_text=True))
+        self.assertIn('递帖子投靠', self.client.get('/heirs').get_data(as_text=True))
         self.join(me, boss)
         self.assertIn('助力于', self.client.get('/heirs').get_data(as_text=True))
         self.assertEqual(self.client.get('/succession').status_code, 200)
