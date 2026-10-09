@@ -51,6 +51,8 @@ function parseAndValidateTime(t, r, d, s) { return getApi()?.parseAndValidateTim
 function getSeasonShowName()           { return getApi()?.getSeasonShowName() ?? ""; }
 function hasActiveSeason()             { return getApi()?.hasActiveSeason() ?? false; }
 function isSeasonEnded()               { return getApi()?.isSeasonEnded?.() ?? false; }
+function getSeasonPhase()              { return getApi()?.getSeasonPhase?.() ?? "none"; }
+function seasonBlockMsg(reason)        { return getApi()?.seasonBlockMsg?.(reason) ?? `❌ ${reason}`; }
 function isRoleStorageEmpty()          { return getApi()?.isRoleStorageEmpty() ?? true; }
 function getSessionStats()             { return getApi()?.getSessionStats() ?? {}; }
 function saveSessionStats(ss)          { getApi()?.saveSessionStats(ss); }
@@ -125,7 +127,8 @@ const SEASON_FLOW = {
         title: "【🏁 结季】",
         steps: [
             { t: "。结束季度  ← 封存并拿到公开存档链接，打开核对一下（季末报告开关在网页「游戏配置」）", c: "。结束季度" },
-            { t: "。收尾  ← 踢出还在戏群里的玩家并清空本季数据（也可以不发，下季「。开始季度」时回复「确认」再清）", c: "。收尾" },
+            { t: "。收尾  ← 先看预览（会踢谁、清什么），再发「。收尾 确认」才执行（也可以不发，下季「。开始季度」时回复「确认」再清）", c: "。收尾" },
+            { t: "。季度状态  ← 任何时候都能看现在处于哪一步、下一步发什么", c: "。季度状态" },
         ],
     },
 };
@@ -758,7 +761,7 @@ cmd_start_season.solve = (ctx, msg, cmdArgs) => {
     const syncOnly = rawArg === "同步";
     const nameArg = syncOnly ? "" : rawArg;
     if (hasActiveSeason() && !isSeasonEnded()) {
-        seal.replyToSender(ctx, msg, `❌ 已有活跃季度「${getSeasonShowName()}」，请先「结束季度」再开始新季度。`);
+        seal.replyToSender(ctx, msg, seasonBlockMsg("已有进行中的季度，不能开始新季度"));
         return seal.ext.newCmdExecuteResult(true);
     }
     if (!syncOnly && !isRoleStorageEmpty()) {
@@ -915,7 +918,7 @@ cmd_end_season.solve = (ctx, msg, cmdArgs) => {
         return seal.ext.newCmdExecuteResult(true);
     }
     if (!hasActiveSeason() || isSeasonEnded()) {
-        seal.replyToSender(ctx, msg, hasActiveSeason() ? `❌ 季度「${getSeasonShowName()}」已经封存过了，确认存档无误后发「。收尾」。` : "❌ 当前没有活跃季度。");
+        seal.replyToSender(ctx, msg, seasonBlockMsg(hasActiveSeason() ? "这个季度已经封存过了" : "当前没有进行中的季度"));
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -1102,6 +1105,59 @@ cmd_end_season.solve = (ctx, msg, cmdArgs) => {
     return seal.ext.newCmdExecuteResult(true);
 };
 ext.cmdMap["结束季度"] = cmd_end_season;
+
+// ── 季度状态：随时看现在处于哪一步、下一步该发什么（并和存档站核对一次）
+let cmd_season_status = seal.ext.newCmdItemInfo();
+cmd_season_status.name = "季度状态";
+cmd_season_status.help = "用法：。季度状态\n【管理员】查看当前季度处于「进行中 / 已封存待收尾 / 没有季度」哪一步、下一步该发什么，并和存档站核对是否一致";
+cmd_season_status.solve = (ctx, msg, cmdArgs) => {
+    if (!isUserAdmin(ctx, msg)) {
+        seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    (async () => {
+        const api = getApi();
+        const ph = getSeasonPhase();
+        const info = api?.SEASON_PHASE_INFO?.[ph] || { label: ph, next: "" };
+        const name = getSeasonShowName();
+        const lines = ["【长日系统 · 季度状态】"];
+        lines.push(`季度：${name ? `「${name}」` : "无"}`);
+        lines.push(`本地状态：${info.label}`);
+        if (name) {
+            const st = mainStorGet("season_schedule_start"), ed = mainStorGet("season_schedule_end");
+            if (st || ed) lines.push(`档期：${st || "?"} - ${ed || "?"}`);
+            lines.push(`模式：${mainStorGet("season_mode") === "no_review" ? "不复盘" : "复盘"}`);
+        }
+        const base = getArchiveBase();
+        if (base) {
+            try {
+                const r = await fetch(`${base}/api/current_season`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-Archive-Token": getArchiveToken() },
+                    body: JSON.stringify({})
+                });
+                const d = await r.json();
+                let remote;
+                if (!d.ok) remote = "存档站没有任何季度";
+                else if (d.is_current === true) remote = `「${d.name}」进行中`;
+                else if (d.is_current === false) remote = `「${d.name}」已封存`;
+                else remote = `「${d.name}」（存档站版本较旧，无法判断是否封存）`;
+                lines.push(`存档站：${remote}`);
+                const localRunning = ph === "running", remoteRunning = d.ok && d.is_current === true;
+                if (d.ok && d.is_current !== undefined && (localRunning !== remoteRunning || (name && d.name !== name))) {
+                    lines.push("⚠️ 本地和存档站对不上。可发「。收尾」（会自动核对）或「。开始季度 同步」处理。");
+                }
+            } catch (e) {
+                lines.push("存档站：查询失败（" + (e.message || String(e)) + "）");
+            }
+        }
+        lines.push("─────────────────────");
+        lines.push(`下一步：${info.next}`);
+        seal.replyToSender(ctx, msg, lines.join("\n"));
+    })();
+    return seal.ext.newCmdExecuteResult(true);
+};
+ext.cmdMap["季度状态"] = cmd_season_status;
 
 // ========================
 // ── 季末报告开关

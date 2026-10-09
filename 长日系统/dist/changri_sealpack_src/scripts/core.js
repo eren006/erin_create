@@ -1188,6 +1188,21 @@ function getSeasonMode()     { return cachedGet("season_mode") || "review"; }
 function hasActiveSeason()   { return !!getSeasonShowName(); }
 // 「。结束季度」成功后置位（本地季度名要等清空才清），「。收尾」/「。开始季度」靠它区分「已封存待收尾」和「进行中」
 function isSeasonEnded()     { return cachedGet("season_ended") === "1"; }
+// 季度阶段：none=没有季度 / running=进行中 / ended=已封存待收尾。所有季度指令的拦截提示都从这里取状态和下一步
+function getSeasonPhase() {
+    if (!hasActiveSeason()) return "none";
+    return isSeasonEnded() ? "ended" : "running";
+}
+const SEASON_PHASE_INFO = {
+    none:    { label: "没有季度", next: "在网页「季度日历」预订好，到日子发「。开始季度」" },
+    running: { label: "进行中",   next: "季末发「。结束季度」封存并拿存档链接" },
+    ended:   { label: "已封存，待收尾", next: "核对存档链接无误后发「。收尾」（也可直接「。开始季度」，会提示确认清空）" },
+};
+// 统一的拦截提示：说清为什么被拦、现在处于什么状态、下一步发什么
+function seasonBlockMsg(reason) {
+    const ph = getSeasonPhase(), info = SEASON_PHASE_INFO[ph], name = getSeasonShowName();
+    return `❌ ${reason}\n当前状态：${info.label}${name ? `（季度「${name}」）` : ""}\n下一步：${info.next}`;
+}
 
 // a_private_group 是否已无任何角色（所有 platform 下都无 uid entry）
 function isRoleStorageEmpty() {
@@ -2116,6 +2131,9 @@ const changriApi = {
     getSeasonShowName,
     hasActiveSeason,
     isSeasonEnded,
+    getSeasonPhase,
+    seasonBlockMsg,
+    SEASON_PHASE_INFO,
     isRoleStorageEmpty,
     resetSeasonData: (ctx, msg, force, quiet) => resetSeasonDataCore(ctx, msg, force, quiet),
     getSessionStats: () => getSessionStats(),
@@ -5798,7 +5816,13 @@ cmd_reset_season_data.solve = async (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
-    await resetSeasonDataCore(ctx, msg, (cmdArgs.getArgN(1) || "").trim() === "确认", false);
+    const force = (cmdArgs.getArgN(1) || "").trim() === "确认";
+    // 进行中的季度不能顺手清掉：要清先结束季度；确实要强制清（比如测试数据）才发「确认」
+    if (getSeasonPhase() === "running" && !force) {
+        seal.replyToSender(ctx, msg, seasonBlockMsg("季度还在进行，直接清空会丢掉正在进行的数据") + "\n确实要强制清空（如清测试数据）：「。清空季度数据 确认」");
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    await resetSeasonDataCore(ctx, msg, force, false);
     return seal.ext.newCmdExecuteResult(true);
 };
 
@@ -5891,9 +5915,10 @@ ext.cmdMap["清空季度数据"] = cmd_reset_season_data;
 // ========================
 let cmd_season_wrapup = seal.ext.newCmdItemInfo();
 cmd_season_wrapup.name = "收尾";
-cmd_season_wrapup.help = `用法：。收尾
+cmd_season_wrapup.help = `用法：。收尾 [确认]
 「结束季度」之后用：踢出所有仍在戏群里的玩家（含额外账号，NPC 不踢），确认没人残留后清空本季数据。
-等于依次执行「更新未退群 驱逐」和「清空季度数据」。有人没踢掉会列出来，处理后再发一次即可。
+先发「。收尾」看预览（会踢谁、会清什么），再发「。收尾 确认」才真正执行。
+有人没踢掉会列出来，处理后再发一次「。收尾 确认」即可。
 也可以不收尾，下次「。开始季度」时会提示回复「确认」再清空。`;
 cmd_season_wrapup.solve = async (ctx, msg, cmdArgs) => {
     if (!isUserAdmin(ctx, msg)) {
@@ -5928,8 +5953,25 @@ cmd_season_wrapup.solve = async (ctx, msg, cmdArgs) => {
             }
         } catch (e) { console.error("[收尾] 查询存档站季度状态失败：", e.message || String(e)); }
     }
-    if (hasActiveSeason() && !isSeasonEnded()) {
-        seal.replyToSender(ctx, msg, `❌ 季度「${getSeasonShowName()}」还没结束，请先「。结束季度」并确认存档无误，再「。收尾」。`);
+    if (getSeasonPhase() === "running") {
+        seal.replyToSender(ctx, msg, seasonBlockMsg("季度还没结束，不能收尾（收尾会清空数据且不可恢复）"));
+        return seal.ext.newCmdExecuteResult(true);
+    }
+    // 预览：不带「确认」只告诉管理员会发生什么，不动任何数据
+    if ((cmdArgs.getArgN(1) || "").trim() !== "确认") {
+        const roles = getRoleStorage()[msg.platform] || {};
+        const npcSet = new Set([...kvGet("a_npc_list", []), ...kvGet("a_generic_npc_list", [])]);
+        let npcCnt = 0, guestCnt = 0;
+        for (const info of Object.values(roles)) (npcSet.has(info[0]) ? npcCnt++ : guestCnt++);
+        const name = getSeasonShowName();
+        seal.replyToSender(ctx, msg,
+            `【长日系统 · 收尾预览】${name ? `季度「${name}」` : ""}\n` +
+            `将执行：\n` +
+            `1. 踢出仍在戏群里的玩家（含额外账号，NPC 不踢）：当前已绑定嘉宾 ${guestCnt} 人、NPC ${npcCnt} 人\n` +
+            `2. 确认没人残留后，清空本季全部数据（角色、约会、计时器、心愿池、收集等；仅保留管理员列表和密令），不可恢复\n` +
+            `─────────────────────\n` +
+            `存档已核对无误的话，发「。收尾 确认」开始执行。`
+        );
         return seal.ext.newCmdExecuteResult(true);
     }
     await cmd_fix_noquit.solve(ctx, msg, { args: ["驱逐"], getArgN: (n) => n === 1 ? "驱逐" : "" });
@@ -5937,7 +5979,7 @@ cmd_season_wrapup.solve = async (ctx, msg, cmdArgs) => {
     await new Promise(r => setTimeout(r, 5000));
     const cleared = await resetSeasonDataCore(ctx, msg, false, false);
     if (!cleared) {
-        seal.replyToSender(ctx, msg, "↻ 处理完上面列出的玩家后（或稍等片刻），再发一次「。收尾」。");
+        seal.replyToSender(ctx, msg, "↻ 处理完上面列出的玩家后（或稍等片刻），再发一次「。收尾 确认」。");
     }
     return seal.ext.newCmdExecuteResult(true);
 };
