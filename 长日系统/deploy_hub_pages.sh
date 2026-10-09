@@ -9,6 +9,7 @@ set -euo pipefail
 # ---------- 主站：贾维斯（rsync 增量，Mac 上传贾维斯很慢） ----------
 HERE="$(cd "$(dirname "$0")" && pwd)"
 cd "$HERE"
+python3 sync_dist.py
 ASSETS=$(grep -ohE "assets/[A-Za-z0-9_.-]+" changri_hub.html changri_wishes.html player_guide.html | sort -u)
 echo ">>> rsync -> 贾维斯 /var/www/hub"
 rsync -az --partial --relative -e ssh changri_hub.html changri_wishes.html player_guide.html $ASSETS jarvis:/var/www/hub/

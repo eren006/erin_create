@@ -14,3 +14,7 @@ yuca_order/logs/
 九霄仙门/jiuxiao.db
 九霄仙门/db_backups/
 deploy_dashboard/deploy_dashboard.db
+甄嬛传/logs/
+
+# 长日系统 dist 脚本是源文件的生成副本：python3 长日系统/sync_dist.py 现生成
+长日系统/dist/changri_sealpack_src/scripts/
