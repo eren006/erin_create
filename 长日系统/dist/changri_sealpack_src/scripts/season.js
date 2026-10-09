@@ -50,6 +50,7 @@ function sendTextToGroup(p, gid, text) { return getApi()?.sendTextToGroup(p, gid
 function parseAndValidateTime(t, r, d, s) { return getApi()?.parseAndValidateTime(t, r, d, s) ?? { valid: false, errorMsg: "API未加载" }; }
 function getSeasonShowName()           { return getApi()?.getSeasonShowName() ?? ""; }
 function hasActiveSeason()             { return getApi()?.hasActiveSeason() ?? false; }
+function isSeasonEnded()               { return getApi()?.isSeasonEnded?.() ?? false; }
 function isRoleStorageEmpty()          { return getApi()?.isRoleStorageEmpty() ?? true; }
 function getSessionStats()             { return getApi()?.getSessionStats() ?? {}; }
 function saveSessionStats(ss)          { getApi()?.saveSessionStats(ss); }
@@ -598,6 +599,7 @@ async function applySeasonLocal(ctx, msg, opts) {
     const isReview  = mode === "review";
     const modeLabel = isReview ? "复盘" : "不复盘";
     mainStorSet("season_show_name", seasonName);
+    mainStorSet("season_ended", "");
     mainStorSet("season_mode", mode);
     mainStorSet("season_schedule_start", scheduleStart);
     mainStorSet("season_schedule_end",   scheduleEnd);
@@ -755,7 +757,7 @@ cmd_start_season.solve = (ctx, msg, cmdArgs) => {
     // 「。开始季度 同步」：上次开季中途断了（服务器已开、本地没记录）时把服务器上进行中的季度接回来，不会启用新的预订
     const syncOnly = rawArg === "同步";
     const nameArg = syncOnly ? "" : rawArg;
-    if (hasActiveSeason()) {
+    if (hasActiveSeason() && !isSeasonEnded()) {
         seal.replyToSender(ctx, msg, `❌ 已有活跃季度「${getSeasonShowName()}」，请先「结束季度」再开始新季度。`);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -912,8 +914,8 @@ cmd_end_season.solve = (ctx, msg, cmdArgs) => {
         seal.replyToSender(ctx, msg, "❌ 权限不足，仅管理员可用。");
         return seal.ext.newCmdExecuteResult(true);
     }
-    if (!hasActiveSeason()) {
-        seal.replyToSender(ctx, msg, "❌ 当前没有活跃季度。");
+    if (!hasActiveSeason() || isSeasonEnded()) {
+        seal.replyToSender(ctx, msg, hasActiveSeason() ? `❌ 季度「${getSeasonShowName()}」已经封存过了，确认存档无误后发「。收尾」。` : "❌ 当前没有活跃季度。");
         return seal.ext.newCmdExecuteResult(true);
     }
 
@@ -949,6 +951,7 @@ cmd_end_season.solve = (ctx, msg, cmdArgs) => {
                 }
                 return;
             }
+            mainStorSet("season_ended", "1");
             seal.replyToSender(ctx, msg,
                 `✅ 季度「${currentName}」已封存\n` +
                 `📎 公开存档：${data.public_url}\n` +

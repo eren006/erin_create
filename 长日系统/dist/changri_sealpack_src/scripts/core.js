@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         长日将尽系统
 // @author       长日将尽
-// @version      1.11.0
+// @version      1.11.1
 // @description  无
 // @timestamp    1778742000
 // @license      CC BY-NC-SA
@@ -18,7 +18,7 @@
 
 let ext = seal.ext.find("changri")
 if (!ext) {
-    ext = seal.ext.new("changri", "长日将尽", "1.11.0");
+    ext = seal.ext.new("changri", "长日将尽", "1.11.1");
     // 注册扩展
     seal.ext.register(ext);
     ext.autoActive = true;
@@ -1186,6 +1186,8 @@ function getRoleStorage() {
 function getSeasonShowName() { return cachedGet("season_show_name") || ""; }
 function getSeasonMode()     { return cachedGet("season_mode") || "review"; }
 function hasActiveSeason()   { return !!getSeasonShowName(); }
+// 「。结束季度」成功后置位（本地季度名要等清空才清），「。收尾」/「。开始季度」靠它区分「已封存待收尾」和「进行中」
+function isSeasonEnded()     { return cachedGet("season_ended") === "1"; }
 
 // a_private_group 是否已无任何角色（所有 platform 下都无 uid entry）
 function isRoleStorageEmpty() {
@@ -1207,7 +1209,7 @@ cmd_bind_role.solve =(ctx, msg, cmdArgs) => {
         return ret;
     }
 
-    if (isArchiveEnabled() && !hasActiveSeason()) {
+    if (isArchiveEnabled() && (!hasActiveSeason() || isSeasonEnded())) {
         seal.replyToSender(ctx, msg, "⚠️ 当前没有活跃的季度，请等主办开季（「。开始季度」）后再创建角色。");
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -1581,10 +1583,11 @@ cmd_role_list.solve =(ctx, msg) => {
         const gender = prof.gender || "女";
         const age = prof.age !== undefined ? prof.age : 18;
         const look = prof.look || (gender === "男" ? "亨利卡维尔" : "刘亦菲");
-        const bio = prof.bio ? `\n   签名：${prof.bio}` : "";
-        const nick = info[2];
-        const entry = `👤 ${nick || name}\n${nick ? `   全名：${name}\n` : ""}   ${gender} · ${age}岁 · 皮相：${look}${bio}`;
-        (npcSet.has(name) ? npcs : guests).push(entry);
+        const lines = [`${nick || name}${nick ? `（全名：${name}）` : ""}`, `${gender} / ${age}岁 / 皮相：${look}`];
+        if (prof.bio) lines.push(`签名：${prof.bio}`);
+        const list = npcSet.has(name) ? npcs : guests;
+        const entry = `${list.length + 1}. ` + lines.join("\n    ");
+        list.push(entry);
     }
 
     // 嘉宾一条、NPC 另起一条（没有 NPC 就不发第二条）。
@@ -1608,8 +1611,8 @@ cmd_role_list.solve =(ctx, msg) => {
         flush();
         ws({ action: "send_group_forward_msg", params: { group_id: parseInt(msg.groupId.replace(/\D/g, ""), 10), messages: nodes } }, ctx, msg, "");
     };
-    sendList(`📊 当前已绑定角色 · 💃 嘉宾（${guests.length}）`, guests);
-    if (npcs.length) sendList(`🎭 NPC（${npcs.length}）`, npcs);
+    sendList(`【当前已绑定角色 · 嘉宾 ${guests.length} 人】`, guests);
+    if (npcs.length) sendList(`【NPC ${npcs.length} 人】`, npcs);
     return seal.ext.newCmdExecuteResult(true);
 }
 
@@ -2112,6 +2115,7 @@ const changriApi = {
     // 季度/时间线/场次卫星所需
     getSeasonShowName,
     hasActiveSeason,
+    isSeasonEnded,
     isRoleStorageEmpty,
     resetSeasonData: (ctx, msg, force, quiet) => resetSeasonDataCore(ctx, msg, force, quiet),
     getSessionStats: () => getSessionStats(),
@@ -5689,7 +5693,7 @@ const CLEAR_KEYS = [
     "a_lockedSlots",
     "a_wishPool",            "a_quick_official_plan", "extra_accounts",
     "feature_user_blocklist","noquit",                "season_show_name",
-    "season_mode",           "season_schedule_start", "season_schedule_end",
+    "season_ended",          "season_mode",           "season_schedule_start", "season_schedule_end",
     "season_supplement_end", "season_created_at",     "love_show_name",
     "pending_npc_names",     "call_admin_counts",
     // 以下 4 个是 check_clear_keys_coverage.py 查出来漏清的：二表提交记录（不清的话下一季皮相墙直接显示 ✅）、
@@ -5902,7 +5906,26 @@ cmd_season_wrapup.solve = async (ctx, msg, cmdArgs) => {
         return ret;
     }
     // 清空不可恢复：季度还开着时不收尾，免得把正在进行的季度清掉
-    if (hasActiveSeason()) {
+    // 兜底：本地没有「已封存」标记（旧版本封存的，或标记丢了）时，问存档站这个季度是不是已经封存
+    if (hasActiveSeason() && !isSeasonEnded()) {
+        try {
+            const base = (seal.ext.getStringConfig(ext, "RP存档服务器地址") || "").replace(/\/$/, "");
+            if (base) {
+                const r = await fetch(`${base}/api/current_season`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-Archive-Token": seal.ext.getStringConfig(ext, "RP存档Token") || "" },
+                    body: JSON.stringify({})
+                });
+                const d = await r.json();
+                if (d.ok && d.is_current === false && d.name === getSeasonShowName()) {
+                    cachedSet("season_ended", "1");
+                } else if (r.status === 404 || (d && d.error === "no show found")) {
+                    cachedSet("season_ended", "1");
+                }
+            }
+        } catch (e) { console.error("[收尾] 查询存档站季度状态失败：", e.message || String(e)); }
+    }
+    if (hasActiveSeason() && !isSeasonEnded()) {
         seal.replyToSender(ctx, msg, `❌ 季度「${getSeasonShowName()}」还没结束，请先「。结束季度」并确认存档无误，再「。收尾」。`);
         return seal.ext.newCmdExecuteResult(true);
     }
@@ -13589,7 +13612,7 @@ cmd_create_npc.solve = (ctx, msg, cmdArgs) => {
     }
 
     // archive 开启时必须先有活跃季度
-    if (isArchiveEnabled() && !hasActiveSeason()) {
+    if (isArchiveEnabled() && (!hasActiveSeason() || isSeasonEnded())) {
         seal.replyToSender(ctx, msg, "❌ 当前无活跃季度。请先在网页「季度日历」预订，再发「。开始季度」。");
         return seal.ext.newCmdExecuteResult(true);
     }

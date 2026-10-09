@@ -2766,6 +2766,7 @@ def api_current_season():
         return jsonify({"ok": False, "error": "no show found"}), 404
     mode = show["description"] if show["description"] in ("review", "no_review") else "review"
     return jsonify({"ok": True, "show_id": show["id"], "name": show["name"], "mode": mode,
+                    "is_current": bool(show["is_current"]),
                     "schedule_start": show["schedule_start"] or "",
                     "schedule_end":   show["schedule_end"]   or "",
                     "supplement_end": show["supplement_end"] or ""})
